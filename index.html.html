@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>텍스트 낚시 게임</title>
+<style>
+body {
+  margin:0;
+  background:#0d1117;
+  color:#e6edf3;
+  font-family:Consolas,'Courier New',monospace;
+}
+.wrap { max-width:980px; margin:0 auto; padding:20px; }
+.box {
+  background:#161b22;
+  border:1px solid #30363d;
+  border-radius:8px;
+  padding:12px;
+  margin:10px 0;
+}
+#log {
+  height:540px;
+  overflow-y:auto;
+  white-space:pre-wrap;
+  line-height:1.45;
+}
+input {
+  width:360px;
+  max-width:calc(100% - 90px);
+  padding:10px;
+  background:#0d1117;
+  color:#e6edf3;
+  border:1px solid #30363d;
+  border-radius:6px;
+  font-family:inherit;
+}
+button {
+  padding:10px 14px;
+  background:#21262d;
+  color:#e6edf3;
+  border:1px solid #30363d;
+  border-radius:6px;
+  cursor:pointer;
+}
+button:hover { background:#30363d; }
+.cmd span {
+  display:inline-block;
+  background:#21262d;
+  padding:4px 8px;
+  border-radius:5px;
+  margin:3px;
+}
+
+.modalOverlay {
+  display:none;
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,0.72);
+  z-index:1000;
+}
+.modal {
+  width:min(900px, calc(100% - 32px));
+  height:min(760px, calc(100% - 32px));
+  margin:16px auto;
+  background:#161b22;
+  border:1px solid #30363d;
+  border-radius:10px;
+  display:flex;
+  flex-direction:column;
+}
+.modalHead {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:12px;
+  border-bottom:1px solid #30363d;
+}
+.modalBody {
+  padding:12px;
+  overflow:auto;
+  white-space:pre-wrap;
+  line-height:1.45;
+}
+.openBtn {
+  margin-top:8px;
+}
+
+</style>
+</head>
+<body>
+<div class="wrap">
+<h2>텍스트 낚시 게임</h2>
+
+<div class="box cmd">
+<b>주요 명령어</b><br>
+<span>!명령어</span><span>!낚시</span><span>!양동이</span><span>!도감</span>
+<span>!지갑</span><span>!강화</span><span>!강화 최대</span>
+<span>!정렬 가격</span><span>!정렬 크기</span><span>!정렬 등급</span>
+<span>!잠금 1</span><span>!잠금해제 1</span>
+<span>!물고기 판매 1</span><span>!물고기 일괄판매</span>
+</div>
+
+<div class="box" id="wallet"></div>
+<div class="box" id="log"></div>
+
+
+<div id="modalOverlay" class="modalOverlay">
+  <div class="modal">
+    <div class="modalHead">
+      <b id="modalTitle">전체보기</b>
+      <button onclick="closeModal()">닫기</button>
+    </div>
+    <div id="modalBody" class="modalBody"></div>
+  </div>
+</div>
+
+<input id="command" placeholder="명령어 입력">
+<button onclick="runCommand()">실행</button>
+</div>
+
+<script>
+const fishByGrade = {"쓰레기": ["휴지 조각", "플라스틱 통", "안경닦이", "생선 뼈", "빈 병", "빈 깡통", "비닐봉투", "바나나 껍질", "낡은 신발", "나무 조각"], "일반": ["흰동가리", "황어", "해삼", "해마", "피라미", "틸라피아", "클리오네", "큰입배스", "전갱이", "잉어", "은어", "올챙이", "오징어", "연어", "쏠배감펭", "블루탱", "보름달물 해파리", "바다포도", "미역", "미꾸라지", "문어", "멸치", "메기", "말미잘", "리본장어", "따개비", "동사리", "농어", "네온테트라", "넙치", "납줄개", "나비고기", "가자미"], "희귀": ["흰다리새우", "해로동혈", "피라니아", "투구게", "초롱아귀", "천사어", "참게", "짱뚱어", "진주조개", "지중해 홍합", "전복", "자라", "열목어", "연필성게", "엔드리케리", "앵무조개", "쏠베감펭", "성게", "빨판상어", "비단잉어", "붕장어", "북쪽보리새우", "복어", "보리새우", "베타", "반딧불 오징어", "바닷가재", "무명갈전갱이", "멍게", "돌돔", "도미", "던지니 스크랩", "닭새우", "닥터피쉬", "다금바리", "늑대거북", "난주", "낙지", "꽃게", "꽁치", "꺽저기", "금붕어", "굴", "구피", "곰치", "곤들매기", "갯가재", "개복치", "강꼬치고기", "가오리", "가시나비고기", "가리비", "가는돌고기"], "영웅": ["흡혈오징어", "피라루쿠", "청새치", "철갑상어", "우무문어", "왕게", "아로와나", "산갈치", "블랙타이거새우", "만새기", "대게", "다랑어", "나폴레옹피시", "그린란드 상어", "귀상어", "가아", "가시배새우", "가물치"], "전설": ["혹등고래", "톱상어", "키다리게", "자이언트 이소포드", "일본연어", "실러캔스", "상어", "벨루가", "배럴아이", "바다돼지", "메갈로돈", "마귀상어", "도라도", "대왕거거", "금송어", "고래상어", "갈치"], "신화": ["핏빛 초승달 드래곤", "잿빛 밤하늘 드래곤", "금빛 보름달 드래곤", "푸른 눈의 백염룡", "이무기", "청룡", "흑룡", "황룡", "해신룡"], "초월": ["호수에 비친 은하수", "호수에 비친 별", "호수에 비친 달", "바다를 삼킨 태양"], "영원": ["휘몰아치는 마음", "영롱한 다이아몬드", "얼어붙은 마음", "빛나는 마음", "불타는 마음", "무한한 시간"]};
+const sizeData = {"휴지 조각": [1, 40], "플라스틱 통": [1, 40], "안경닦이": [1, 40], "생선 뼈": [1, 40], "빈 병": [1, 40], "빈 깡통": [1, 40], "비닐봉투": [1, 40], "바나나 껍질": [1, 40], "낡은 신발": [1, 40], "나무 조각": [1, 40], "흰동가리": [7, 13], "황어": [20, 60], "해삼": [10, 40], "해마": [2, 20], "피라미": [5, 15], "틸라피아": [15, 45], "클리오네": [1, 3], "큰입배스": [25, 70], "전갱이": [20, 45], "잉어": [25, 100], "은어": [10, 30], "올챙이": [1, 6], "오징어": [20, 60], "연어": [50, 100], "쏠배감펭": [15, 45], "블루탱": [12, 30], "보름달물 해파리": [10, 40], "바다포도": [1, 10], "미역": [20, 150], "미꾸라지": [8, 25], "문어": [30, 150], "멸치": [5, 15], "메기": [20, 120], "말미잘": [3, 30], "리본장어": [60, 130], "따개비": [1, 5], "동사리": [5, 15], "농어": [30, 100], "네온테트라": [2, 5], "넙치": [30, 90], "납줄개": [5, 12], "나비고기": [10, 25], "가자미": [20, 60], "흰다리새우": [8, 23], "해로동혈": [10, 120], "피라니아": [15, 40], "투구게": [25, 60], "초롱아귀": [20, 100], "천사어": [10, 120], "참게": [10, 120], "짱뚱어": [10, 120], "진주조개": [6, 30], "지중해 홍합": [10, 120], "전복": [7, 25], "자라": [20, 45], "열목어": [10, 120], "연필성게": [10, 120], "엔드리케리": [10, 120], "앵무조개": [15, 30], "쏠베감펭": [10, 120], "성게": [3, 15], "빨판상어": [30, 110], "비단잉어": [30, 100], "붕장어": [40, 120], "북쪽보리새우": [10, 120], "복어": [15, 50], "보리새우": [10, 120], "베타": [4, 8], "반딧불 오징어": [4, 8], "바닷가재": [20, 70], "무명갈전갱이": [10, 120], "멍게": [5, 20], "돌돔": [30, 80], "도미": [30, 90], "던지니 스크랩": [10, 120], "닭새우": [10, 120], "닥터피쉬": [10, 120], "다금바리": [40, 120], "늑대거북": [25, 80], "난주": [10, 120], "낙지": [20, 80], "꽃게": [10, 25], "꽁치": [10, 120], "꺽저기": [10, 120], "금붕어": [5, 30], "굴": [10, 120], "구피": [10, 120], "곰치": [80, 250], "곤들매기": [10, 120], "갯가재": [10, 120], "개복치": [150, 330], "강꼬치고기": [10, 120], "가오리": [50, 250], "가시나비고기": [10, 120], "가리비": [5, 20], "가는돌고기": [10, 120], "흡혈오징어": [15, 30], "피라루쿠": [150, 450], "청새치": [200, 500], "철갑상어": [100, 600], "우무문어": [30, 100], "왕게": [80, 180], "아로와나": [50, 120], "산갈치": [300, 1000], "블랙타이거새우": [20, 40], "만새기": [80, 200], "대게": [50, 150], "다랑어": [80, 300], "나폴레옹피시": [100, 230], "그린란드 상어": [300, 700], "귀상어": [200, 600], "가아": [80, 300], "가시배새우": [10, 25], "가물치": [50, 150], "혹등고래": [1200, 1600], "톱상어": [200, 700], "키다리게": [200, 380], "자이언트 이소포드": [20, 50], "일본연어": [60, 120], "실러캔스": [120, 220], "상어": [150, 600], "벨루가": [300, 550], "배럴아이": [10, 20], "바다돼지": [5, 15], "메갈로돈": [1200, 3000], "마귀상어": [250, 600], "도라도": [50, 180], "대왕거거": [80, 140], "금송어": [30, 100], "고래상어": [600, 1800], "갈치": [100, 250], "핏빛 초승달 드래곤": [300, 500], "잿빛 밤하늘 드래곤": [300, 500], "금빛 보름달 드래곤": [300, 500], "푸른 눈의 백염룡": [300, 500], "이무기": [400, 900], "청룡": [500, 1000], "흑룡": [500, 1000], "황룡": [500, 1000], "해신룡": [600, 1200], "호수에 비친 은하수": null, "호수에 비친 별": null, "호수에 비친 달": null, "바다를 삼킨 태양": null, "휘몰아치는 마음": null, "영롱한 다이아몬드": null, "얼어붙은 마음": null, "빛나는 마음": null, "불타는 마음": null, "무한한 시간": null};
+
+const MAX_ROD = 1000;
+
+const grades = [
+  {name:"쓰레기", color:"#8b949e", basePrice:1, chance:8},
+  {name:"일반", color:"#e6edf3", basePrice:100, chance:55},
+  {name:"희귀", color:"#58a6ff", basePrice:1500, chance:25},
+  {name:"영웅", color:"#d2a8ff", basePrice:100000, chance:8},
+  {name:"전설", color:"#ffa657", basePrice:9000000, chance:2.2},
+  {name:"신화", color:"#ff4d4f", basePrice:75000000, chance:0.7},
+  {name:"초월", color:"#ffd700", basePrice:1000000000, chance:0.12},
+  {name:"영원", color:"#ffffff", basePrice:100000000000, chance:0}
+];
+
+const gradePower = {"쓰레기":0,"일반":1,"희귀":2,"영웅":3,"전설":4,"신화":5,"초월":6,"영원":7};
+
+let money=0, totalEarned=0, rodLevel=1, bucket=[], collection={}, ranking=[], isFishing=false;
+
+const log = document.getElementById("log");
+const input = document.getElementById("command");
+
+function fullWidthNumber(n,len=4){
+  const fw=["０","１","２","３","４","５","６","７","８","９"];
+  return String(n).padStart(len,"0").split("").map(x=>fw[Number(x)]).join("");
+}
+function formatMoney(n){ return Math.floor(n).toLocaleString()+"원"; }
+function formatSize(s){ return s === null ? "" : Number(s).toFixed(1); }
+
+function lineFish(f){
+  if(f.size === null) return `[${f.grade}] ${f.name}`;
+  return `[${f.grade}] ${f.name}(${formatSize(f.size)}cm)`;
+}
+
+function color(text,grade){
+  const g=grades.find(x=>x.name===grade);
+  return `<span style="color:${g?g.color:'#e6edf3'}">${text}</span>`;
+}
+function print(t){
+  log.innerHTML += t+"\n\n";
+  log.scrollTop=log.scrollHeight;
+  updateWallet();
+}
+
+function openModal(title, content){
+  document.getElementById("modalTitle").textContent = title;
+  document.getElementById("modalBody").textContent = content;
+  document.getElementById("modalOverlay").style.display = "block";
+}
+function closeModal(){
+  document.getElementById("modalOverlay").style.display = "none";
+}
+function printPreview(title, summary, buttonText, modalContent){
+  const id = "btn_" + Math.random().toString(36).slice(2);
+  log.innerHTML += title + "\n\n" + summary + "\n\n" +
+    `<button class="openBtn" id="${id}">${buttonText}</button>` + "\n\n";
+  log.scrollTop = log.scrollHeight;
+  updateWallet();
+  setTimeout(() => {
+    const btn = document.getElementById(id);
+    if(btn) btn.onclick = () => openModal(title, modalContent);
+  }, 0);
+}
+function allFishCount(){
+  return Object.values(fishByGrade).reduce((a,b)=>a+b.length,0);
+}
+function saveGame(){
+  localStorage.setItem("textFishingSpeciesSizeSave", JSON.stringify({money,totalEarned,rodLevel,bucket,collection,ranking}));
+}
+function loadGame(){
+  const raw=localStorage.getItem("textFishingSpeciesSizeSave");
+  if(!raw) return;
+  try {
+    const s=JSON.parse(raw);
+    money=s.money??0; totalEarned=s.totalEarned??0; rodLevel=s.rodLevel??1;
+    bucket=s.bucket??[]; collection=s.collection??{}; ranking=s.ranking??[];
+  } catch(e) {}
+}
+function updateWallet(){
+  document.getElementById("wallet").innerHTML =
+  `지갑 : <b>${formatMoney(money)}</b> | 총 수익 : ${formatMoney(totalEarned)} | 낚싯대 레벨 : ${rodLevel}/${MAX_ROD} | 양동이 : ${bucket.length}마리 | 도감 : ${Object.keys(collection).length}/${allFishCount()}`;
+}
+
+function getUpgradeCost(level){
+  // 강화비용 기준점
+  // Lv.100 ≈ 200,000원
+  // Lv.200 ≈ 1,000,000원
+  // Lv.300 ≈ 5,000,000원
+  // Lv.400 ≈ 20,000,000원
+  // Lv.500 ≈ 100,000,000원
+  // Lv.600 ≈ 1,000,000,000원
+  // Lv.700 ≈ 5,000,000,000원
+  // Lv.800 ≈ 20,000,000,000원
+  // Lv.900 ≈ 100,000,000,000원
+
+  const points = [
+    [1, 1000],
+    [50, 50000],
+    [100, 200000],
+    [200, 1000000],
+    [300, 5000000],
+    [400, 20000000],
+    [500, 100000000],
+    [600, 1000000000],
+    [700, 5000000000],
+    [800, 20000000000],
+    [900, 100000000000],
+    [1000, 500000000000]
+  ];
+
+  if(level <= 1) return points[0][1];
+  if(level >= 1000) return points[points.length - 1][1];
+
+  for(let i = 0; i < points.length - 1; i++){
+    const [l1, c1] = points[i];
+    const [l2, c2] = points[i + 1];
+
+    if(level >= l1 && level <= l2){
+      const t = (level - l1) / (l2 - l1);
+      return Math.floor(c1 * Math.pow(c2 / c1, t));
+    }
+  }
+
+  return 1000;
+}
+
+function pickGrade(){
+  const t = (rodLevel - 1) / (MAX_ROD - 1);
+  let chances = [
+    {name:"쓰레기", chance: 8 - 7.5 * t},
+    {name:"일반", chance: 55 - 43 * t},
+    {name:"희귀", chance: 25 - 1 * t},
+    {name:"영웅", chance: 8 + 27 * t},
+    {name:"전설", chance: 2.2 + 27.8 * t},
+    {name:"신화", chance: 0.7 + 13.3 * t},
+    {name:"초월", chance: 0.1 + 6.9 * t},
+    {name:"영원", chance: rodLevel >= 400 ? 0.5 + ((rodLevel - 400) / 600) * 2.0 : 0}
+  ];
+  chances = chances.map(x => ({...x, chance: Math.max(0, x.chance)}));
+  let total = chances.reduce((s,g)=>s+g.chance,0);
+  let r = Math.random()*total;
+  for(const c of chances){
+    if(r < c.chance) return grades.find(g=>g.name===c.name);
+    r -= c.chance;
+  }
+  return grades[1];
+}
+
+function pickName(grade){
+  const list=fishByGrade[grade];
+  return list[Math.floor(Math.random()*list.length)];
+}
+
+function makeSizeByName(name){
+  const range = sizeData[name];
+  if(range === null) return null;
+  if(Array.isArray(range)){
+    const base = Math.random() * (range[1] - range[0]) + range[0];
+    return Math.round((base + rodLevel * 0.02) * 10) / 10;
+  }
+  return Math.round((Math.random()*100 + 10) * 10) / 10;
+}
+
+function makePrice(g,size){
+  if(g.name==="쓰레기") return Math.floor(Math.random()*30)+1;
+  const s = size === null ? 7777 : size;
+  return Math.floor(g.basePrice + s*gradePower[g.name]*1000 + Math.random()*g.basePrice*0.4);
+}
+
+function addCollection(f){
+  if(!collection[f.name]) collection[f.name]={count:0,bestSize:null,bestGrade:f.grade};
+  collection[f.name].count++;
+  if(f.size !== null){
+    if(collection[f.name].bestSize === null || f.size > collection[f.name].bestSize){
+      collection[f.name].bestSize=f.size;
+      collection[f.name].bestGrade=f.grade;
+    }
+  }
+}
+
+function fish(){
+  if(isFishing) return print("이미 낚시 중입니다.");
+  isFishing=true;
+  const t=(rodLevel-1)/999;
+  const minTime=Math.floor(10000-(5000*t)); // Lv1 10초 -> Lv1000 5초
+  const maxTime=Math.floor(20000-(12000*t)); // Lv1 20초 -> Lv1000 8초
+  const wait=Math.floor(Math.random()*(maxTime-minTime))+minTime;
+  print("낚싯대를 던졌습니다.");
+  setTimeout(()=>{
+    const g=pickGrade();
+    const name=pickName(g.name);
+    const size=makeSizeByName(name);
+    const price=makePrice(g,size);
+    const caught={grade:g.name,name,size,price,locked:false,time:new Date().toLocaleString()};
+    bucket.push(caught);
+    addCollection(caught);
+    saveGame();
+    print(color(lineFish(caught), caught.grade)+"를 낚았습니다.");
+    isFishing=false;
+  }, wait);
+}
+
+function buildBucketText(){
+  if(bucket.length===0) return "양동이가 비어있습니다.";
+  let s="내 양동이\n\n────┬────────────────────\n";
+  bucket.forEach((f,i)=>{
+    s+=fullWidthNumber(i+1)+"│"+lineFish(f)+(f.locked?" [잠금]":"")+"\n";
+    if(i!==bucket.length-1) s+="────┼────────────────────\n";
+  });
+  return s;
+}
+
+function showBucket(){
+  if(bucket.length===0) return print("양동이가 비어있습니다.");
+  const lockedCount = bucket.filter(f=>f.locked).length;
+  const totalValue = bucket.reduce((s,f)=>s+f.price,0);
+  const summary =
+    "보유 물고기 : " + bucket.length + "마리\n" +
+    "잠금 : " + lockedCount + "마리\n" +
+    "총 판매가 : " + formatMoney(totalValue);
+  printPreview("양동이", summary, "양동이 전체보기", buildBucketText());
+}
+
+function sortBucket(type){
+  if(bucket.length===0) return print("양동이가 비어있습니다.");
+  if(type==="가격"){
+    bucket.sort((a,b)=>b.price-a.price);
+    print("양동이를 가격 순서로 정렬했습니다.");
+  } else if(type==="크기"){
+    bucket.sort((a,b)=>(b.size??999999999)-(a.size??999999999));
+    print("양동이를 크기 순서로 정렬했습니다.");
+  } else if(type==="등급"){
+    bucket.sort((a,b)=>gradePower[b.grade]-gradePower[a.grade] || b.price-a.price);
+    print("양동이를 등급 순서로 정렬했습니다.");
+  } else return print("정렬 명령어: !정렬 가격 / !정렬 크기 / !정렬 등급");
+  saveGame();
+  showBucket();
+}
+
+function lockOne(n,lockState){
+  const idx=n-1;
+  if(!bucket[idx]) return print("존재하지 않는 번호입니다.");
+  bucket[idx].locked=lockState;
+  saveGame();
+  let s="────┬────────────────────\n";
+  s+=fullWidthNumber(n)+"│"+lineFish(bucket[idx])+(bucket[idx].locked?" [잠금]":"")+"\n";
+  s+="────┴────────────────────\n\n";
+  s+=lockState?"잠금되었습니다.":"잠금이 해제되었습니다.";
+  print(s);
+}
+
+function sellOne(n){
+  const idx=n-1;
+  if(!bucket[idx]) return print("존재하지 않는 번호입니다.");
+  if(bucket[idx].locked) return print("잠금된 물고기는 판매할 수 없습니다.");
+  const f=bucket.splice(idx,1)[0];
+  money+=f.price;
+  totalEarned+=f.price;
+  saveGame();
+  print(lineFish(f)+"를 판매했습니다.\n\n+"+formatMoney(f.price));
+}
+
+function sellAll(){
+  if(bucket.length===0) return print("팔 물고기가 없습니다.");
+  const sell=bucket.filter(f=>!f.locked);
+  const keep=bucket.filter(f=>f.locked);
+  if(sell.length===0) return print("판매할 수 있는 물고기가 없습니다. 전부 잠금 상태입니다.");
+  const total=sell.reduce((s,f)=>s+f.price,0);
+  bucket=keep;
+  money+=total;
+  totalEarned+=total;
+  saveGame();
+  print("잠금된 물고기를 제외한\n"+sell.length+"마리를 판매했습니다.\n\n+"+formatMoney(total));
+}
+
+function buildCollectionText(){
+  let s="도감\n\n";
+  let index=1;
+  for(const grade of Object.keys(fishByGrade)){
+    s+="["+grade+"]\n";
+    for(const name of fishByGrade[grade]){
+      const c=collection[name];
+      if(c){
+        s+=fullWidthNumber(index)+"│"+name+"\n";
+      } else {
+        s+=fullWidthNumber(index)+"│???\n";
+      }
+      index++;
+    }
+    s+="\n";
+  }
+  s+="도감 진행률 : "+Object.keys(collection).length+"/"+allFishCount();
+  return s;
+}
+
+function showCollection(){
+  const got = Object.keys(collection).length;
+  const total = allFishCount();
+  const percent = total === 0 ? 0 : (got / total * 100).toFixed(1);
+  const summary =
+    "도감 진행률\n\n" +
+    got + " / " + total + "\n" +
+    percent + "%";
+  printPreview("도감", summary, "도감 전체보기", buildCollectionText());
+}
+
+function showWallet(){
+  print("지갑\n\n현재 돈 : "+formatMoney(money)+"\n총 수익 : "+formatMoney(totalEarned)+"\n낚싯대 레벨 : "+rodLevel+"/"+MAX_ROD+"\n다음 강화 비용 : "+(rodLevel>=MAX_ROD?"최대 레벨":formatMoney(getUpgradeCost(rodLevel))));
+}
+
+function upgradeOne(){
+  if(rodLevel>=MAX_ROD) return print("이미 최대 레벨입니다.\nLv."+MAX_ROD);
+  const cost=getUpgradeCost(rodLevel);
+  if(money<cost) return print("돈이 부족합니다.\n강화 비용 : "+formatMoney(cost));
+  const before=rodLevel;
+  money-=cost;
+  rodLevel++;
+  saveGame();
+  print("Lv."+before+" → Lv."+rodLevel+"\n\n사용 금액 : "+formatMoney(cost)+"\n\n강화되었습니다.");
+}
+
+function upgradeMax(){
+  if(rodLevel>=MAX_ROD) return print("이미 최대 레벨입니다.\nLv."+MAX_ROD);
+  const before=rodLevel;
+  let spent=0;
+  while(rodLevel<MAX_ROD){
+    const cost=getUpgradeCost(rodLevel);
+    if(money<cost) break;
+    money-=cost;
+    spent+=cost;
+    rodLevel++;
+  }
+  if(spent===0) return print("돈이 부족합니다.\n강화 비용 : "+formatMoney(getUpgradeCost(rodLevel)));
+  saveGame();
+  print("Lv."+before+" → Lv."+rodLevel+"\n\n사용 금액 : "+formatMoney(spent)+"\n남은 돈 : "+formatMoney(money)+"\n\n강화되었습니다.");
+}
+
+function showCommands(){
+  print(`명령어 목록
+
+[낚시]
+!낚시
+
+[정보]
+!양동이
+!도감
+!지갑
+
+[강화]
+!강화
+!강화 최대
+
+[정렬]
+!정렬 가격
+!정렬 크기
+!정렬 등급
+
+[잠금]
+!잠금 1
+!잠금해제 1
+
+[판매]
+!물고기 판매 1
+!물고기 일괄판매`);
+}
+
+function runCommand(){
+  const cmd=input.value.trim();
+  input.value="";
+  if(!cmd) return;
+  print("> "+cmd);
+  if(!cmd.startsWith("!")) return print("명령어 앞에 !를 붙여주세요.");
+
+  if(cmd==="!명령어") showCommands();
+  else if(cmd==="!낚시") fish();
+  else if(cmd==="!양동이") showBucket();
+  else if(cmd==="!도감") showCollection();
+  else if(cmd==="!지갑") showWallet();
+  else if(cmd==="!강화") upgradeOne();
+  else if(cmd==="!강화 최대") upgradeMax();
+  else if(cmd.startsWith("!정렬 ")) sortBucket(cmd.split(" ")[1]);
+  else if(cmd==="!물고기 일괄판매") sellAll();
+  else if(cmd.startsWith("!물고기 판매 ")) sellOne(Number(cmd.split(" ")[2]));
+  else if(cmd.startsWith("!잠금해제 ")) lockOne(Number(cmd.split(" ")[1]), false);
+  else if(cmd.startsWith("!잠금 ")) lockOne(Number(cmd.split(" ")[1]), true);
+  else print("없는 명령어입니다. !명령어 를 입력해보세요.");
+}
+
+input.addEventListener("keydown", e=>{ if(e.key==="Enter") runCommand(); });
+
+loadGame();
+updateWallet();
+print("게임이 시작되었습니다.\n\n명령어를 확인하려면\n!명령어 를 입력하세요.");
+</script>
+</body>
+</html>
