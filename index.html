@@ -1163,7 +1163,6 @@ async function showOtherBucket(nickname){
 
     const displayName = formatUserName(nickname, data.title);
     const summary =
-      displayName + " 님의 양동이\n\n" +
       "보유 물고기 : " + otherBucket.length + "마리\n" +
       "총 판매가 : " + formatMoney(totalValue);
 
@@ -1292,7 +1291,11 @@ function showCollection(){
 
 async function showWallet(){
   if(currentUser) await refreshMyCloudData();
-  print("지갑\n\n현재 돈 : "+formatMoney(money));
+
+  const title = "내 지갑";
+  const content = title + "\n\n현재 돈 : " + formatMoney(money);
+
+  printPreview(title, "", "지갑 전체보기", content);
 }
 
 async function showOtherWallet(nickname){
@@ -1304,7 +1307,10 @@ async function showOtherWallet(nickname){
     if(!snap.exists) return print("존재하지 않는 닉네임입니다.");
 
     const data = snap.data();
-    print(formatUserName(nickname, data.title) + " 님의 지갑\n\n현재 돈 : " + formatMoney(data.money || 0));
+    const title = formatUserName(nickname, data.title) + " 님의 지갑";
+    const content = title + "\n\n현재 돈 : " + formatMoney(data.money || 0);
+
+    printPreview(title, "", "지갑 전체보기", content);
   }catch(e){
     console.error(e);
     print("지갑을 불러오는 중 오류가 발생했습니다.");
