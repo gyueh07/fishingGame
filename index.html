@@ -554,9 +554,9 @@ function fish(){
 let bucketSortOrder = localStorage.getItem("textFishingBucketSortOrder") || "내림차순";
 
 function sortedBucketList(){
-  return [...bucket].sort((a,b)=>{
-    const gradeCompare = gradePower[b.grade] - gradePower[a.grade];
-    const nameCompare = a.name.localeCompare(b.name, "ko");
+  return bucket.map((fish, originalIndex) => ({fish, originalIndex})).sort((a,b)=>{
+    const gradeCompare = gradePower[b.fish.grade] - gradePower[a.fish.grade];
+    const nameCompare = a.fish.name.localeCompare(b.fish.name, "ko");
 
     if(bucketSortOrder === "오름차순"){
       return -gradeCompare || nameCompare;
@@ -566,11 +566,18 @@ function sortedBucketList(){
   });
 }
 
+function getBucketIndexByDisplayNumber(n){
+  const list = sortedBucketList();
+  const item = list[n-1];
+  return item ? item.originalIndex : -1;
+}
+
 function buildBucketText(){
   if(bucket.length===0) return "양동이가 비어있습니다.";
   let s="내 양동이\n\n────┬────────────────────\n";
   const list = sortedBucketList();
-  list.forEach((f,i)=>{
+  list.forEach((item,i)=>{
+    const f = item.fish;
     s+=fullWidthNumber(i+1)+"│"+lineFish(f)+(f.locked?" [잠금]":"")+"\n";
     if(i!==list.length-1) s+="────┼────────────────────\n";
   });
@@ -602,8 +609,8 @@ function sortBucket(type){
 }
 
 function lockOne(n,lockState){
-  const idx=n-1;
-  if(!bucket[idx]) return print("존재하지 않는 번호입니다.");
+  const idx=getBucketIndexByDisplayNumber(n);
+  if(idx < 0 || !bucket[idx]) return print("존재하지 않는 번호입니다.");
   bucket[idx].locked=lockState;
   saveGame();
   let s="────┬────────────────────\n";
@@ -614,8 +621,8 @@ function lockOne(n,lockState){
 }
 
 function sellOne(n){
-  const idx=n-1;
-  if(!bucket[idx]) return print("존재하지 않는 번호입니다.");
+  const idx=getBucketIndexByDisplayNumber(n);
+  if(idx < 0 || !bucket[idx]) return print("존재하지 않는 번호입니다.");
   if(bucket[idx].locked) return print("잠금된 물고기는 판매할 수 없습니다.");
   const f=bucket.splice(idx,1)[0];
   const finalPrice = applyMarketPrice(f);
