@@ -442,6 +442,7 @@ function buildBucketText(){
     s+=fullWidthNumber(i+1)+"│"+lineFish(f)+(f.locked?" [잠금]":"")+"\n";
     if(i!==list.length-1) s+="────┼────────────────────\n";
   });
+  s+="────┴────────────────────";
   return s;
 }
 
@@ -520,6 +521,7 @@ function buildCollectionText(){
     }
     s+="\n";
   }
+  s+="────────────────────\n";
   s+="도감 진행률 : "+Object.keys(collection).length+"/"+allFishCount();
   return s;
 }
