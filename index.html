@@ -578,7 +578,7 @@ function buildBucketText(){
   const list = sortedBucketList();
   list.forEach((item,i)=>{
     const f = item.fish;
-    s+=fullWidthNumber(i+1)+"│"+lineFish(f)+(f.locked?" [잠금]":"")+"\n";
+    s+=fullWidthNumber(i+1)+"│"+color(lineFish(f), f.grade)+(f.locked?" [잠금]":"")+"\n";
     if(i!==list.length-1) s+="────┼────────────────────\n";
   });
   s+="────┴────────────────────";
