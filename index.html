@@ -97,7 +97,7 @@ button:hover { background:#30363d; }
 <span>지갑</span><span>업적</span><span>강화</span><span>일괄강화</span>
 <span>정렬 오름차순</span><span>정렬 내림차순</span>
 <span>잠금 1</span><span>잠금해제 1</span>
-<span>물고기 판매 1</span><span>물고기 일괄판매</span>
+<span>판매 1</span><span>일괄판매</span>
 </div>
 
 <div class="box" id="wallet"></div>
@@ -428,14 +428,14 @@ function tryUpgradeSuccess(level){
 function pickGrade(){
   const t = (rodLevel - 1) / (MAX_ROD - 1);
   let chances = [
-    {name:"쓰레기", chance: 8 - 7.5 * t},
+    {name:"쓰레기", chance: 18 - 17.5 * t},
     {name:"일반", chance: 55 - 43 * t},
     {name:"희귀", chance: 25 - 1 * t},
     {name:"영웅", chance: 8 + 27 * t},
     {name:"전설", chance: 2.2 + 27.8 * t},
     {name:"신화", chance: 0.7 + 13.3 * t},
     {name:"초월", chance: 0.1 + 6.9 * t},
-    {name:"영원", chance: rodLevel >= 400 ? 0.5 + ((rodLevel - 400) / (MAX_ROD - 400)) * 2.0 : 0}
+    {name:"영원", chance: rodLevel >= 400 ? 0.1 + ((rodLevel - 400) / (MAX_ROD - 400)) * 1.4 : 0}
   ];
   chances = chances.map(x => ({...x, chance: Math.max(0, x.chance)}));
   let total = chances.reduce((s,g)=>s+g.chance,0);
@@ -470,14 +470,14 @@ function getEscapeChance(){
 function getCurrentGradeChances(){
   const t = (rodLevel - 1) / (MAX_ROD - 1);
   let chances = [
-    {name:"쓰레기", chance: 8 - 7.5 * t},
+    {name:"쓰레기", chance: 18 - 17.5 * t},
     {name:"일반", chance: 55 - 43 * t},
     {name:"희귀", chance: 25 - 1 * t},
     {name:"영웅", chance: 8 + 27 * t},
     {name:"전설", chance: 2.2 + 27.8 * t},
     {name:"신화", chance: 0.7 + 13.3 * t},
     {name:"초월", chance: 0.1 + 6.9 * t},
-    {name:"영원", chance: rodLevel >= 400 ? 0.5 + ((rodLevel - 400) / (MAX_ROD - 400)) * 2.0 : 0}
+    {name:"영원", chance: rodLevel >= 400 ? 0.1 + ((rodLevel - 400) / (MAX_ROD - 400)) * 1.4 : 0}
   ];
 
   chances = chances.map(x => ({...x, chance: Math.max(0, x.chance)}));
@@ -794,8 +794,8 @@ function showCommands(){
 잠금해제 1
 
 [판매]
-물고기 판매 1
-물고기 일괄판매`);
+판매 1
+일괄판매`);
 }
 
 function showGameInfo(){
@@ -850,7 +850,8 @@ function runCommand(){
   else if(cmd==="강화") upgradeOne();
   else if(cmd==="일괄강화" || cmd==="강화 최대") upgradeMax();
   else if(cmd.startsWith("정렬 ")) sortBucket(cmd.split(" ")[1]);
-  else if(cmd==="물고기 일괄판매") sellAll();
+  else if(cmd==="일괄판매" || cmd==="물고기 일괄판매") sellAll();
+  else if(cmd.startsWith("판매 ")) sellOne(Number(cmd.split(" ")[1]));
   else if(cmd.startsWith("물고기 판매 ")) sellOne(Number(cmd.split(" ")[2]));
   else if(cmd.startsWith("잠금해제 ")) lockOne(Number(cmd.split(" ")[1]), false);
   else if(cmd.startsWith("잠금 ")) lockOne(Number(cmd.split(" ")[1]), true);
