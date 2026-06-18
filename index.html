@@ -162,6 +162,10 @@ function objParticle(word){
   return hasBatchim(word) ? "을" : "를";
 }
 
+function subjectParticle(word){
+  return hasBatchim(word) ? "이" : "가";
+}
+
 function lineFish(f){
   if(f.size === null) return `[${f.grade}] ${f.name}`;
   return `[${f.grade}] ${f.name}(${formatSize(f.size)}cm)`;
@@ -369,6 +373,11 @@ function makeSizeByName(name){
   return Math.round((Math.random()*100 + 10) * 10) / 10;
 }
 
+function getEscapeChance(){
+  const t = (rodLevel - 1) / 999;
+  return 35 - (34 * t); // Lv.1 = 35%, Lv.1000 = 1%
+}
+
 function makePrice(g,size){
   if(g.name==="쓰레기") return Math.floor(Math.random()*30)+1;
   const s = size === null ? 7777 : size;
@@ -400,6 +409,19 @@ function fish(){
     const size=makeSizeByName(name);
     const price=makePrice(g,size);
     const caught={grade:g.name,name,size,price,locked:false,time:new Date().toLocaleString()};
+
+    const escapeGrades = ["일반","희귀","영웅","전설","신화"];
+    if(escapeGrades.includes(g.name)){
+      const escapeChance = getEscapeChance();
+      if(Math.random() * 100 < escapeChance){
+        totalFishingCount++;
+        saveGame();
+        print(color("[" + g.name + "] " + name, g.name) + subjectParticle(name) + " 도주했습니다.");
+        isFishing=false;
+        return;
+      }
+    }
+
     bucket.push(caught);
     addCollection(caught);
 
@@ -618,7 +640,13 @@ function showGameInfo(){
 
 칭호
 칭호 명령어로 확인
-칭호 장착 번호로 장착`);
+칭호 장착 번호로 장착
+
+도주
+일반~신화 등급만 도주 가능
+Lv.1 도주 확률 35%
+Lv.1000 도주 확률 1%
+쓰레기/초월/영원은 도주하지 않음`);
 }
 
 function runCommand(){
