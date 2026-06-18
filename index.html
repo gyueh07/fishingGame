@@ -212,6 +212,26 @@ function applyGameState(s){
   equippedTitle=s.equippedTitle??equippedTitle;
 }
 
+function resetGameData(){
+  money = 0;
+  totalEarned = 0;
+  rodLevel = 1;
+  bucket = [];
+  collection = {};
+  ranking = [];
+  isFishing = false;
+  totalFishingCount = 0;
+  gradeCounts = {};
+  completedAchievements = [];
+  marketHour = null;
+  marketRates = {};
+  notifications = [];
+  equippedTitle = "";
+  bucketSortOrder = "내림차순";
+  localStorage.setItem("textFishingBucketSortOrder", bucketSortOrder);
+  localStorage.setItem("textFishingSpeciesSizeSave", JSON.stringify(getGameState()));
+}
+
 function syncCloudSoon(){
   if(!currentUser) return;
   clearTimeout(cloudSaveTimer);
@@ -251,15 +271,17 @@ async function registerUser(){
 
     const passwordHash = await hashPassword(password);
 
+    resetGameData();
+
     currentUser = nickname;
     localStorage.setItem("textFishingCurrentUser", currentUser);
 
     await ref.set({
       nickname,
       passwordHash,
-      money: Math.floor(money),
-      rodLevel,
-      title: getCurrentTitle(),
+      money: 0,
+      rodLevel: 1,
+      title: "",
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
       gameState: getGameState()
@@ -267,7 +289,7 @@ async function registerUser(){
 
     updateWallet();
     startServerAlertListener();
-    print(nickname + " 님 회원가입 완료.\n이제 게임을 시작할 수 있습니다.");
+    print(nickname + " 님 회원가입 완료.\n새 계정은 0원부터 시작합니다.");
   }catch(e){
     console.error(e);
     print("회원가입 중 오류가 발생했습니다.");
@@ -318,8 +340,9 @@ function logoutUser(){
   stopServerAlertListener();
   currentUser = null;
   localStorage.removeItem("textFishingCurrentUser");
+  resetGameData();
   updateWallet();
-  print(old + " 님 로그아웃 완료.");
+  print(old + " 님 로그아웃 완료.\n\n다른 계정을 사용하려면 로그인 또는 회원가입을 해주세요.");
 }
 
 async function deleteAccount(){
@@ -355,9 +378,10 @@ async function deleteAccount(){
     stopServerAlertListener();
     currentUser = null;
     localStorage.removeItem("textFishingCurrentUser");
+    resetGameData();
     updateWallet();
 
-    print(nickname + " 계정이 탈퇴되었습니다.\n랭킹에서도 삭제됩니다.\n\n현재 기기의 게임 데이터는 유지됩니다.");
+    print(nickname + " 계정이 탈퇴되었습니다.\n랭킹에서도 삭제됩니다.\n\n현재 기기의 게임 데이터도 초기화되었습니다.");
   }catch(e){
     console.error(e);
     print("탈퇴 중 오류가 발생했습니다.");
@@ -401,27 +425,23 @@ function rankNumber(n){
 
 function buildRankSection(title, list, type){
   let s = "[" + title + "]\n";
-  s += "────┬────────────────────\n";
+  s += "────────────────────\n";
 
   if(list.length === 0){
     s += "등록된 유저가 없습니다.\n";
-    s += "────┴────────────────────\n";
+    s += "────────────────────\n";
     return s;
   }
 
   list.forEach((u,i)=>{
     if(type === "money"){
-      s += rankNumber(i+1) + "│" + formatUserName(u.nickname, u.title) + "\n";
-      s += "    " + formatMoney(u.money || 0) + "\n";
+      s += rankNumber(i+1) + " | " + formatUserName(u.nickname, u.title) + " : " + formatMoney(u.money || 0) + "\n";
     } else {
-      s += rankNumber(i+1) + "│" + formatUserName(u.nickname, u.title) + "\n";
-      s += "    Lv." + (u.rodLevel || 1) + "\n";
+      s += rankNumber(i+1) + " | " + formatUserName(u.nickname, u.title) + " : Lv." + (u.rodLevel || 1) + "\n";
     }
-
-    if(i !== list.length - 1) s += "────┼────────────────────\n";
   });
 
-  s += "────┴────────────────────\n";
+  s += "────────────────────\n";
   return s;
 }
 
@@ -435,12 +455,16 @@ async function showRanking(){
     const moneyList = moneySnap.docs.map(d => d.data());
     const levelList = levelSnap.docs.map(d => d.data());
 
-    let s = "랭킹\n\n";
-    s += buildRankSection("지갑 랭킹", moneyList, "money");
-    s += "\n";
-    s += buildRankSection("레벨 랭킹", levelList, "level");
+    let full = "랭킹\n\n";
+    full += buildRankSection("지갑 랭킹", moneyList, "money");
+    full += "\n";
+    full += buildRankSection("레벨 랭킹", levelList, "level");
 
-    print(s.trim());
+    const summary =
+      "등록된 유저 : " + Math.max(moneyList.length, levelList.length) + "명\n\n" +
+      "지갑 랭킹과 레벨 랭킹을 확인할 수 있습니다.";
+
+    printPreview("랭킹", summary, "랭킹 전체보기", full.trim());
   }catch(e){
     console.error(e);
     print("랭킹을 불러오는 중 오류가 발생했습니다.\nFirestore 규칙 또는 네트워크 상태를 확인해주세요.");
@@ -1395,6 +1419,7 @@ async function sendMoney(targetNickname, amount){
 
   money -= amount;
   saveGame();
+  await saveCloudData();
 
   const targetData = targetSnap.data();
   const targetState = targetData.gameState || {};
@@ -1501,8 +1526,11 @@ function runCommand(){
 input.addEventListener("keydown", e=>{ if(e.key==="Enter") runCommand(); });
 
 loadGame();
+if(!currentUser){
+  resetGameData();
+}
 refreshMarketIfNeeded();
-const startupAchievements = updateAchievements();
+const startupAchievements = currentUser ? updateAchievements() : [];
 saveGame();
 updateWallet();
 print("로그인이 필요합니다.\n\n처음이라면 회원가입 을 입력하세요.\n이미 계정이 있다면 로그인 을 입력하세요.");
