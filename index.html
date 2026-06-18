@@ -94,8 +94,8 @@ button:hover { background:#30363d; }
 <div class="box cmd">
 <b>주요 명령어</b><br>
 <span>명령어</span><span>낚시</span><span>양동이</span><span>도감</span><span>정보</span><span>시세</span><span>랭킹</span>
-<span>지갑</span><span>업적</span><span>회원가입</span><span>로그인</span><span>로그아웃</span><span>강화</span><span>일괄강화</span>
-<span>정렬 오름차순</span><span>정렬 내림차순</span>
+<span>지갑</span><span>업적</span><span>회원가입</span><span>로그인</span><span>로그아웃</span><span>탈퇴</span><span>강화</span><span>일괄강화</span>
+<span>정렬 오름차순</span><span>정렬 내림차순</span><span>송금 닉네임 금액</span><span>전송 닉네임 번호</span>
 <span>잠금 1</span><span>잠금해제 1</span>
 <span>판매 1</span><span>일괄판매</span>
 </div>
@@ -306,6 +306,47 @@ function logoutUser(){
   localStorage.removeItem("textFishingCurrentUser");
   updateWallet();
   print(old + " 님 로그아웃 완료.");
+}
+
+async function deleteAccount(){
+  if(!currentUser) return print("로그인 상태가 아닙니다.");
+
+  const nickname = currentUser;
+  const password = prompt("탈퇴하려면 비밀번호를 입력하세요.");
+  if(!password) return print("탈퇴가 취소되었습니다.");
+
+  const confirmText = prompt("정말 탈퇴하려면 닉네임을 다시 입력하세요.\n닉네임 : " + nickname);
+  if(confirmText !== nickname) return print("닉네임이 일치하지 않아 탈퇴가 취소되었습니다.");
+
+  try{
+    const ref = db.collection("users").doc(nickname);
+    const snap = await ref.get();
+
+    if(!snap.exists){
+      currentUser = null;
+      localStorage.removeItem("textFishingCurrentUser");
+      updateWallet();
+      return print("이미 삭제된 계정입니다.");
+    }
+
+    const data = snap.data();
+    const passwordHash = await hashPassword(password);
+
+    if(data.passwordHash !== passwordHash){
+      return print("비밀번호가 틀렸습니다.");
+    }
+
+    await ref.delete();
+
+    currentUser = null;
+    localStorage.removeItem("textFishingCurrentUser");
+    updateWallet();
+
+    print(nickname + " 계정이 탈퇴되었습니다.\n랭킹에서도 삭제됩니다.\n\n현재 기기의 게임 데이터는 유지됩니다.");
+  }catch(e){
+    console.error(e);
+    print("탈퇴 중 오류가 발생했습니다.");
+  }
 }
 
 function rankNumber(n){
@@ -1032,6 +1073,11 @@ function showCommands(){
 회원가입
 로그인
 로그아웃
+탈퇴
+
+[온라인]
+송금 닉네임 금액
+전송 닉네임 번호
 
 [강화]
 강화
@@ -1081,6 +1127,60 @@ ${chanceLines}
 +보너스만 적용`);
 }
 
+
+async function sendMoney(targetNickname, amount){
+  if(!currentUser) return print("로그인 후 사용 가능합니다.");
+  amount = Number(amount);
+  if(!targetNickname || !amount || amount <= 0) return print("사용법 : 송금 닉네임 금액");
+  if(targetNickname === currentUser) return print("자기 자신에게는 송금할 수 없습니다.");
+  if(money < amount) return print("돈이 부족합니다.");
+
+  const targetRef = db.collection("users").doc(targetNickname);
+  const targetSnap = await targetRef.get();
+  if(!targetSnap.exists) return print("존재하지 않는 닉네임입니다.");
+
+  money -= amount;
+  saveGame();
+
+  const targetData = targetSnap.data();
+  await targetRef.set({
+    money: (targetData.money || 0) + amount
+  }, {merge:true});
+
+  print(targetNickname + " 님에게 " + amount.toLocaleString() + "원을 송금하였습니다.");
+}
+
+async function sendFish(targetNickname, displayNumber){
+  if(!currentUser) return print("로그인 후 사용 가능합니다.");
+  if(!targetNickname) return print("사용법 : 전송 닉네임 번호");
+
+  const idx = getBucketIndexByDisplayNumber(Number(displayNumber));
+  if(idx < 0 || !bucket[idx]) return print("존재하지 않는 번호입니다.");
+
+  const targetRef = db.collection("users").doc(targetNickname);
+  const targetSnap = await targetRef.get();
+  if(!targetSnap.exists) return print("존재하지 않는 닉네임입니다.");
+
+  const fish = bucket[idx];
+  if(fish.locked) return print("잠금된 물고기는 전송할 수 없습니다.");
+
+  bucket.splice(idx,1);
+  fish.locked = false;
+
+  const targetData = targetSnap.data();
+  const targetState = targetData.gameState || {};
+  const targetBucket = targetState.bucket || [];
+  targetBucket.push(fish);
+
+  await targetRef.set({
+    gameState: {...targetState, bucket: targetBucket}
+  }, {merge:true});
+
+  saveGame();
+
+  print(targetNickname + " 님에게 " + lineFish(fish) + "을 전송하였습니다.");
+}
+
 function runCommand(){
   let cmd=input.value.trim();
   input.value="";
@@ -1103,6 +1203,9 @@ function runCommand(){
   else if(cmd==="회원가입") registerUser();
   else if(cmd==="로그인") loginUser();
   else if(cmd==="로그아웃") logoutUser();
+  else if(cmd==="탈퇴") deleteAccount();
+  else if(cmd.startsWith("송금 ")){ const p=cmd.split(" "); sendMoney(p[1], p[2]); }
+  else if(cmd.startsWith("전송 ")){ const p=cmd.split(" "); sendFish(p[1], p[2]); }
   else if(cmd==="강화") upgradeOne();
   else if(cmd==="일괄강화" || cmd==="강화 최대") upgradeMax();
   else if(cmd.startsWith("정렬 ")) sortBucket(cmd.split(" ")[1]);
