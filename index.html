@@ -357,7 +357,12 @@ function loadGame(){
     const s=JSON.parse(raw);
     money=s.money??0; totalEarned=s.totalEarned??0; rodLevel=s.rodLevel??1;
     bucket=s.bucket??[]; collection=s.collection??{}; ranking=s.ranking??[];
-    totalFishingCount=s.totalFishingCount??0; gradeCounts=s.gradeCounts??{}; completedAchievements=s.completedAchievements??s.removedUnlockedTitles??[];
+    totalFishingCount=s.totalFishingCount??0;
+    gradeCounts=s.gradeCounts??{};
+    completedAchievements=s.completedAchievements??s.removedUnlockedTitles??[];
+
+    marketHour=s.marketHour??null;
+    marketRates=s.marketRates??{};
   } catch(e) {}
 }
 function updateWallet(){
