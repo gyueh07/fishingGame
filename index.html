@@ -148,6 +148,7 @@ let equippedTitle="";
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
+const GAME_VERSION = "2026-06-19-v1";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBLH8EJYZ4x9dez23PkFrMAMo3JD5vaO8I",
@@ -486,9 +487,10 @@ function buildRankSection(title, list, type){
     } else {
       s += rankNumber(i+1) + " | " + formatUserName(u.nickname, u.title) + " : Lv." + (u.rodLevel || 1) + "\n";
     }
+
+    s += "────────────────────\n";
   });
 
-  s += "────────────────────\n";
   return s;
 }
 
@@ -1686,31 +1688,49 @@ function runCommand(){
 input.addEventListener("keydown", e=>{ if(e.key==="Enter") runCommand(); });
 
 loadGame();
+
 if(!currentUser){
   resetGameData();
-}
-refreshMarketIfNeeded();
-const startupAchievements = currentUser ? updateAchievements() : [];
-saveGame();
-updateWallet();
-print("로그인이 필요합니다.\n\n처음이라면 회원가입 을 입력하세요.\n이미 계정이 있다면 로그인 을 입력하세요.");
-checkGameVersion();
+  refreshMarketIfNeeded();
+  saveGame();
+  updateWallet();
+  print("로그인이 필요합니다.\n\n처음이라면 회원가입 을 입력하세요.\n이미 계정이 있다면 로그인 을 입력하세요.");
+  checkGameVersion();
+} else {
+  updateWallet();
+  print(currentUser + " 님으로 접속 중입니다.\n클라우드 데이터를 불러오는 중입니다.");
+  checkGameVersion();
 
-(async function(){
-  if(!currentUser) return;
-  try{
-    const snap = await db.collection("users").doc(currentUser).get();
-    if(!snap.exists) return;
-    const data = snap.data();
-    applyGameState(data.gameState);
-    saveGame();
-    updateWallet();
-    startServerAlertListener();
-    await showNewNotifications();
-  }catch(e){
-    console.error(e);
-  }
-})();
+  (async function(){
+    try{
+      const snap = await db.collection("users").doc(currentUser).get();
+
+      if(!snap.exists){
+        currentUser = null;
+        localStorage.removeItem("textFishingCurrentUser");
+        resetGameData();
+        updateWallet();
+        print("저장된 계정을 찾을 수 없습니다.\n다시 로그인해주세요.");
+        return;
+      }
+
+      const data = snap.data();
+      applyGameState(data.gameState);
+      refreshMarketIfNeeded();
+      const startupAchievements = updateAchievements();
+      saveGame();
+      updateWallet();
+      startServerAlertListener();
+
+      print(currentUser + " 님 데이터 불러오기 완료.");
+      printAchievementRewards(startupAchievements);
+      await showNewNotifications();
+    }catch(e){
+      console.error(e);
+      print("클라우드 데이터를 불러오는 중 오류가 발생했습니다.\n다시 로그인해주세요.");
+    }
+  })();
+}
 </script>
 </body>
 </html>
