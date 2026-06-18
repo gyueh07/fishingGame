@@ -93,8 +93,8 @@ button:hover { background:#30363d; }
 
 <div class="box cmd">
 <b>주요 명령어</b><br>
-<span>명령어</span><span>낚시</span><span>양동이</span><span>도감</span><span>정보</span><span>시세</span>
-<span>지갑</span><span>업적</span><span>강화</span><span>일괄강화</span>
+<span>명령어</span><span>낚시</span><span>양동이</span><span>도감</span><span>정보</span><span>시세</span><span>랭킹</span>
+<span>지갑</span><span>업적</span><span>회원가입</span><span>로그인</span><span>로그아웃</span><span>강화</span><span>일괄강화</span>
 <span>정렬 오름차순</span><span>정렬 내림차순</span>
 <span>잠금 1</span><span>잠금해제 1</span>
 <span>판매 1</span><span>일괄판매</span>
@@ -117,6 +117,9 @@ button:hover { background:#30363d; }
 <input id="command" placeholder="낚시">
 <button onclick="runCommand()">실행</button>
 </div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
 
 <script>
 const fishByGrade = {"쓰레기": ["휴지 조각", "플라스틱 통", "안경닦이", "생선 뼈", "빈 병", "빈 깡통", "비닐봉투", "바나나 껍질", "낡은 신발", "나무 조각"], "일반": ["흰동가리", "황어", "해삼", "해마", "피라미", "틸라피아", "클리오네", "큰입배스", "전갱이", "잉어", "은어", "올챙이", "오징어", "연어", "쏠배감펭", "블루탱", "보름달물 해파리", "바다포도", "미역", "미꾸라지", "문어", "멸치", "메기", "말미잘", "리본장어", "따개비", "동사리", "농어", "네온테트라", "넙치", "납줄개", "나비고기", "가자미"], "희귀": ["흰다리새우", "해로동혈", "피라니아", "투구게", "초롱아귀", "천사어", "참게", "짱뚱어", "진주조개", "지중해 홍합", "전복", "자라", "열목어", "연필성게", "엔드리케리", "앵무조개", "쏠베감펭", "성게", "빨판상어", "비단잉어", "붕장어", "북쪽보리새우", "복어", "보리새우", "베타", "반딧불 오징어", "바닷가재", "무명갈전갱이", "멍게", "돌돔", "도미", "던지니 스크랩", "닭새우", "닥터피쉬", "다금바리", "늑대거북", "난주", "낙지", "꽃게", "꽁치", "꺽저기", "금붕어", "굴", "구피", "곰치", "곤들매기", "갯가재", "개복치", "강꼬치고기", "가오리", "가시나비고기", "가리비", "가는돌고기"], "영웅": ["흡혈오징어", "피라루쿠", "청새치", "철갑상어", "우무문어", "왕게", "아로와나", "산갈치", "블랙타이거새우", "만새기", "대게", "다랑어", "나폴레옹피시", "그린란드 상어", "귀상어", "가아", "가시배새우", "가물치"], "전설": ["혹등고래", "톱상어", "키다리게", "자이언트 이소포드", "일본연어", "실러캔스", "상어", "벨루가", "배럴아이", "바다돼지", "메갈로돈", "마귀상어", "도라도", "대왕거거", "금송어", "고래상어", "갈치"], "신화": ["핏빛 초승달 드래곤", "잿빛 밤하늘 드래곤", "금빛 보름달 드래곤", "푸른 눈의 백염룡", "이무기", "청룡", "흑룡", "황룡", "해신룡"], "초월": ["호수에 비친 은하수", "호수에 비친 별", "호수에 비친 달", "바다를 삼킨 태양"], "영원": ["휘몰아치는 마음", "영롱한 다이아몬드", "얼어붙은 마음", "빛나는 마음", "불타는 마음", "무한한 시간"]};
@@ -143,6 +146,220 @@ let marketHour=null, marketRates={};
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBLH8EJYZ4x9dez23PkFrMAMo3JD5vaO8I",
+  authDomain: "fishinggame-1c8ac.firebaseapp.com",
+  projectId: "fishinggame-1c8ac",
+  storageBucket: "fishinggame-1c8ac.firebasestorage.app",
+  messagingSenderId: "1075825889471",
+  appId: "1:1075825889471:web:dba6773633846463e4760a",
+  measurementId: "G-HKMKFFCT67"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+let currentUser = localStorage.getItem("textFishingCurrentUser") || null;
+let cloudSaveTimer = null;
+
+function cleanNickname(name){
+  return String(name || "").trim().replace(/\s+/g, "_").slice(0, 16);
+}
+
+async function hashPassword(password){
+  const msg = new TextEncoder().encode(password);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", msg);
+  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+function getGameState(){
+  return {
+    money,
+    totalEarned,
+    rodLevel,
+    bucket,
+    collection,
+    ranking,
+    totalFishingCount,
+    gradeCounts,
+    completedAchievements,
+    marketHour,
+    marketRates
+  };
+}
+
+function applyGameState(s){
+  if(!s) return;
+  money=s.money??money;
+  totalEarned=s.totalEarned??totalEarned;
+  rodLevel=s.rodLevel??rodLevel;
+  bucket=s.bucket??bucket;
+  collection=s.collection??collection;
+  ranking=s.ranking??ranking;
+  totalFishingCount=s.totalFishingCount??totalFishingCount;
+  gradeCounts=s.gradeCounts??gradeCounts;
+  completedAchievements=s.completedAchievements??completedAchievements;
+  marketHour=s.marketHour??marketHour;
+  marketRates=s.marketRates??marketRates;
+}
+
+function syncCloudSoon(){
+  if(!currentUser) return;
+  clearTimeout(cloudSaveTimer);
+  cloudSaveTimer = setTimeout(saveCloudData, 700);
+}
+
+async function saveCloudData(){
+  if(!currentUser) return;
+  try{
+    await db.collection("users").doc(currentUser).set({
+      nickname: currentUser,
+      money: Math.floor(money),
+      rodLevel,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      gameState: getGameState()
+    }, {merge:true});
+  }catch(e){
+    console.error(e);
+  }
+}
+
+async function registerUser(){
+  const nickname = cleanNickname(prompt("닉네임을 입력하세요."));
+  if(!nickname) return print("회원가입이 취소되었습니다.");
+
+  const password = prompt("비밀번호를 입력하세요.");
+  if(!password) return print("비밀번호를 입력해야 합니다.");
+
+  try{
+    const ref = db.collection("users").doc(nickname);
+    const snap = await ref.get();
+
+    if(snap.exists){
+      return print("이미 사용 중인 닉네임입니다.");
+    }
+
+    const passwordHash = await hashPassword(password);
+
+    currentUser = nickname;
+    localStorage.setItem("textFishingCurrentUser", currentUser);
+
+    await ref.set({
+      nickname,
+      passwordHash,
+      money: Math.floor(money),
+      rodLevel,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      gameState: getGameState()
+    });
+
+    updateWallet();
+    print(nickname + " 님 회원가입 완료.\n현재 게임 데이터가 계정에 저장되었습니다.");
+  }catch(e){
+    console.error(e);
+    print("회원가입 중 오류가 발생했습니다.");
+  }
+}
+
+async function loginUser(){
+  const nickname = cleanNickname(prompt("닉네임을 입력하세요."));
+  if(!nickname) return print("로그인이 취소되었습니다.");
+
+  const password = prompt("비밀번호를 입력하세요.");
+  if(!password) return print("비밀번호를 입력해야 합니다.");
+
+  try{
+    const ref = db.collection("users").doc(nickname);
+    const snap = await ref.get();
+
+    if(!snap.exists){
+      return print("존재하지 않는 닉네임입니다.");
+    }
+
+    const data = snap.data();
+    const passwordHash = await hashPassword(password);
+
+    if(data.passwordHash !== passwordHash){
+      return print("비밀번호가 틀렸습니다.");
+    }
+
+    currentUser = nickname;
+    localStorage.setItem("textFishingCurrentUser", currentUser);
+
+    applyGameState(data.gameState);
+    saveGame();
+    updateWallet();
+
+    print(nickname + " 님 로그인 완료.\n클라우드 데이터를 불러왔습니다.");
+  }catch(e){
+    console.error(e);
+    print("로그인 중 오류가 발생했습니다.");
+  }
+}
+
+function logoutUser(){
+  if(!currentUser) return print("로그인 상태가 아닙니다.");
+  const old = currentUser;
+  currentUser = null;
+  localStorage.removeItem("textFishingCurrentUser");
+  updateWallet();
+  print(old + " 님 로그아웃 완료.");
+}
+
+function rankNumber(n){
+  return String(n).padStart(2, "0");
+}
+
+function buildRankSection(title, list, type){
+  let s = "[" + title + "]\n";
+  s += "────┬────────────────────\n";
+
+  if(list.length === 0){
+    s += "등록된 유저가 없습니다.\n";
+    s += "────┴────────────────────\n";
+    return s;
+  }
+
+  list.forEach((u,i)=>{
+    if(type === "money"){
+      s += rankNumber(i+1) + "│" + u.nickname + "\n";
+      s += "    " + formatMoney(u.money || 0) + "\n";
+    } else {
+      s += rankNumber(i+1) + "│" + u.nickname + "\n";
+      s += "    Lv." + (u.rodLevel || 1) + "\n";
+    }
+
+    if(i !== list.length - 1) s += "────┼────────────────────\n";
+  });
+
+  s += "────┴────────────────────\n";
+  return s;
+}
+
+async function showRanking(){
+  try{
+    if(currentUser) await saveCloudData();
+
+    const moneySnap = await db.collection("users").orderBy("money","desc").get();
+    const levelSnap = await db.collection("users").orderBy("rodLevel","desc").get();
+
+    const moneyList = moneySnap.docs.map(d => d.data());
+    const levelList = levelSnap.docs.map(d => d.data());
+
+    let s = "랭킹\n\n";
+    s += buildRankSection("지갑 랭킹", moneyList, "money");
+    s += "\n";
+    s += buildRankSection("레벨 랭킹", levelList, "level");
+
+    print(s.trim());
+  }catch(e){
+    console.error(e);
+    print("랭킹을 불러오는 중 오류가 발생했습니다.\nFirestore 규칙 또는 네트워크 상태를 확인해주세요.");
+  }
+}
+
 
 function fullWidthNumber(n,len=4){
   const fw=["０","１","２","３","４","５","６","７","８","９"];
@@ -369,6 +586,7 @@ function printAchievementRewards(list){
 
 function saveGame(){
   localStorage.setItem("textFishingSpeciesSizeSave", JSON.stringify({money,totalEarned,rodLevel,bucket,collection,ranking,totalFishingCount,gradeCounts,completedAchievements,marketHour,marketRates}));
+  syncCloudSoon();
 }
 function loadGame(){
   const raw=localStorage.getItem("textFishingSpeciesSizeSave");
@@ -387,7 +605,8 @@ function loadGame(){
 }
 function updateWallet(){
   document.getElementById("wallet").innerHTML =
-  `현재 돈 : <b>${formatMoney(money)}</b>`;
+  `현재 돈 : <b>${formatMoney(money)}</b>` +
+  `<br>계정 : <b>${currentUser ? currentUser : "로그인 안 됨"}</b>`;
 }
 
 function getUpgradeCost(level){
@@ -807,6 +1026,12 @@ function showCommands(){
 지갑
 업적
 시세
+랭킹
+
+[계정]
+회원가입
+로그인
+로그아웃
 
 [강화]
 강화
@@ -872,8 +1097,12 @@ function runCommand(){
   else if(cmd==="도감") showCollection();
   else if(cmd==="정보") showGameInfo();
   else if(cmd==="시세") showMarket();
+  else if(cmd==="랭킹") showRanking();
   else if(cmd==="지갑") showWallet();
   else if(cmd==="업적") showAchievements();
+  else if(cmd==="회원가입") registerUser();
+  else if(cmd==="로그인") loginUser();
+  else if(cmd==="로그아웃") logoutUser();
   else if(cmd==="강화") upgradeOne();
   else if(cmd==="일괄강화" || cmd==="강화 최대") upgradeMax();
   else if(cmd.startsWith("정렬 ")) sortBucket(cmd.split(" ")[1]);
@@ -892,7 +1121,7 @@ refreshMarketIfNeeded();
 const startupAchievements = updateAchievements();
 saveGame();
 updateWallet();
-print("게임이 시작되었습니다.\n\n명령어를 확인하려면\n명령어 를 입력하세요.");
+print("게임이 시작되었습니다.\n\n명령어를 확인하려면\n명령어 를 입력하세요.\n\n랭킹을 사용하려면 회원가입 또는 로그인을 해주세요.");
 </script>
 </body>
 </html>
