@@ -93,11 +93,11 @@ button:hover { background:#30363d; }
 
 <div class="box cmd">
 <b>주요 명령어</b><br>
-<span>!명령어</span><span>!낚시</span><span>!양동이</span><span>!도감</span>
-<span>!지갑</span><span>!강화</span><span>!강화 최대</span>
-<span>!정렬 가격</span><span>!정렬 크기</span><span>!정렬 등급</span>
-<span>!잠금 1</span><span>!잠금해제 1</span>
-<span>!물고기 판매 1</span><span>!물고기 일괄판매</span>
+<span>명령어</span><span>낚시</span><span>양동이</span><span>도감</span><span>정보</span>
+<span>지갑</span><span>칭호</span><span>칭호 장착 1</span><span>강화</span><span>강화 최대</span>
+<span>정렬 오름차순</span><span>정렬 내림차순</span>
+<span>잠금 1</span><span>잠금해제 1</span>
+<span>물고기 판매 1</span><span>물고기 일괄판매</span>
 </div>
 
 <div class="box" id="wallet"></div>
@@ -114,7 +114,7 @@ button:hover { background:#30363d; }
   </div>
 </div>
 
-<input id="command" placeholder="명령어 입력">
+<input id="command" placeholder="낚시">
 <button onclick="runCommand()">실행</button>
 </div>
 
@@ -132,12 +132,13 @@ const grades = [
   {name:"전설", color:"#ffa657", basePrice:9000000, chance:2.2},
   {name:"신화", color:"#ff4d4f", basePrice:75000000, chance:0.7},
   {name:"초월", color:"#ffd700", basePrice:1000000000, chance:0.12},
-  {name:"영원", color:"#ffffff", basePrice:100000000000, chance:0}
+  {name:"영원", color:"#F5F5DC", basePrice:100000000000, chance:0}
 ];
 
 const gradePower = {"쓰레기":0,"일반":1,"희귀":2,"영웅":3,"전설":4,"신화":5,"초월":6,"영원":7};
 
 let money=0, totalEarned=0, rodLevel=1, bucket=[], collection={}, ranking=[], isFishing=false;
+let totalFishingCount=0, gradeCounts={}, unlockedTitles=[], currentTitle="없음";
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
@@ -148,6 +149,18 @@ function fullWidthNumber(n,len=4){
 }
 function formatMoney(n){ return Math.floor(n).toLocaleString()+"원"; }
 function formatSize(s){ return s === null ? "" : Number(s).toFixed(1); }
+
+function hasBatchim(word){
+  if(!word) return false;
+  const ch = word[word.length - 1];
+  const code = ch.charCodeAt(0);
+  if(code < 0xAC00 || code > 0xD7A3) return false;
+  return (code - 0xAC00) % 28 !== 0;
+}
+
+function objParticle(word){
+  return hasBatchim(word) ? "을" : "를";
+}
 
 function lineFish(f){
   if(f.size === null) return `[${f.grade}] ${f.name}`;
@@ -186,8 +199,80 @@ function printPreview(title, summary, buttonText, modalContent){
 function allFishCount(){
   return Object.values(fishByGrade).reduce((a,b)=>a+b.length,0);
 }
+
+const titleList = [
+  {name:"쓰레기 콜렉터", desc:"쓰레기 500개 낚기", check:()=> (gradeCounts["쓰레기"]||0) >= 500},
+
+  {name:"수집가", desc:"도감 25% 달성", check:()=> Object.keys(collection).length / allFishCount() >= 0.25},
+  {name:"탐험가", desc:"도감 50% 달성", check:()=> Object.keys(collection).length / allFishCount() >= 0.50},
+  {name:"개척자", desc:"도감 75% 달성", check:()=> Object.keys(collection).length / allFishCount() >= 0.75},
+  {name:"정복자", desc:"도감 100% 달성", check:()=> Object.keys(collection).length >= allFishCount()},
+
+  {name:"전설", desc:"전설 등급 50마리 수집", check:()=> (gradeCounts["전설"]||0) >= 50},
+  {name:"신화", desc:"신화 등급 50마리 수집", check:()=> (gradeCounts["신화"]||0) >= 50},
+  {name:"초월자", desc:"초월 등급 50마리 수집", check:()=> (gradeCounts["초월"]||0) >= 50},
+  {name:"불멸", desc:"영원 등급 50마리 수집", check:()=> (gradeCounts["영원"]||0) >= 50},
+
+  {name:"초보", desc:"10회 낚시", check:()=> totalFishingCount >= 10},
+  {name:"베테랑", desc:"100회 낚시", check:()=> totalFishingCount >= 100},
+  {name:"중독자", desc:"1,000회 낚시", check:()=> totalFishingCount >= 1000},
+  {name:"거장", desc:"10,000회 낚시", check:()=> totalFishingCount >= 10000}
+];
+
+function updateTitles(){
+  const newly = [];
+  for(const t of titleList){
+    if(t.check() && !unlockedTitles.includes(t.name)){
+      unlockedTitles.push(t.name);
+      newly.push(t.name);
+    }
+  }
+
+  if(currentTitle === "없음" && unlockedTitles.length > 0){
+    currentTitle = unlockedTitles[0];
+  }
+
+  return newly;
+}
+
+function buildTitleText(){
+  let s = "칭호\n\n";
+  s += "현재 칭호 : " + currentTitle + "\n";
+  s += "획득 칭호 : " + unlockedTitles.length + " / " + titleList.length + "\n\n";
+
+  titleList.forEach((t,i)=>{
+    const has = unlockedTitles.includes(t.name);
+    s += fullWidthNumber(i+1) + "│" + (has ? "[획득] " : "[미획득] ") + t.name + "\n";
+    s += "    조건 : " + t.desc + "\n\n";
+  });
+
+  s += "장착 방법 : 칭호 장착 번호";
+  return s;
+}
+
+function showTitles(){
+  const newTitles = updateTitles();
+  if(newTitles.length > 0) saveGame();
+
+  const summary =
+    "현재 칭호 : " + currentTitle + "\n" +
+    "획득 칭호 : " + unlockedTitles.length + " / " + titleList.length + "\n\n" +
+    "칭호 장착 : 칭호 장착 번호";
+
+  printPreview("칭호", summary, "칭호 전체보기", buildTitleText());
+}
+
+function equipTitle(n){
+  const title = titleList[n-1];
+  if(!title) return print("존재하지 않는 칭호 번호입니다.");
+  if(!unlockedTitles.includes(title.name)) return print("아직 획득하지 못한 칭호입니다.");
+
+  currentTitle = title.name;
+  saveGame();
+  print("현재 칭호가 [" + currentTitle + "] 으로 변경되었습니다.");
+}
 function saveGame(){
-  localStorage.setItem("textFishingSpeciesSizeSave", JSON.stringify({money,totalEarned,rodLevel,bucket,collection,ranking}));
+  localStorage.setItem("textFishingSpeciesSizeSave", JSON.stringify({money,totalEarned,rodLevel,bucket,collection,ranking,totalFishingCount,gradeCounts,unlockedTitles,currentTitle}));
 }
 function loadGame(){
   const raw=localStorage.getItem("textFishingSpeciesSizeSave");
@@ -196,11 +281,12 @@ function loadGame(){
     const s=JSON.parse(raw);
     money=s.money??0; totalEarned=s.totalEarned??0; rodLevel=s.rodLevel??1;
     bucket=s.bucket??[]; collection=s.collection??{}; ranking=s.ranking??[];
+    totalFishingCount=s.totalFishingCount??0; gradeCounts=s.gradeCounts??{}; unlockedTitles=s.unlockedTitles??[]; currentTitle=s.currentTitle??"없음";
   } catch(e) {}
 }
 function updateWallet(){
   document.getElementById("wallet").innerHTML =
-  `지갑 : <b>${formatMoney(money)}</b> | 총 수익 : ${formatMoney(totalEarned)} | 낚싯대 레벨 : ${rodLevel}/${MAX_ROD} | 양동이 : ${bucket.length}마리 | 도감 : ${Object.keys(collection).length}/${allFishCount()}`;
+  `칭호 : <b>${currentTitle}</b> | 지갑 : <b>${formatMoney(money)}</b> | 총 수익 : ${formatMoney(totalEarned)} | 낚싯대 레벨 : ${rodLevel}/${MAX_ROD} | 양동이 : ${bucket.length}마리 | 도감 : ${Object.keys(collection).length}/${allFishCount()}`;
 }
 
 function getUpgradeCost(level){
@@ -316,18 +402,45 @@ function fish(){
     const caught={grade:g.name,name,size,price,locked:false,time:new Date().toLocaleString()};
     bucket.push(caught);
     addCollection(caught);
+
+    totalFishingCount++;
+    gradeCounts[g.name] = (gradeCounts[g.name] || 0) + 1;
+
+    const newTitles = updateTitles();
+
     saveGame();
-    print(color(lineFish(caught), caught.grade)+"를 낚았습니다.");
+    print(color(lineFish(caught), caught.grade)+objParticle(caught.name)+" 낚았습니다.");
+
+    if(newTitles.length > 0){
+      print("새 칭호를 획득했습니다.\n\n[" + newTitles.join("]\n[") + "]");
+    }
     isFishing=false;
   }, wait);
+}
+
+
+let bucketSortOrder = localStorage.getItem("textFishingBucketSortOrder") || "내림차순";
+
+function sortedBucketList(){
+  return [...bucket].sort((a,b)=>{
+    const gradeCompare = gradePower[b.grade] - gradePower[a.grade];
+    const nameCompare = a.name.localeCompare(b.name, "ko");
+
+    if(bucketSortOrder === "오름차순"){
+      return -gradeCompare || nameCompare;
+    }
+
+    return gradeCompare || nameCompare;
+  });
 }
 
 function buildBucketText(){
   if(bucket.length===0) return "양동이가 비어있습니다.";
   let s="내 양동이\n\n────┬────────────────────\n";
-  bucket.forEach((f,i)=>{
+  const list = sortedBucketList();
+  list.forEach((f,i)=>{
     s+=fullWidthNumber(i+1)+"│"+lineFish(f)+(f.locked?" [잠금]":"")+"\n";
-    if(i!==bucket.length-1) s+="────┼────────────────────\n";
+    if(i!==list.length-1) s+="────┼────────────────────\n";
   });
   return s;
 }
@@ -344,18 +457,14 @@ function showBucket(){
 }
 
 function sortBucket(type){
-  if(bucket.length===0) return print("양동이가 비어있습니다.");
-  if(type==="가격"){
-    bucket.sort((a,b)=>b.price-a.price);
-    print("양동이를 가격 순서로 정렬했습니다.");
-  } else if(type==="크기"){
-    bucket.sort((a,b)=>(b.size??999999999)-(a.size??999999999));
-    print("양동이를 크기 순서로 정렬했습니다.");
-  } else if(type==="등급"){
-    bucket.sort((a,b)=>gradePower[b.grade]-gradePower[a.grade] || b.price-a.price);
-    print("양동이를 등급 순서로 정렬했습니다.");
-  } else return print("정렬 명령어: !정렬 가격 / !정렬 크기 / !정렬 등급");
-  saveGame();
+  if(type !== "오름차순" && type !== "내림차순"){
+    return print("정렬 명령어: 정렬 오름차순 / 정렬 내림차순");
+  }
+
+  bucketSortOrder = type;
+  localStorage.setItem("textFishingBucketSortOrder", bucketSortOrder);
+
+  print("양동이 정렬을 " + type + "으로 설정했습니다.\n기준 : 등급 1순위, 가나다 2순위");
   showBucket();
 }
 
@@ -379,7 +488,7 @@ function sellOne(n){
   money+=f.price;
   totalEarned+=f.price;
   saveGame();
-  print(lineFish(f)+"를 판매했습니다.\n\n+"+formatMoney(f.price));
+  print(lineFish(f)+objParticle(f.name)+" 판매했습니다.\n\n+"+formatMoney(f.price));
 }
 
 function sellAll(){
@@ -400,7 +509,7 @@ function buildCollectionText(){
   let index=1;
   for(const grade of Object.keys(fishByGrade)){
     s+="["+grade+"]\n";
-    for(const name of fishByGrade[grade]){
+    for(const name of [...fishByGrade[grade]].sort((a,b)=>a.localeCompare(b,"ko"))){
       const c=collection[name];
       if(c){
         s+=fullWidthNumber(index)+"│"+name+"\n";
@@ -427,7 +536,7 @@ function showCollection(){
 }
 
 function showWallet(){
-  print("지갑\n\n현재 돈 : "+formatMoney(money)+"\n총 수익 : "+formatMoney(totalEarned)+"\n낚싯대 레벨 : "+rodLevel+"/"+MAX_ROD+"\n다음 강화 비용 : "+(rodLevel>=MAX_ROD?"최대 레벨":formatMoney(getUpgradeCost(rodLevel))));
+  print("지갑\n\n현재 칭호 : "+currentTitle+"\n현재 돈 : "+formatMoney(money)+"\n총 수익 : "+formatMoney(totalEarned)+"\n낚싯대 레벨 : "+rodLevel+"/"+MAX_ROD+"\n낚시 횟수 : "+totalFishingCount.toLocaleString()+"회\n다음 강화 비용 : "+(rodLevel>=MAX_ROD?"최대 레벨":formatMoney(getUpgradeCost(rodLevel))));
 }
 
 function upgradeOne(){
@@ -461,58 +570,89 @@ function showCommands(){
   print(`명령어 목록
 
 [낚시]
-!낚시
+낚시
 
 [정보]
-!양동이
-!도감
-!지갑
+양동이
+도감
+정보
+지갑
+칭호
+칭호 장착 1
 
 [강화]
-!강화
-!강화 최대
+강화
+강화 최대
 
 [정렬]
-!정렬 가격
-!정렬 크기
-!정렬 등급
+정렬 오름차순
+정렬 내림차순
 
 [잠금]
-!잠금 1
-!잠금해제 1
+잠금 1
+잠금해제 1
 
 [판매]
-!물고기 판매 1
-!물고기 일괄판매`);
+물고기 판매 1
+물고기 일괄판매`);
+}
+
+function showGameInfo(){
+  print(`게임 정보
+
+최대 낚싯대 레벨 : 1000
+영원 등급 해금 : Lv.400부터
+낚시 시간 : Lv.1 약 10~20초 / Lv.1000 약 5~8초
+
+기본 정렬
+1순위 : 등급
+2순위 : 가나다순
+
+등급 순서
+영원 > 초월 > 신화 > 전설 > 영웅 > 희귀 > 일반 > 쓰레기
+
+저장 방식
+브라우저 자동 저장
+
+칭호
+칭호 명령어로 확인
+칭호 장착 번호로 장착`);
 }
 
 function runCommand(){
-  const cmd=input.value.trim();
+  let cmd=input.value.trim();
   input.value="";
   if(!cmd) return;
-  print("> "+cmd);
-  if(!cmd.startsWith("!")) return print("명령어 앞에 !를 붙여주세요.");
 
-  if(cmd==="!명령어") showCommands();
-  else if(cmd==="!낚시") fish();
-  else if(cmd==="!양동이") showBucket();
-  else if(cmd==="!도감") showCollection();
-  else if(cmd==="!지갑") showWallet();
-  else if(cmd==="!강화") upgradeOne();
-  else if(cmd==="!강화 최대") upgradeMax();
-  else if(cmd.startsWith("!정렬 ")) sortBucket(cmd.split(" ")[1]);
-  else if(cmd==="!물고기 일괄판매") sellAll();
-  else if(cmd.startsWith("!물고기 판매 ")) sellOne(Number(cmd.split(" ")[2]));
-  else if(cmd.startsWith("!잠금해제 ")) lockOne(Number(cmd.split(" ")[1]), false);
-  else if(cmd.startsWith("!잠금 ")) lockOne(Number(cmd.split(" ")[1]), true);
-  else print("없는 명령어입니다. !명령어 를 입력해보세요.");
+  // 예전처럼 !를 붙여도 작동하게 호환
+  if(cmd.startsWith("!")) cmd = cmd.slice(1).trim();
+
+  print("> "+cmd);
+
+  if(cmd==="명령어") showCommands();
+  else if(cmd==="낚시") fish();
+  else if(cmd==="양동이") showBucket();
+  else if(cmd==="도감") showCollection();
+  else if(cmd==="정보") showGameInfo();
+  else if(cmd==="지갑") showWallet();
+  else if(cmd==="칭호") showTitles();
+  else if(cmd.startsWith("칭호 장착 ")) equipTitle(Number(cmd.split(" ")[2]));
+  else if(cmd==="강화") upgradeOne();
+  else if(cmd==="강화 최대") upgradeMax();
+  else if(cmd.startsWith("정렬 ")) sortBucket(cmd.split(" ")[1]);
+  else if(cmd==="물고기 일괄판매") sellAll();
+  else if(cmd.startsWith("물고기 판매 ")) sellOne(Number(cmd.split(" ")[2]));
+  else if(cmd.startsWith("잠금해제 ")) lockOne(Number(cmd.split(" ")[1]), false);
+  else if(cmd.startsWith("잠금 ")) lockOne(Number(cmd.split(" ")[1]), true);
+  else print("없는 명령어입니다. 명령어 를 입력해보세요.");
 }
 
 input.addEventListener("keydown", e=>{ if(e.key==="Enter") runCommand(); });
 
 loadGame();
+updateTitles();
 updateWallet();
-print("게임이 시작되었습니다.\n\n명령어를 확인하려면\n!명령어 를 입력하세요.");
+print("게임이 시작되었습니다.\n\n명령어를 확인하려면\n명령어 를 입력하세요.");
 </script>
 </body>
 </html>
