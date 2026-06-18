@@ -614,7 +614,7 @@ function lockOne(n,lockState){
   bucket[idx].locked=lockState;
   saveGame();
   let s="────┬────────────────────\n";
-  s+=fullWidthNumber(n)+"│"+lineFish(bucket[idx])+(bucket[idx].locked?" [잠금]":"")+"\n";
+  s+=fullWidthNumber(n)+"│"+color(lineFish(bucket[idx]), bucket[idx].grade)+(bucket[idx].locked?" [잠금]":"")+"\n";
   s+="────┴────────────────────\n\n";
   s+=lockState?"잠금되었습니다.":"잠금이 해제되었습니다.";
   print(s);
@@ -632,7 +632,7 @@ function sellOne(n){
   totalEarned+=finalPrice;
   saveGame();
 
-  let msg = lineFish(f)+objParticle(f.name)+" 판매했습니다.\n\n";
+  let msg = color(lineFish(f), f.grade)+objParticle(f.name)+" 판매했습니다.\n\n";
   if(bonus > 0){
     msg += "기본가 : "+formatMoney(f.price)+"\n";
     msg += "시세 : +"+bonus+"%\n";
@@ -671,13 +671,13 @@ function buildCollectionText(){
   let s="도감\n\n";
   let index=1;
   for(const grade of Object.keys(fishByGrade)){
-    s+="["+grade+"]\n";
+    s+=color("["+grade+"]", grade)+"\n";
     for(const name of [...fishByGrade[grade]].sort((a,b)=>a.localeCompare(b,"ko"))){
       const c=collection[name];
       if(c){
-        s+=fullWidthNumber(index)+"│"+name+"\n";
+        s+=fullWidthNumber(index)+"│"+color(name, grade)+"\n";
       } else {
-        s+=fullWidthNumber(index)+"│???\n";
+        s+=fullWidthNumber(index)+"│"+color("???", grade)+"\n";
       }
       index++;
     }
