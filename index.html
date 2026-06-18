@@ -277,22 +277,22 @@ function showMarket(){
 }
 
 const achievementList = [
-  {name:"환경 지킴이", desc:"쓰레기 500개 수집", reward:500000000000, check:()=> (gradeCounts["쓰레기"]||0) >= 500},
+  {name:"환경 지킴이", desc:"쓰레기 500개 수집", reward:100000000000, check:()=> (gradeCounts["쓰레기"]||0) >= 500},
 
-  {name:"수집가", desc:"도감 25% 달성", reward:1000000000, check:()=> Object.keys(collection).length / allFishCount() >= 0.25},
-  {name:"탐험가", desc:"도감 50% 달성", reward:10000000000, check:()=> Object.keys(collection).length / allFishCount() >= 0.50},
-  {name:"개척자", desc:"도감 75% 달성", reward:500000000000, check:()=> Object.keys(collection).length / allFishCount() >= 0.75},
-  {name:"정복자", desc:"도감 100% 달성", reward:10000000000000, check:()=> Object.keys(collection).length >= allFishCount()},
+  {name:"수집가", desc:"도감 25% 달성", reward:200000000, check:()=> Object.keys(collection).length / allFishCount() >= 0.25},
+  {name:"탐험가", desc:"도감 50% 달성", reward:2000000000, check:()=> Object.keys(collection).length / allFishCount() >= 0.50},
+  {name:"개척자", desc:"도감 75% 달성", reward:100000000000, check:()=> Object.keys(collection).length / allFishCount() >= 0.75},
+  {name:"정복자", desc:"도감 100% 달성", reward:2000000000000, check:()=> Object.keys(collection).length >= allFishCount()},
 
-  {name:"전설", desc:"전설 등급 50마리 수집", reward:1000000000, check:()=> (gradeCounts["전설"]||0) >= 50},
-  {name:"신화", desc:"신화 등급 50마리 수집", reward:10000000000, check:()=> (gradeCounts["신화"]||0) >= 50},
-  {name:"초월자", desc:"초월 등급 50마리 수집", reward:500000000000, check:()=> (gradeCounts["초월"]||0) >= 50},
-  {name:"불멸", desc:"영원 등급 50마리 수집", reward:10000000000000, check:()=> (gradeCounts["영원"]||0) >= 50},
+  {name:"전설", desc:"전설 등급 50마리 수집", reward:200000000, check:()=> (gradeCounts["전설"]||0) >= 50},
+  {name:"신화", desc:"신화 등급 50마리 수집", reward:2000000000, check:()=> (gradeCounts["신화"]||0) >= 50},
+  {name:"초월자", desc:"초월 등급 50마리 수집", reward:100000000000, check:()=> (gradeCounts["초월"]||0) >= 50},
+  {name:"불멸", desc:"영원 등급 50마리 수집", reward:2000000000000, check:()=> (gradeCounts["영원"]||0) >= 50},
 
-  {name:"초보", desc:"10회 낚시", reward:1000000, check:()=> totalFishingCount >= 10},
-  {name:"베테랑", desc:"100회 낚시", reward:100000000, check:()=> totalFishingCount >= 100},
-  {name:"중독자", desc:"1,000회 낚시", reward:1000000000, check:()=> totalFishingCount >= 1000},
-  {name:"거장", desc:"10,000회 낚시", reward:100000000000, check:()=> totalFishingCount >= 10000}
+  {name:"초보", desc:"10회 낚시", reward:200000, check:()=> totalFishingCount >= 10},
+  {name:"베테랑", desc:"100회 낚시", reward:20000000, check:()=> totalFishingCount >= 100},
+  {name:"중독자", desc:"1,000회 낚시", reward:200000000, check:()=> totalFishingCount >= 1000},
+  {name:"거장", desc:"10,000회 낚시", reward:20000000000, check:()=> totalFishingCount >= 10000}
 ];
 
 function updateAchievements(){
