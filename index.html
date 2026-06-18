@@ -166,6 +166,7 @@ let currentUser = localStorage.getItem("textFishingCurrentUser") || null;
 let cloudSaveTimer = null;
 let serverAlertUnsubscribe = null;
 let serverAlertStartTime = Date.now();
+let isOnlineActionRunning = false;
 
 function cleanNickname(name){
   return String(name || "").trim().replace(/\s+/g, "_").slice(0, 16);
@@ -251,6 +252,25 @@ async function saveCloudData(){
     }, {merge:true});
   }catch(e){
     console.error(e);
+  }
+}
+
+async function refreshMyCloudData(){
+  if(!currentUser) return false;
+
+  try{
+    const snap = await db.collection("users").doc(currentUser).get();
+    if(!snap.exists) return false;
+
+    const data = snap.data();
+    applyGameState(data.gameState);
+    localStorage.setItem("textFishingSpeciesSizeSave", JSON.stringify(getGameState()));
+    updateWallet();
+
+    return true;
+  }catch(e){
+    console.error(e);
+    return false;
   }
 }
 
@@ -455,16 +475,28 @@ async function showRanking(){
     const moneyList = moneySnap.docs.map(d => d.data());
     const levelList = levelSnap.docs.map(d => d.data());
 
-    let full = "랭킹\n\n";
-    full += buildRankSection("지갑 랭킹", moneyList, "money");
-    full += "\n";
-    full += buildRankSection("레벨 랭킹", levelList, "level");
+    const moneyFull = buildRankSection("지갑 랭킹", moneyList, "money").trim();
+    const levelFull = buildRankSection("레벨 랭킹", levelList, "level").trim();
+
+    const id1 = "btn_" + Math.random().toString(36).slice(2);
+    const id2 = "btn_" + Math.random().toString(36).slice(2);
 
     const summary =
+      "랭킹\n\n" +
       "등록된 유저 : " + Math.max(moneyList.length, levelList.length) + "명\n\n" +
-      "지갑 랭킹과 레벨 랭킹을 확인할 수 있습니다.";
+      `<button class="openBtn" id="${id1}">지갑 랭킹 전체보기</button>\n` +
+      `<button class="openBtn" id="${id2}">레벨 랭킹 전체보기</button>`;
 
-    printPreview("랭킹", summary, "랭킹 전체보기", full.trim());
+    log.innerHTML += summary + "\n\n";
+    log.scrollTop = log.scrollHeight;
+    updateWallet();
+
+    setTimeout(() => {
+      const b1 = document.getElementById(id1);
+      const b2 = document.getElementById(id2);
+      if(b1) b1.onclick = () => openModal("지갑 랭킹", moneyFull);
+      if(b2) b2.onclick = () => openModal("레벨 랭킹", levelFull);
+    }, 0);
   }catch(e){
     console.error(e);
     print("랭킹을 불러오는 중 오류가 발생했습니다.\nFirestore 규칙 또는 네트워크 상태를 확인해주세요.");
@@ -1113,7 +1145,9 @@ async function showOtherBucket(nickname){
   }
 }
 
-function showBucket(){
+async function showBucket(){
+  if(currentUser) await refreshMyCloudData();
+
   if(bucket.length===0) return print("양동이가 비어있습니다.");
   const lockedCount = bucket.filter(f=>f.locked).length;
   const totalValue = bucket.reduce((s,f)=>s+applyMarketPrice(f),0);
@@ -1227,7 +1261,8 @@ function showCollection(){
   printPreview("도감", summary, "도감 전체보기", buildCollectionText());
 }
 
-function showWallet(){
+async function showWallet(){
+  if(currentUser) await refreshMyCloudData();
   print("지갑\n\n현재 돈 : "+formatMoney(money));
 }
 
@@ -1407,67 +1442,165 @@ ${chanceLines}
 
 
 async function sendMoney(targetNickname, amount){
+  if(isOnlineActionRunning) return print("처리 중입니다. 잠시만 기다려주세요.");
   if(!currentUser) return print("로그인 후 사용 가능합니다.");
+
+  targetNickname = cleanNickname(targetNickname);
   amount = Number(amount);
+
   if(!targetNickname || !amount || amount <= 0) return print("사용법 : 송금 닉네임 금액");
   if(targetNickname === currentUser) return print("자기 자신에게는 송금할 수 없습니다.");
-  if(money < amount) return print("돈이 부족합니다.");
 
-  const targetRef = db.collection("users").doc(targetNickname);
-  const targetSnap = await targetRef.get();
-  if(!targetSnap.exists) return print("존재하지 않는 닉네임입니다.");
+  isOnlineActionRunning = true;
 
-  money -= amount;
-  saveGame();
-  await saveCloudData();
+  try{
+    await refreshMyCloudData();
 
-  const targetData = targetSnap.data();
-  const targetState = targetData.gameState || {};
-  const targetNotifications = targetState.notifications || [];
-  targetNotifications.push(currentUser + " 님이 " + amount.toLocaleString() + "원을 송금하였습니다.");
+    if(money < amount){
+      isOnlineActionRunning = false;
+      return print("돈이 부족합니다.");
+    }
 
-  await targetRef.set({
-    money: (targetData.money || 0) + amount,
-    gameState: {...targetState, notifications: targetNotifications}
-  }, {merge:true});
+    const myRef = db.collection("users").doc(currentUser);
+    const targetRef = db.collection("users").doc(targetNickname);
 
-  print(targetNickname + " 님에게 " + amount.toLocaleString() + "원을 송금하였습니다.");
+    await db.runTransaction(async (tx)=>{
+      const mySnap = await tx.get(myRef);
+      const targetSnap = await tx.get(targetRef);
+
+      if(!mySnap.exists) throw new Error("MY_ACCOUNT_NOT_FOUND");
+      if(!targetSnap.exists) throw new Error("TARGET_NOT_FOUND");
+
+      const myData = mySnap.data();
+      const targetData = targetSnap.data();
+
+      const myState = myData.gameState || {};
+      const targetState = targetData.gameState || {};
+      const currentMoney = myData.money || 0;
+
+      if(currentMoney < amount) throw new Error("NOT_ENOUGH_MONEY");
+
+      const targetNotifications = targetState.notifications || [];
+      targetNotifications.push(currentUser + " 님이 " + amount.toLocaleString() + "원을 송금하였습니다.");
+
+      myState.money = currentMoney - amount;
+
+      tx.set(myRef, {
+        money: currentMoney - amount,
+        gameState: myState,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, {merge:true});
+
+      tx.set(targetRef, {
+        money: (targetData.money || 0) + amount,
+        gameState: {...targetState, money:(targetState.money || targetData.money || 0) + amount, notifications: targetNotifications},
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, {merge:true});
+    });
+
+    await refreshMyCloudData();
+    print(targetNickname + " 님에게 " + amount.toLocaleString() + "원을 송금하였습니다.");
+  }catch(e){
+    console.error(e);
+    if(e.message === "TARGET_NOT_FOUND") print("존재하지 않는 닉네임입니다.");
+    else if(e.message === "NOT_ENOUGH_MONEY") print("돈이 부족합니다.");
+    else if(e.message === "MY_ACCOUNT_NOT_FOUND") print("현재 계정을 찾을 수 없습니다. 다시 로그인해주세요.");
+    else print("송금 중 오류가 발생했습니다.");
+  }finally{
+    isOnlineActionRunning = false;
+  }
 }
 
 async function sendFish(targetNickname, displayNumber){
+  if(isOnlineActionRunning) return print("처리 중입니다. 잠시만 기다려주세요.");
   if(!currentUser) return print("로그인 후 사용 가능합니다.");
+
+  targetNickname = cleanNickname(targetNickname);
+
   if(!targetNickname) return print("사용법 : 전송 닉네임 번호");
+  if(targetNickname === currentUser) return print("자기 자신에게는 전송할 수 없습니다.");
 
-  const idx = getBucketIndexByDisplayNumber(Number(displayNumber));
-  if(idx < 0 || !bucket[idx]) return print("존재하지 않는 번호입니다.");
+  isOnlineActionRunning = true;
 
-  const targetRef = db.collection("users").doc(targetNickname);
-  const targetSnap = await targetRef.get();
-  if(!targetSnap.exists) return print("존재하지 않는 닉네임입니다.");
+  try{
+    await refreshMyCloudData();
 
-  const fish = bucket[idx];
-  if(fish.locked) return print("잠금된 물고기는 전송할 수 없습니다.");
+    const idx = getBucketIndexByDisplayNumber(Number(displayNumber));
+    if(idx < 0 || !bucket[idx]){
+      isOnlineActionRunning = false;
+      return print("존재하지 않는 번호입니다.");
+    }
 
-  bucket.splice(idx,1);
-  fish.locked = false;
+    if(bucket[idx].locked){
+      isOnlineActionRunning = false;
+      return print("잠금된 물고기는 전송할 수 없습니다.");
+    }
 
-  const targetData = targetSnap.data();
-  const targetState = targetData.gameState || {};
-  const targetBucket = targetState.bucket || [];
-  const targetNotifications = targetState.notifications || [];
+    const fish = {...bucket[idx], locked:false};
 
-  targetBucket.push(fish);
-  targetNotifications.push(currentUser + " 님이 " + lineFish(fish) + objParticle(fish.name) + " 전송하였습니다.");
+    const myRef = db.collection("users").doc(currentUser);
+    const targetRef = db.collection("users").doc(targetNickname);
 
-  await targetRef.set({
-    gameState: {...targetState, bucket: targetBucket, notifications: targetNotifications}
-  }, {merge:true});
+    await db.runTransaction(async (tx)=>{
+      const mySnap = await tx.get(myRef);
+      const targetSnap = await tx.get(targetRef);
 
-  saveGame();
+      if(!mySnap.exists) throw new Error("MY_ACCOUNT_NOT_FOUND");
+      if(!targetSnap.exists) throw new Error("TARGET_NOT_FOUND");
 
-  print(targetNickname + " 님에게 " + lineFish(fish) + objParticle(fish.name) + " 전송하였습니다.");
+      const myData = mySnap.data();
+      const targetData = targetSnap.data();
+
+      const myState = myData.gameState || {};
+      const targetState = targetData.gameState || {};
+      const myBucket = myState.bucket || [];
+      const targetBucket = targetState.bucket || [];
+      const targetNotifications = targetState.notifications || [];
+
+      const currentList = myBucket.map((fish, originalIndex) => ({fish, originalIndex})).sort((a,b)=>{
+        const gradeCompare = gradePower[b.fish.grade] - gradePower[a.fish.grade];
+        const nameCompare = a.fish.name.localeCompare(b.fish.name, "ko");
+
+        if(bucketSortOrder === "오름차순"){
+          return -gradeCompare || nameCompare;
+        }
+
+        return gradeCompare || nameCompare;
+      });
+
+      const displayItem = currentList[Number(displayNumber)-1];
+      if(!displayItem || !myBucket[displayItem.originalIndex]) throw new Error("FISH_NOT_FOUND");
+      if(myBucket[displayItem.originalIndex].locked) throw new Error("FISH_LOCKED");
+
+      const movedFish = {...myBucket.splice(displayItem.originalIndex,1)[0], locked:false};
+
+      targetBucket.push(movedFish);
+      targetNotifications.push(currentUser + " 님이 " + lineFish(movedFish) + objParticle(movedFish.name) + " 전송하였습니다.");
+
+      tx.set(myRef, {
+        gameState: {...myState, bucket: myBucket},
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, {merge:true});
+
+      tx.set(targetRef, {
+        gameState: {...targetState, bucket: targetBucket, notifications: targetNotifications},
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, {merge:true});
+    });
+
+    await refreshMyCloudData();
+    print(targetNickname + " 님에게 " + lineFish(fish) + objParticle(fish.name) + " 전송하였습니다.");
+  }catch(e){
+    console.error(e);
+    if(e.message === "TARGET_NOT_FOUND") print("존재하지 않는 닉네임입니다.");
+    else if(e.message === "FISH_NOT_FOUND") print("존재하지 않는 번호입니다.");
+    else if(e.message === "FISH_LOCKED") print("잠금된 물고기는 전송할 수 없습니다.");
+    else if(e.message === "MY_ACCOUNT_NOT_FOUND") print("현재 계정을 찾을 수 없습니다. 다시 로그인해주세요.");
+    else print("전송 중 오류가 발생했습니다.");
+  }finally{
+    isOnlineActionRunning = false;
+  }
 }
-
 
 function requireLoginForCommand(cmd){
   const allowed = ["명령어", "회원가입", "로그인"];
