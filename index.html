@@ -438,7 +438,7 @@ async function deleteAccount(){
 
 
 function buildNotificationText(list){
-  let s = "알림\n\n";
+  let s = "📢 알림\n\n";
   s += "────┬────────────────────\n";
 
   list.forEach((msg,i)=>{
@@ -456,7 +456,7 @@ async function showNewNotifications(){
   const list = [...notifications];
 
   printPreview(
-    "새로운 알림",
+    "📢 알림",
     "새로운 알림이 " + list.length + "개 도착했습니다.",
     "알림 전체보기",
     buildNotificationText(list)
@@ -558,20 +558,45 @@ function startServerAlertListener(){
 
   serverAlertUnsubscribe = db.collection("serverAlerts")
     .orderBy("createdAtMillis", "desc")
-    .limit(1)
+    .limit(10)
     .onSnapshot(snapshot => {
       snapshot.docChanges().forEach(change => {
         if(change.type !== "added") return;
 
         const data = change.doc.data();
-        if(!data || data.type !== "eternalCatch") return;
-        if(data.nickname === currentUser) return;
-        if((data.createdAtMillis || 0) <= serverAlertStartTime) return;
+        if(!data || (data.createdAtMillis || 0) <= serverAlertStartTime) return;
 
-        const sender = formatUserName(data.nickname, data.title);
-        const fishName = displayFishName(data.fishName);
+        if(data.type === "eternalCatch"){
+          if(data.nickname === currentUser) return;
 
-        print("🌟 서버 알림\\n\\n" + sender + " 님이 " + fishName + objParticle(data.fishName) + " 낚았습니다.");
+          const sender = formatUserName(data.nickname, data.title);
+          const fishName = displayFishName(data.fishName);
+
+          print("📢 알림\n\n" + sender + " 님이 " + color(fishName, data.fishGrade || "영원") + objParticle(data.fishName) + " 낚았습니다.");
+          return;
+        }
+
+        if(data.type === "moneyTransfer"){
+          if(data.to !== currentUser) return;
+
+          const sender = formatUserName(data.from, data.fromTitle);
+          print("📢 알림\n\n" + sender + " 님이 " + Number(data.amount || 0).toLocaleString() + "원을 송금했습니다.");
+          return;
+        }
+
+        if(data.type === "fishTransfer"){
+          if(data.to !== currentUser) return;
+
+          const sender = formatUserName(data.from, data.fromTitle);
+          const fish = {
+            grade: data.fishGrade,
+            name: data.fishName,
+            size: data.fishSize ?? null
+          };
+
+          print("📢 알림\n\n" + sender + " 님이 " + color(lineFish(fish), fish.grade) + objParticle(data.fishName) + " 전송했습니다.");
+          return;
+        }
       });
     }, e => {
       console.error(e);
@@ -655,6 +680,17 @@ function closeModal(){
 function printPreview(title, summary, buttonText, modalContent){
   const id = "btn_" + Math.random().toString(36).slice(2);
   log.innerHTML += title + "\n\n" + summary + "\n\n" +
+    `<button class="openBtn" id="${id}">${buttonText}</button>` + "\n\n";
+  log.scrollTop = log.scrollHeight;
+  updateWallet();
+  setTimeout(() => {
+    const btn = document.getElementById(id);
+    if(btn) btn.onclick = () => openModal(title, modalContent);
+  }, 0);
+}
+function printWalletPreview(title, buttonText, modalContent){
+  const id = "btn_" + Math.random().toString(36).slice(2);
+  log.innerHTML += title + "\n\n" +
     `<button class="openBtn" id="${id}">${buttonText}</button>` + "\n\n";
   log.scrollTop = log.scrollHeight;
   updateWallet();
@@ -835,6 +871,10 @@ function getCurrentTitle(){
 
 function formatUserName(nickname, title){
   return title ? "[" + title + "] " + nickname : nickname;
+}
+
+function formatCurrentUserName(){
+  return formatUserName(currentUser, getCurrentTitle());
 }
 
 function buildTitleText(){
@@ -1119,7 +1159,7 @@ function getBucketIndexByDisplayNumber(n){
 
 function buildBucketText(){
   if(bucket.length===0) return "양동이가 비어있습니다.";
-  let s="내 양동이\n\n────┬────────────────────\n";
+  let s=(currentUser ? formatCurrentUserName() + " 님의 양동이" : "내 양동이") + "\n\n────┬────────────────────\n";
   const list = sortedBucketList();
   list.forEach((item,i)=>{
     const f = item.fish;
@@ -1183,7 +1223,8 @@ async function showBucket(){
     "보유 물고기 : " + bucket.length + "마리\n" +
     "잠금 : " + lockedCount + "마리\n" +
     "총 판매가 : " + formatMoney(totalValue);
-  printPreview("양동이", summary, "양동이 전체보기", buildBucketText());
+  const bucketTitle = formatCurrentUserName() + " 님의 양동이";
+  printPreview(bucketTitle, summary, "양동이 전체보기", buildBucketText());
 }
 
 function sortBucket(type){
@@ -1292,10 +1333,10 @@ function showCollection(){
 async function showWallet(){
   if(currentUser) await refreshMyCloudData();
 
-  const title = "내 지갑";
+  const title = formatCurrentUserName() + " 님의 지갑";
   const content = title + "\n\n현재 돈 : " + formatMoney(money);
 
-  printPreview(title, "", "지갑 전체보기", content);
+  printWalletPreview(title, "지갑 전체보기", content);
 }
 
 async function showOtherWallet(nickname){
@@ -1310,7 +1351,7 @@ async function showOtherWallet(nickname){
     const title = formatUserName(nickname, data.title) + " 님의 지갑";
     const content = title + "\n\n현재 돈 : " + formatMoney(data.money || 0);
 
-    printPreview(title, "", "지갑 전체보기", content);
+    printWalletPreview(title, "지갑 전체보기", content);
   }catch(e){
     console.error(e);
     print("지갑을 불러오는 중 오류가 발생했습니다.");
@@ -1516,7 +1557,7 @@ async function sendMoney(targetNickname, amount){
       if(currentMoney < amount) throw new Error("NOT_ENOUGH_MONEY");
 
       const targetNotifications = targetState.notifications || [];
-      targetNotifications.push(currentUser + " 님이 " + amount.toLocaleString() + "원을 송금하였습니다.");
+      targetNotifications.push("📢 알림\n\n" + formatCurrentUserName() + " 님이 " + amount.toLocaleString() + "원을 송금했습니다.");
 
       myState.money = currentMoney - amount;
 
@@ -1531,6 +1572,16 @@ async function sendMoney(targetNickname, amount){
         gameState: {...targetState, money:(targetState.money || targetData.money || 0) + amount, notifications: targetNotifications},
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       }, {merge:true});
+    });
+
+    await db.collection("serverAlerts").add({
+      type: "moneyTransfer",
+      from: currentUser,
+      fromTitle: getCurrentTitle(),
+      to: targetNickname,
+      amount: amount,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      createdAtMillis: Date.now()
     });
 
     await refreshMyCloudData();
@@ -1610,7 +1661,7 @@ async function sendFish(targetNickname, displayNumber){
       const movedFish = {...myBucket.splice(displayItem.originalIndex,1)[0], locked:false};
 
       targetBucket.push(movedFish);
-      targetNotifications.push(currentUser + " 님이 " + lineFish(movedFish) + objParticle(movedFish.name) + " 전송하였습니다.");
+      targetNotifications.push("📢 알림\n\n" + formatCurrentUserName() + " 님이 " + lineFish(movedFish) + objParticle(movedFish.name) + " 전송했습니다.");
 
       tx.set(myRef, {
         gameState: {...myState, bucket: myBucket},
@@ -1621,6 +1672,18 @@ async function sendFish(targetNickname, displayNumber){
         gameState: {...targetState, bucket: targetBucket, notifications: targetNotifications},
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       }, {merge:true});
+    });
+
+    await db.collection("serverAlerts").add({
+      type: "fishTransfer",
+      from: currentUser,
+      fromTitle: getCurrentTitle(),
+      to: targetNickname,
+      fishName: fish.name,
+      fishGrade: fish.grade,
+      fishSize: fish.size,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      createdAtMillis: Date.now()
     });
 
     await refreshMyCloudData();
