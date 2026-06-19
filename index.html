@@ -144,6 +144,7 @@ let money=0, totalEarned=0, rodLevel=1, bucket=[], collection={}, ranking=[], is
 let totalFishingCount=0, gradeCounts={}, completedAchievements=[];
 let marketHour=null, marketRates={};
 let notifications=[];
+let unlockedTitles=[];
 let equippedTitle="";
 
 const log = document.getElementById("log");
@@ -193,6 +194,7 @@ function getGameState(){
     marketHour,
     marketRates,
     notifications,
+    unlockedTitles,
     equippedTitle
   };
 }
@@ -211,6 +213,7 @@ function applyGameState(s){
   marketHour=s.marketHour??marketHour;
   marketRates=s.marketRates??marketRates;
   notifications=s.notifications??notifications;
+  unlockedTitles=s.unlockedTitles??unlockedTitles;
   equippedTitle=s.equippedTitle??equippedTitle;
 }
 
@@ -253,6 +256,7 @@ function resetGameData(){
   marketHour = null;
   marketRates = {};
   notifications = [];
+  unlockedTitles = [];
   equippedTitle = "";
   bucketSortOrder = "내림차순";
   localStorage.setItem("textFishingBucketSortOrder", bucketSortOrder);
@@ -829,9 +833,56 @@ const achievementList = [
 
   {name:"초보", desc:"10회 낚시", reward:200000, check:()=> totalFishingCount >= 10},
   {name:"베테랑", desc:"100회 낚시", reward:20000000, check:()=> totalFishingCount >= 100},
-  {name:"중독자", desc:"1,000회 낚시", reward:200000000, check:()=> totalFishingCount >= 1000},
-  {name:"거장", desc:"10,000회 낚시", reward:20000000000, check:()=> totalFishingCount >= 10000}
+  {name:"중독자", desc:"1,000회 낚시", reward:20000000000, check:()=> totalFishingCount >= 1000},
+  {name:"거장", desc:"10,000회 낚시", reward:2000000000000, check:()=> totalFishingCount >= 10000},
+
+  {name:"만렙", desc:"낚싯대 Lv.1000 달성", reward:0, check:()=> rodLevel >= 1000},
+  {name:"행운아", desc:"영원 등급 1마리 수집", reward:7777777, check:()=> (gradeCounts["영원"]||0) >= 1},
+  {name:"드래곤 헌터", desc:"용 계열 9종 도감 등록", reward:10000000000, check:()=> {
+    const dragons = [
+      "핏빛 초승달 드래곤",
+      "잿빛 밤하늘 드래곤",
+      "금빛 보름달 드래곤",
+      "푸른 눈의 백염룡",
+      "이무기",
+      "청룡",
+      "흑룡",
+      "황룡",
+      "해신룡"
+    ];
+    return dragons.every(x => collection[x]);
+  }}
 ];
+
+function updateSpecialTitles(){
+  const newly = [];
+
+  const specialTitleList = [
+    {name:"부자", check:()=> money >= 10000000000000},
+    {name:"재벌", check:()=> money >= 100000000000000}
+  ];
+
+  for(const t of specialTitleList){
+    if(t.check() && !unlockedTitles.includes(t.name)){
+      unlockedTitles.push(t.name);
+      newly.push(t.name);
+    }
+  }
+
+  return newly;
+}
+
+function printTitleUnlocks(list){
+  if(!list || list.length === 0) return;
+
+  for(const title of list){
+    const msg = "칭호 획득!\n\n[" + title + "] 칭호를 획득했습니다.";
+
+    if(!notifications.includes(msg)){
+      notifications.push(msg);
+    }
+  }
+}
 
 function updateAchievements(){
   const newly = [];
@@ -899,14 +950,24 @@ function getOwnedTitles(){
     "초보",
     "베테랑",
     "중독자",
-    "거장"
+    "거장",
+    "만렙",
+    "행운아",
+    "드래곤 헌터",
+    "부자",
+    "재벌"
   ];
 
-  return order.filter(title => completedAchievements.includes(title));
+  const ownedSet = new Set();
+
+  completedAchievements.forEach(title => ownedSet.add(title));
+  unlockedTitles.forEach(title => ownedSet.add(title));
+
+  return order.filter(title => ownedSet.has(title));
 }
 
 function getCurrentTitle(){
-  return equippedTitle && completedAchievements.includes(equippedTitle) ? equippedTitle : "";
+  return equippedTitle && getOwnedTitles().includes(equippedTitle) ? equippedTitle : "";
 }
 
 function formatUserName(nickname, title){
@@ -967,7 +1028,9 @@ function unequipTitle(){
 }
 
 function saveGame(){
-  localStorage.setItem("textFishingSpeciesSizeSave", JSON.stringify({money,totalEarned,rodLevel,bucket,collection,ranking,totalFishingCount,gradeCounts,completedAchievements,marketHour,marketRates,notifications,equippedTitle}));
+  const newSpecialTitles = updateSpecialTitles();
+  localStorage.setItem("textFishingSpeciesSizeSave", JSON.stringify({money,totalEarned,rodLevel,bucket,collection,ranking,totalFishingCount,gradeCounts,completedAchievements,marketHour,marketRates,notifications,unlockedTitles,equippedTitle}));
+  printTitleUnlocks(newSpecialTitles);
   syncCloudSoon();
 }
 function loadGame(){
@@ -984,6 +1047,7 @@ function loadGame(){
     marketHour=s.marketHour??null;
     marketRates=s.marketRates??{};
     notifications=s.notifications??[];
+    unlockedTitles=s.unlockedTitles??[];
     equippedTitle=s.equippedTitle??"";
   } catch(e) {}
 }
