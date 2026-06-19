@@ -407,6 +407,7 @@ async function loginUser(){
     localStorage.setItem("textFishingCurrentUser", currentUser);
 
     applyGameState(data.gameState);
+    checkSpecialTitles();
     saveGame();
     updateWallet();
 
@@ -884,6 +885,12 @@ function printTitleUnlocks(list){
   }
 }
 
+function checkSpecialTitles(){
+  const newSpecialTitles = updateSpecialTitles();
+  printTitleUnlocks(newSpecialTitles);
+  return newSpecialTitles;
+}
+
 function updateAchievements(){
   const newly = [];
 
@@ -915,7 +922,8 @@ function buildAchievementText(){
 
 function showAchievements(){
   const newly = updateAchievements();
-  if(newly.length > 0) saveGame();
+  const newSpecialTitles = checkSpecialTitles();
+  if(newly.length > 0 || newSpecialTitles.length > 0) saveGame();
 
   const summary =
     "업적 달성률 : " + completedAchievements.length + " / " + achievementList.length + "\n\n" +
@@ -1028,9 +1036,7 @@ function unequipTitle(){
 }
 
 function saveGame(){
-  const newSpecialTitles = updateSpecialTitles();
   localStorage.setItem("textFishingSpeciesSizeSave", JSON.stringify({money,totalEarned,rodLevel,bucket,collection,ranking,totalFishingCount,gradeCounts,completedAchievements,marketHour,marketRates,notifications,unlockedTitles,equippedTitle}));
-  printTitleUnlocks(newSpecialTitles);
   syncCloudSoon();
 }
 function loadGame(){
@@ -1215,6 +1221,7 @@ function fish(){
       if(Math.random() * 100 < escapeChance){
         totalFishingCount++;
         const newAchievements = updateAchievements();
+        checkSpecialTitles();
         saveGame();
         print(color("[" + g.name + "] " + name, g.name) + subjectParticle(name) + " 도주했습니다.");
         printAchievementRewards(newAchievements);
@@ -1231,6 +1238,7 @@ function fish(){
 
     const newAchievements = updateAchievements();
 
+    checkSpecialTitles();
     saveGame();
     print(color(lineFish(caught), caught.grade)+objParticle(caught.name)+" 낚았습니다.");
     announceEternalCatch(caught);
@@ -1891,6 +1899,7 @@ if(!currentUser){
       applyGameState(data.gameState);
       refreshMarketIfNeeded();
       const startupAchievements = updateAchievements();
+      checkSpecialTitles();
       saveGame();
       updateWallet();
       startServerAlertListener();
