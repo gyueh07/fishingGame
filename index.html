@@ -300,6 +300,39 @@ async function refreshMyCloudData(){
   }
 }
 
+async function removeRealtimeNotification(matchText){
+  if(!currentUser || !matchText) return;
+
+  try{
+    const ref = db.collection("users").doc(currentUser);
+
+    await db.runTransaction(async (tx)=>{
+      const snap = await tx.get(ref);
+      if(!snap.exists) return;
+
+      const data = snap.data();
+      const state = data.gameState || {};
+      const list = Array.isArray(state.notifications) ? state.notifications : [];
+
+      const filtered = list.filter(msg => !String(msg).includes(matchText));
+      if(filtered.length === list.length) return;
+
+      tx.set(ref, {
+        gameState: {
+          ...state,
+          notifications: filtered
+        },
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, {merge:true});
+    });
+
+    notifications = (notifications || []).filter(msg => !String(msg).includes(matchText));
+    saveGame();
+  }catch(e){
+    console.error(e);
+  }
+}
+
 async function registerUser(){
   if(!(await checkGameVersion())) return;
   const nickname = cleanNickname(prompt("닉네임을 입력하세요."));
@@ -580,7 +613,11 @@ function startServerAlertListener(){
           if(data.to !== currentUser) return;
 
           const sender = formatUserName(data.from, data.fromTitle);
-          print("📢 알림\n\n" + sender + " 님이 " + Number(data.amount || 0).toLocaleString() + "원을 송금했습니다.");
+          const amountText = Number(data.amount || 0).toLocaleString() + "원을 송금했습니다.";
+
+          print("📢 알림\n\n" + sender + " 님이 " + amountText);
+          removeRealtimeNotification(amountText);
+          setTimeout(() => refreshMyCloudData(), 300);
           return;
         }
 
@@ -593,8 +630,11 @@ function startServerAlertListener(){
             name: data.fishName,
             size: data.fishSize ?? null
           };
+          const fishText = lineFish(fish) + objParticle(data.fishName) + " 전송했습니다.";
 
           print("📢 알림\n\n" + sender + " 님이 " + color(lineFish(fish), fish.grade) + objParticle(data.fishName) + " 전송했습니다.");
+          removeRealtimeNotification(fishText);
+          setTimeout(() => refreshMyCloudData(), 300);
           return;
         }
       });
