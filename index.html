@@ -256,6 +256,17 @@ const UPDATE_NOTICES = [
       "이미 처치한 보스가 선택된 상태로 남아 전투가 막히던 문제가 수정되었습니다.",
       "보스 처치 완료 후에도 보스목록에서 다음 도전 가능한 보스를 확인할 수 있습니다."
     ]
+  },
+  {
+    id: "2026-06-20-boss-cooldown-recovery-1",
+    title: "보스 쿨타임/회복 방식 수정",
+    lines: [
+      "처치 완료한 보스도 다시 도전할 수 있도록 변경되었습니다.",
+      "보스 쿨타임이 보스별로 따로 적용되도록 변경되었습니다.",
+      "보스전 실패 시에는 쿨타임이 적용되지 않습니다.",
+      "회복 중인 물고기는 시간이 지날수록 체력이 서서히 회복됩니다.",
+      "회복 중인 물고기도 현재 회복된 체력으로 전투에 참가할 수 있습니다."
+    ]
   }
 ];
 
@@ -321,14 +332,15 @@ function normalizeUpdateNoticeIds(value, oldValue){
 
 
 function normalizeBossProgress(value){
-  const base = {defeated:{}, hp:{}, materials:{}, selectedBossId:"", cooldownUntil:0};
+  const base = {defeated:{}, hp:{}, materials:{}, selectedBossId:"", cooldownUntil:0, cooldowns:{}};
   if(!value || typeof value !== "object") return base;
   return {
     defeated:value.defeated || {},
     hp:value.hp || {},
     materials:value.materials || {},
     selectedBossId:value.selectedBossId || "",
-    cooldownUntil:Number(value.cooldownUntil || 0)
+    cooldownUntil:Number(value.cooldownUntil || 0),
+    cooldowns:value.cooldowns || {}
   };
 }
 
@@ -407,7 +419,7 @@ function resetGameData(){
   unlockedTitles = [];
   equippedTitle = "";
   seenUpdateNoticeIds = [];
-  bossProgress = {defeated:{}, hp:{}, materials:{}, cooldownUntil:0};
+  bossProgress = {defeated:{}, hp:{}, materials:{}, cooldownUntil:0, cooldowns:{}};
   isBossMenu = false;
   bossPrepIndexes = [];
   bucketSortOrder = "내림차순";
@@ -1703,20 +1715,52 @@ function formatRemain(ms){
   return m + "분 " + String(s).padStart(2, "0") + "초";
 }
 
+function updateRecoveringFishHp(f){
+  const c = ensureCombatStats(f);
+
+  if(c.status === "기절") c.status = "회복 중";
+
+  if(c.status !== "회복 중") return false;
+
+  const now = Date.now();
+  const maxHp = Math.max(1, c.maxHp || 1);
+
+  if(!c.stunUntil){
+    c.status = "정상";
+    c.hp = maxHp;
+    delete c.recoveryStartAt;
+    delete c.recoveryStartHp;
+    return true;
+  }
+
+  const recoveryStartAt = Number(c.recoveryStartAt || (c.stunUntil - getStunMinutes(f.grade) * 60 * 1000));
+  const recoveryStartHp = Number(c.recoveryStartHp || 0);
+  const duration = Math.max(1, c.stunUntil - recoveryStartAt);
+  const ratio = clamp((now - recoveryStartAt) / duration, 0, 1);
+
+  if(ratio >= 1){
+    c.status = "정상";
+    c.hp = maxHp;
+    delete c.stunUntil;
+    delete c.recoveryStartAt;
+    delete c.recoveryStartHp;
+    return true;
+  }
+
+  const newHp = Math.max(1, Math.floor(recoveryStartHp + (maxHp - recoveryStartHp) * ratio));
+  if(newHp !== c.hp){
+    c.hp = Math.min(maxHp, newHp);
+    return true;
+  }
+
+  return false;
+}
+
 function recoverStunnedFish(){
   let changed = false;
-  const now = Date.now();
 
   bucket.forEach(f => {
-    const c = ensureCombatStats(f);
-    if(c.status === "기절") c.status = "회복 중";
-
-    if(c.status === "회복 중" && c.stunUntil && now >= c.stunUntil){
-      c.status = "정상";
-      c.hp = c.maxHp || c.hp || 1;
-      delete c.stunUntil;
-      changed = true;
-    }
+    if(updateRecoveringFishHp(f)) changed = true;
   });
 
   if(changed) saveGame();
@@ -1809,8 +1853,7 @@ function statStars(value, grade, stat, combat=null){
 
 function getCombatStatusText(f){
   const c = ensureCombatStats(f);
-
-  if(c.status === "기절") c.status = "회복 중";
+  updateRecoveringFishHp(f);
 
   if(c.status === "회복 중" && c.stunUntil){
     const left = c.stunUntil - Date.now();
@@ -1906,12 +1949,7 @@ function isBossUnlocked(boss){
 function getSelectedBossId(){
   const selected = getBossById(bossProgress.selectedBossId);
 
-  if(
-    bossProgress.selectedBossId &&
-    selected &&
-    isBossUnlocked(selected) &&
-    !bossProgress.defeated[selected.id]
-  ){
+  if(bossProgress.selectedBossId && selected && isBossUnlocked(selected)){
     return selected.id;
   }
 
@@ -1921,12 +1959,7 @@ function getSelectedBossId(){
 function getCurrentBoss(){
   const selected = getBossById(bossProgress.selectedBossId);
 
-  if(
-    bossProgress.selectedBossId &&
-    selected &&
-    isBossUnlocked(selected) &&
-    !bossProgress.defeated[selected.id]
-  ){
+  if(bossProgress.selectedBossId && selected && isBossUnlocked(selected)){
     return selected;
   }
 
@@ -1938,7 +1971,10 @@ function getCurrentBoss(){
     }
   }
 
-  return bossList[bossList.length - 1];
+  const first = bossList[0];
+  bossProgress.selectedBossId = first.id;
+  if(!bossProgress.hp[first.id]) bossProgress.hp[first.id] = first.hp;
+  return first;
 }
 
 function selectBoss(n){
@@ -1946,7 +1982,6 @@ function selectBoss(n){
 
   if(!boss) return print("존재하지 않는 보스 번호입니다.");
   if(!isBossUnlocked(boss)) return print("아직 해금되지 않은 보스입니다.");
-  if(bossProgress.defeated[boss.id]) return print("이미 처치한 보스입니다.\n다음 보스에 도전하세요.");
 
   bossProgress.selectedBossId = boss.id;
   if(!bossProgress.hp[boss.id]) bossProgress.hp[boss.id] = boss.hp;
@@ -1962,7 +1997,9 @@ function getBossHp(boss){
 
 function getBossStatus(boss){
   if(!isBossUnlocked(boss)) return "잠김";
-  return bossProgress.defeated[boss.id] ? "처치 완료" : "도전 가능";
+  const left = getBossCooldownLeft(boss.id);
+  if(left > 0) return "쿨타임 " + formatRemain(left);
+  return bossProgress.defeated[boss.id] ? "처치 완료 / 재도전 가능" : "도전 가능";
 }
 
 function addMaterial(name,count){
@@ -2088,6 +2125,8 @@ function stunFish(f){
   const c = ensureCombatStats(f);
   c.hp = 0;
   c.status = "회복 중";
+  c.recoveryStartAt = Date.now();
+  c.recoveryStartHp = 0;
   c.stunUntil = Date.now() + getStunMinutes(f.grade) * 60 * 1000;
 }
 
@@ -2108,25 +2147,30 @@ function pickBossPattern(boss){
   return "normal";
 }
 
-function getBossCooldownLeft(){
-  return Math.max(0, (bossProgress.cooldownUntil || 0) - Date.now());
+function getBossCooldownLeft(bossId=null){
+  const id = bossId || getCurrentBoss().id;
+  const cooldowns = bossProgress.cooldowns || {};
+  return Math.max(0, (cooldowns[id] || 0) - Date.now());
 }
 
-function isBossCooldownActive(){
-  return getBossCooldownLeft() > 0;
+function isBossCooldownActive(bossId=null){
+  return getBossCooldownLeft(bossId) > 0;
 }
 
-function setBossCooldown(){
-  bossProgress.cooldownUntil = Date.now() + 5 * 60 * 1000;
+function setBossCooldown(bossId=null){
+  const id = bossId || getCurrentBoss().id;
+  if(!bossProgress.cooldowns) bossProgress.cooldowns = {};
+  bossProgress.cooldowns[id] = Date.now() + 5 * 60 * 1000;
 }
+
 
 function getAlivePreparedFishes(){
   return bossPrepIndexes
     .map(idx => bucket[idx])
     .filter(f => {
       if(!f || f.grade === "쓰레기") return false;
+      updateRecoveringFishHp(f);
       const c = ensureCombatStats(f);
-      if(c.status === "기절") c.status = "회복 중";
       if(c.status === "회복 중" && c.hp <= 0) c.hp = 1;
       return c.hp > 0;
     });
@@ -2229,7 +2273,8 @@ function runBossBattle(){
   if(!isBossMenu) return print("보스전에 입장한 뒤 사용할 수 있습니다.");
   recoverStunnedFish();
 
-  if(isBossCooldownActive()) return print("아직 보스전 쿨타임이 남아있습니다.\n\n남은 시간 : " + formatRemain(getBossCooldownLeft()));
+  const selectedBoss = getCurrentBoss();
+  if(isBossCooldownActive(selectedBoss.id)) return print("아직 보스전 쿨타임이 남아있습니다.\n\n남은 시간 : " + formatRemain(getBossCooldownLeft(selectedBoss.id)));
   if(bossPrepIndexes.length === 0) return print("준비된 물고기가 없습니다.\n준비 번호 를 입력하세요.");
 
   const recoveryFishes = getPreparedRecoveryFishes();
@@ -2247,7 +2292,8 @@ function runBossBattle(){
   pendingRecoveryBattleConfirm = false;
 
   const boss = {...getCurrentBoss(), _enraged:false};
-  if(getBossStatus(boss) !== "도전 가능") return print("현재 도전 가능한 보스가 없습니다.");
+  if(!isBossUnlocked(boss)) return print("아직 해금되지 않은 보스입니다.");
+  if(isBossCooldownActive(boss.id)) return print("아직 보스전 쿨타임이 남아있습니다.\n\n남은 시간 : " + formatRemain(getBossCooldownLeft(boss.id)));
 
   let bossHp = getBossHp(boss);
   let totalDamage = 0;
@@ -2337,7 +2383,9 @@ function runBossBattle(){
   const resultText = buildBattleResultText(boss, participants, totalDamage, result, rewardMoney, rewardDrop, battleLog);
   const summary = buildBattleSummaryText(boss, result, rewardMoney, rewardDrop);
 
-  setBossCooldown();
+  if(result === "처치 성공"){
+    setBossCooldown(boss.id);
+  }
   bossPrepIndexes = [];
   saveGame();
 
