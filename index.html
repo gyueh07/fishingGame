@@ -93,7 +93,7 @@ button:hover { background:#30363d; }
 
 <div class="box cmd">
 <b>주요 명령어</b><br>
-<span>명령어</span><span>낚시</span><span>양동이</span><span>양동이 닉네임</span><span>도감</span><span>내정보</span><span>정보 1</span><span>보스전</span><span>보스정보</span><span>보스목록</span><span>보스선택 1</span><span>인벤토리</span><span>준비 1</span><span>준비해제 1</span><span>전투</span><span>나가기</span><span>시세</span><span>랭킹</span>
+<span>명령어</span><span>낚시</span><span>양동이</span><span>양동이 닉네임</span><span>도감</span><span>물고기도감</span><span>코어도감</span><span>내정보</span><span>정보 1</span><span>보스전</span><span>보스정보</span><span>보스목록</span><span>보스선택 1</span><span>인벤토리</span><span>준비 1</span><span>준비해제 1</span><span>전투</span><span>전투 확인</span><span>나가기</span><span>시세</span><span>랭킹</span>
 <span>지갑</span><span>지갑 닉네임</span><span>메세지 닉네임</span><span>연구소</span><span>연구소1 강화</span><span>연구소2 강화</span><span>업적</span><span>칭호</span><span>칭호 장착 번호</span><span>칭호 장착해제</span><span>회원가입</span><span>로그인</span><span>로그아웃</span><span>탈퇴</span><span>강화</span><span>일괄강화</span>
 <span>정렬 오름차순</span><span>정렬 내림차순</span><span>송금 닉네임 금액</span><span>전송 닉네임 번호</span>
 <span>잠금 1</span><span>잠금해제 1</span>
@@ -122,10 +122,10 @@ button:hover { background:#30363d; }
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
 
 <script>
-const fishByGrade = {"쓰레기": ["휴지 조각", "플라스틱 통", "안경닦이", "생선 뼈", "빈 병", "빈 깡통", "비닐봉투", "바나나 껍질", "낡은 신발", "나무 조각"], "일반": ["흰동가리", "황어", "해삼", "해마", "피라미", "틸라피아", "클리오네", "큰입배스", "전갱이", "잉어", "은어", "올챙이", "오징어", "연어", "쏠배감펭", "블루탱", "보름달물 해파리", "바다포도", "미역", "미꾸라지", "문어", "멸치", "메기", "말미잘", "리본장어", "따개비", "동사리", "농어", "네온테트라", "넙치", "납줄개", "나비고기", "가자미"], "희귀": ["흰다리새우", "해로동혈", "피라니아", "투구게", "초롱아귀", "천사어", "참게", "짱뚱어", "진주조개", "지중해 홍합", "전복", "자라", "열목어", "연필성게", "엔드리케리", "앵무조개", "쏠베감펭", "성게", "빨판상어", "비단잉어", "붕장어", "북쪽보리새우", "복어", "보리새우", "베타", "반딧불 오징어", "바닷가재", "무명갈전갱이", "멍게", "돌돔", "도미", "던지니 스크랩", "닭새우", "닥터피쉬", "다금바리", "늑대거북", "난주", "낙지", "꽃게", "꽁치", "꺽저기", "금붕어", "굴", "구피", "곰치", "곤들매기", "갯가재", "개복치", "강꼬치고기", "가오리", "가시나비고기", "가리비", "가는돌고기"], "영웅": ["흡혈오징어", "피라루쿠", "청새치", "철갑상어", "우무문어", "왕게", "아로와나", "산갈치", "블랙타이거새우", "만새기", "대게", "다랑어", "나폴레옹피시", "그린란드 상어", "귀상어", "가아", "가시배새우", "가물치"], "전설": ["혹등고래", "톱상어", "키다리게", "자이언트 이소포드", "일본연어", "실러캔스", "상어", "벨루가", "배럴아이", "바다돼지", "메갈로돈", "마귀상어", "도라도", "대왕거거", "금송어", "고래상어", "갈치"], "신화": ["핏빛 초승달 드래곤", "잿빛 밤하늘 드래곤", "금빛 보름달 드래곤", "푸른 눈의 백염룡", "이무기", "청룡", "흑룡", "황룡", "해신룡"], "초월": ["호수에 비친 은하수", "호수에 비친 별", "호수에 비친 달", "바다를 삼킨 태양"], "영원": ["휘몰아치는 마음", "영롱한 다이아몬드", "얼어붙은 마음", "빛나는 마음", "불타는 마음", "무한한 시간"]};
-const sizeData = {"휴지 조각": [1, 40], "플라스틱 통": [1, 40], "안경닦이": [1, 40], "생선 뼈": [1, 40], "빈 병": [1, 40], "빈 깡통": [1, 40], "비닐봉투": [1, 40], "바나나 껍질": [1, 40], "낡은 신발": [1, 40], "나무 조각": [1, 40], "흰동가리": [7, 13], "황어": [20, 60], "해삼": [10, 40], "해마": [2, 20], "피라미": [5, 15], "틸라피아": [15, 45], "클리오네": [1, 3], "큰입배스": [25, 70], "전갱이": [20, 45], "잉어": [25, 100], "은어": [10, 30], "올챙이": [1, 6], "오징어": [20, 60], "연어": [50, 100], "쏠배감펭": [15, 45], "블루탱": [12, 30], "보름달물 해파리": [10, 40], "바다포도": [1, 10], "미역": [20, 150], "미꾸라지": [8, 25], "문어": [30, 150], "멸치": [5, 15], "메기": [20, 120], "말미잘": [3, 30], "리본장어": [60, 130], "따개비": [1, 5], "동사리": [5, 15], "농어": [30, 100], "네온테트라": [2, 5], "넙치": [30, 90], "납줄개": [5, 12], "나비고기": [10, 25], "가자미": [20, 60], "흰다리새우": [8, 23], "해로동혈": [10, 120], "피라니아": [15, 40], "투구게": [25, 60], "초롱아귀": [20, 100], "천사어": [10, 120], "참게": [10, 120], "짱뚱어": [10, 120], "진주조개": [6, 30], "지중해 홍합": [10, 120], "전복": [7, 25], "자라": [20, 45], "열목어": [10, 120], "연필성게": [10, 120], "엔드리케리": [10, 120], "앵무조개": [15, 30], "쏠베감펭": [10, 120], "성게": [3, 15], "빨판상어": [30, 110], "비단잉어": [30, 100], "붕장어": [40, 120], "북쪽보리새우": [10, 120], "복어": [15, 50], "보리새우": [10, 120], "베타": [4, 8], "반딧불 오징어": [4, 8], "바닷가재": [20, 70], "무명갈전갱이": [10, 120], "멍게": [5, 20], "돌돔": [30, 80], "도미": [30, 90], "던지니 스크랩": [10, 120], "닭새우": [10, 120], "닥터피쉬": [10, 120], "다금바리": [40, 120], "늑대거북": [25, 80], "난주": [10, 120], "낙지": [20, 80], "꽃게": [10, 25], "꽁치": [10, 120], "꺽저기": [10, 120], "금붕어": [5, 30], "굴": [10, 120], "구피": [10, 120], "곰치": [80, 250], "곤들매기": [10, 120], "갯가재": [10, 120], "개복치": [150, 330], "강꼬치고기": [10, 120], "가오리": [50, 250], "가시나비고기": [10, 120], "가리비": [5, 20], "가는돌고기": [10, 120], "흡혈오징어": [15, 30], "피라루쿠": [150, 450], "청새치": [200, 500], "철갑상어": [100, 600], "우무문어": [30, 100], "왕게": [80, 180], "아로와나": [50, 120], "산갈치": [300, 1000], "블랙타이거새우": [20, 40], "만새기": [80, 200], "대게": [50, 150], "다랑어": [80, 300], "나폴레옹피시": [100, 230], "그린란드 상어": [300, 700], "귀상어": [200, 600], "가아": [80, 300], "가시배새우": [10, 25], "가물치": [50, 150], "혹등고래": [1200, 1600], "톱상어": [200, 700], "키다리게": [200, 380], "자이언트 이소포드": [20, 50], "일본연어": [60, 120], "실러캔스": [120, 220], "상어": [150, 600], "벨루가": [300, 550], "배럴아이": [10, 20], "바다돼지": [5, 15], "메갈로돈": [1200, 3000], "마귀상어": [250, 600], "도라도": [50, 180], "대왕거거": [80, 140], "금송어": [30, 100], "고래상어": [600, 1800], "갈치": [100, 250], "핏빛 초승달 드래곤": [300, 500], "잿빛 밤하늘 드래곤": [300, 500], "금빛 보름달 드래곤": [300, 500], "푸른 눈의 백염룡": [300, 500], "이무기": [400, 900], "청룡": [500, 1000], "흑룡": [500, 1000], "황룡": [500, 1000], "해신룡": [600, 1200], "호수에 비친 은하수": null, "호수에 비친 별": null, "호수에 비친 달": null, "바다를 삼킨 태양": null, "휘몰아치는 마음": null, "영롱한 다이아몬드": null, "얼어붙은 마음": null, "빛나는 마음": null, "불타는 마음": null, "무한한 시간": null};
+const fishByGrade = {"쓰레기": ["휴지 조각", "플라스틱 통", "안경닦이", "생선 뼈", "빈 병", "빈 깡통", "비닐봉투", "바나나 껍질", "낡은 신발", "나무 조각"], "일반": ["흰동가리", "황어", "해삼", "해마", "피라미", "틸라피아", "클리오네", "큰입배스", "전갱이", "잉어", "은어", "올챙이", "오징어", "연어", "쏠배감펭", "블루탱", "보름달물 해파리", "바다포도", "미역", "미꾸라지", "문어", "멸치", "메기", "말미잘", "리본장어", "따개비", "동사리", "농어", "네온테트라", "넙치", "납줄개", "나비고기", "가자미"], "희귀": ["흰다리새우", "해로동혈", "피라니아", "투구게", "초롱아귀", "천사어", "참게", "짱뚱어", "진주조개", "지중해 홍합", "전복", "자라", "열목어", "연필성게", "엔드리케리", "앵무조개", "쏠베감펭", "성게", "빨판상어", "비단잉어", "붕장어", "북쪽보리새우", "복어", "보리새우", "베타", "반딧불 오징어", "바닷가재", "무명갈전갱이", "멍게", "돌돔", "도미", "던지니 스크랩", "닭새우", "닥터피쉬", "다금바리", "늑대거북", "난주", "낙지", "꽃게", "꽁치", "꺽저기", "금붕어", "굴", "구피", "곰치", "곤들매기", "갯가재", "개복치", "강꼬치고기", "가오리", "가시나비고기", "가리비", "가는돌고기"], "영웅": ["흡혈오징어", "피라루쿠", "청새치", "철갑상어", "우무문어", "왕게", "아로와나", "산갈치", "블랙타이거새우", "만새기", "대게", "다랑어", "나폴레옹피시", "그린란드 상어", "귀상어", "가아", "가시배새우", "가물치"], "전설": ["혹등고래", "톱상어", "키다리게", "자이언트 이소포드", "일본연어", "실러캔스", "상어", "벨루가", "배럴아이", "바다돼지", "메갈로돈", "마귀상어", "도라도", "대왕거거", "금송어", "고래상어", "갈치"], "신화": ["핏빛 초승달 드래곤", "잿빛 밤하늘 드래곤", "금빛 보름달 드래곤", "푸른 눈의 백염룡", "이무기", "청룡", "흑룡", "황룡", "해신룡"], "초월": ["호수에 비친 은하수", "호수에 비친 별", "호수에 비친 달", "바다를 삼킨 태양"], "영원": ["휘몰아치는 마음", "영롱한 다이아몬드", "얼어붙은 마음", "빛나는 마음", "불타는 마음", "무한한 시간"], "공허": ["잃어버린 첫 번째 편지 조각 ✉️", "잃어버린 두 번째 편지 조각 ✉️", "잃어버린 세 번째 편지 조각 ✉️"]};
+const sizeData = {"휴지 조각": [1, 40], "플라스틱 통": [1, 40], "안경닦이": [1, 40], "생선 뼈": [1, 40], "빈 병": [1, 40], "빈 깡통": [1, 40], "비닐봉투": [1, 40], "바나나 껍질": [1, 40], "낡은 신발": [1, 40], "나무 조각": [1, 40], "흰동가리": [7, 13], "황어": [20, 60], "해삼": [10, 40], "해마": [2, 20], "피라미": [5, 15], "틸라피아": [15, 45], "클리오네": [1, 3], "큰입배스": [25, 70], "전갱이": [20, 45], "잉어": [25, 100], "은어": [10, 30], "올챙이": [1, 6], "오징어": [20, 60], "연어": [50, 100], "쏠배감펭": [15, 45], "블루탱": [12, 30], "보름달물 해파리": [10, 40], "바다포도": [1, 10], "미역": [20, 150], "미꾸라지": [8, 25], "문어": [30, 150], "멸치": [5, 15], "메기": [20, 120], "말미잘": [3, 30], "리본장어": [60, 130], "따개비": [1, 5], "동사리": [5, 15], "농어": [30, 100], "네온테트라": [2, 5], "넙치": [30, 90], "납줄개": [5, 12], "나비고기": [10, 25], "가자미": [20, 60], "흰다리새우": [8, 23], "해로동혈": [10, 120], "피라니아": [15, 40], "투구게": [25, 60], "초롱아귀": [20, 100], "천사어": [10, 120], "참게": [10, 120], "짱뚱어": [10, 120], "진주조개": [6, 30], "지중해 홍합": [10, 120], "전복": [7, 25], "자라": [20, 45], "열목어": [10, 120], "연필성게": [10, 120], "엔드리케리": [10, 120], "앵무조개": [15, 30], "쏠베감펭": [10, 120], "성게": [3, 15], "빨판상어": [30, 110], "비단잉어": [30, 100], "붕장어": [40, 120], "북쪽보리새우": [10, 120], "복어": [15, 50], "보리새우": [10, 120], "베타": [4, 8], "반딧불 오징어": [4, 8], "바닷가재": [20, 70], "무명갈전갱이": [10, 120], "멍게": [5, 20], "돌돔": [30, 80], "도미": [30, 90], "던지니 스크랩": [10, 120], "닭새우": [10, 120], "닥터피쉬": [10, 120], "다금바리": [40, 120], "늑대거북": [25, 80], "난주": [10, 120], "낙지": [20, 80], "꽃게": [10, 25], "꽁치": [10, 120], "꺽저기": [10, 120], "금붕어": [5, 30], "굴": [10, 120], "구피": [10, 120], "곰치": [80, 250], "곤들매기": [10, 120], "갯가재": [10, 120], "개복치": [150, 330], "강꼬치고기": [10, 120], "가오리": [50, 250], "가시나비고기": [10, 120], "가리비": [5, 20], "가는돌고기": [10, 120], "흡혈오징어": [15, 30], "피라루쿠": [150, 450], "청새치": [200, 500], "철갑상어": [100, 600], "우무문어": [30, 100], "왕게": [80, 180], "아로와나": [50, 120], "산갈치": [300, 1000], "블랙타이거새우": [20, 40], "만새기": [80, 200], "대게": [50, 150], "다랑어": [80, 300], "나폴레옹피시": [100, 230], "그린란드 상어": [300, 700], "귀상어": [200, 600], "가아": [80, 300], "가시배새우": [10, 25], "가물치": [50, 150], "혹등고래": [1200, 1600], "톱상어": [200, 700], "키다리게": [200, 380], "자이언트 이소포드": [20, 50], "일본연어": [60, 120], "실러캔스": [120, 220], "상어": [150, 600], "벨루가": [300, 550], "배럴아이": [10, 20], "바다돼지": [5, 15], "메갈로돈": [1200, 3000], "마귀상어": [250, 600], "도라도": [50, 180], "대왕거거": [80, 140], "금송어": [30, 100], "고래상어": [600, 1800], "갈치": [100, 250], "핏빛 초승달 드래곤": [300, 500], "잿빛 밤하늘 드래곤": [300, 500], "금빛 보름달 드래곤": [300, 500], "푸른 눈의 백염룡": [300, 500], "이무기": [400, 900], "청룡": [500, 1000], "흑룡": [500, 1000], "황룡": [500, 1000], "해신룡": [600, 1200], "호수에 비친 은하수": null, "호수에 비친 별": null, "호수에 비친 달": null, "바다를 삼킨 태양": null, "휘몰아치는 마음": null, "영롱한 다이아몬드": null, "얼어붙은 마음": null, "빛나는 마음": null, "불타는 마음": null, "무한한 시간": null, "잃어버린 첫 번째 편지 조각 ✉️": null, "잃어버린 두 번째 편지 조각 ✉️": null, "잃어버린 세 번째 편지 조각 ✉️": null};
 
-const MAX_ROD = 1000;
+const MAX_ROD = 1500;
 
 const grades = [
   {name:"쓰레기", color:"#8b949e", basePrice:1, chance:8},
@@ -135,10 +135,11 @@ const grades = [
   {name:"전설", color:"#ffa657", basePrice:9000000, chance:2.2},
   {name:"신화", color:"#ff4d4f", basePrice:75000000, chance:0.7},
   {name:"초월", color:"#ffd700", basePrice:1000000000, chance:0.12},
-  {name:"영원", color:"#F5F5DC", basePrice:100000000000, chance:0}
+  {name:"영원", color:"#E5E4E2", basePrice:100000000000, chance:0},
+  {name:"공허", color:"#5C0011", basePrice:500000000000, chance:0}
 ];
 
-const gradePower = {"쓰레기":0,"일반":1,"희귀":2,"영웅":3,"전설":4,"신화":5,"초월":6,"영원":7};
+const gradePower = {"쓰레기":0,"일반":1,"희귀":2,"영웅":3,"전설":4,"신화":5,"초월":6,"영원":7,"공허":8};
 
 let money=0, totalEarned=0, rodLevel=1, bucket=[], collection={}, ranking=[], isFishing=false;
 let totalFishingCount=0, gradeCounts={}, completedAchievements=[];
@@ -149,9 +150,10 @@ let researchLevels={fishing:0, appraisal:0};
 let unlockedTitles=[];
 let equippedTitle="";
 let seenUpdateNoticeIds=[];
-let bossProgress={defeated:{}, hp:{}, materials:{}};
+let bossProgress={defeated:{}, hp:{}, materials:{}, cooldownUntil:0};
 let isBossMenu=false;
 let bossPrepIndexes=[];
+let pendingRecoveryBattleConfirm=false;
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
@@ -179,6 +181,49 @@ const UPDATE_NOTICES = [
       "전투 결과 전체보기에서 상세 로그를 볼 수 있게 되었습니다.",
       "전투 로그에 체력바가 추가되었습니다.",
       "보스별 색상이 적용되었습니다."
+    ]
+  },
+  {
+    id: "2026-06-20-boss-balance-1",
+    title: "보스전 밸런스 업데이트",
+    lines: [
+      "별 시스템이 개편되었습니다.",
+      "★ 개체는 3배 구간, ★★ 개체는 5배 구간, ★★★ 개체는 10배 구간에서 스탯이 생성됩니다.",
+      "보스전 쿨타임 5분이 추가되었습니다.",
+      "물고기 기절 회복 시간이 전 등급 공통 10분으로 변경되었습니다."
+    ]
+  },
+  {
+    id: "2026-06-20-boss-rod-void-1",
+    title: "보스/낚싯대/공허 업데이트",
+    lines: [
+      "공허 등급과 편지 조각 3종이 추가되었습니다.",
+      "보스가 크라켄, 히드라, 리바이어던, 베히모스로 확장되었습니다.",
+      "보스전이 준비한 물고기 전체가 함께 싸우는 방식으로 변경되었습니다.",
+      "물고기도감과 코어도감이 분리되었습니다.",
+      "낚싯대 최대 레벨이 1500으로 확장되었습니다."
+    ]
+  },
+  {
+    id: "2026-06-20-rod-material-cap-1",
+    title: "낚싯대 확장 밸런스 업데이트",
+    lines: [
+      "현재 버전의 강화 가능 레벨이 1200으로 제한되었습니다.",
+      "1000레벨부터 보스 재료가 필요하도록 변경되었습니다.",
+      "보스 재료는 50레벨마다 교체됩니다.",
+      "필요 재료 수량은 25레벨마다 1개씩 증가합니다.",
+      "1200 이후 강화는 추후 업데이트에서 공개됩니다."
+    ]
+  },
+  {
+    id: "2026-06-20-combat-recovery-1",
+    title: "전투 회복 업데이트",
+    lines: [
+      "기존 물고기 전투 스탯이 새 전투 시스템 기준으로 재생성됩니다.",
+      "전투 상태 표시가 정상 / 회복 중으로 정리되었습니다.",
+      "회복 중인 물고기도 전투에 참가할 수 있습니다.",
+      "회복 중인 물고기가 포함된 상태로 전투를 시작하면 확인이 필요합니다.",
+      "전투 종료 후 살아남은 물고기는 체력이 모두 회복됩니다."
     ]
   }
 ];
@@ -250,7 +295,9 @@ function normalizeBossProgress(value){
   return {
     defeated:value.defeated || {},
     hp:value.hp || {},
-    materials:value.materials || {}
+    materials:value.materials || {},
+    selectedBossId:value.selectedBossId || "",
+    cooldownUntil:Number(value.cooldownUntil || 0)
   };
 }
 
@@ -329,7 +376,7 @@ function resetGameData(){
   unlockedTitles = [];
   equippedTitle = "";
   seenUpdateNoticeIds = [];
-  bossProgress = {defeated:{}, hp:{}, materials:{}};
+  bossProgress = {defeated:{}, hp:{}, materials:{}, cooldownUntil:0};
   isBossMenu = false;
   bossPrepIndexes = [];
   bucketSortOrder = "내림차순";
@@ -481,6 +528,7 @@ async function loginUser(){
     localStorage.setItem("textFishingCurrentUser", currentUser);
 
     applyGameState(data.gameState);
+    migrateCombatStatsToCurrentVersion();
     updateWallet();
 
     try{
@@ -736,7 +784,7 @@ async function showRanking(){
 }
 
 async function announceEternalCatch(fish){
-  if(!currentUser || fish.grade !== "영원") return;
+  if(!currentUser || !["영원","공허"].includes(fish.grade)) return;
 
   try{
     await db.collection("serverAlerts").add({
@@ -879,11 +927,14 @@ const specialFishEmoji = {
   "얼어붙은 마음":"🧊",
   "빛나는 마음":"✨",
   "불타는 마음":"🔥",
-  "무한한 시간":"♾️"
+  "무한한 시간":"♾️",
+  "잃어버린 첫 번째 편지 조각 ✉️":"✉️",
+  "잃어버린 두 번째 편지 조각 ✉️":"✉️",
+  "잃어버린 세 번째 편지 조각 ✉️":"✉️"
 };
 
 function displayFishName(name){
-  return specialFishEmoji[name] ? name + " " + specialFishEmoji[name] : name;
+  return specialFishEmoji[name] && !String(name).includes(specialFishEmoji[name]) ? name + " " + specialFishEmoji[name] : name;
 }
 
 
@@ -1077,6 +1128,7 @@ const achievementList = [
   {name:"신화", desc:"신화 등급 50마리 수집", reward:2000000000, check:()=> (gradeCounts["신화"]||0) >= 50},
   {name:"초월자", desc:"초월 등급 50마리 수집", reward:100000000000, check:()=> (gradeCounts["초월"]||0) >= 50},
   {name:"불멸", desc:"영원 등급 50마리 수집", reward:2000000000000, check:()=> (gradeCounts["영원"]||0) >= 50},
+  {name:"공허", desc:"공허 등급 1개 수집", reward:5000000000000, check:()=> (gradeCounts["공허"]||0) >= 1},
 
   {name:"초보", desc:"10회 낚시", reward:200000, check:()=> totalFishingCount >= 10},
   {name:"베테랑", desc:"100회 낚시", reward:20000000, check:()=> totalFishingCount >= 100},
@@ -1084,6 +1136,7 @@ const achievementList = [
   {name:"거장", desc:"10,000회 낚시", reward:2000000000000, check:()=> totalFishingCount >= 10000},
 
   {name:"만렙", desc:"낚싯대 Lv.1000 달성", reward:0, check:()=> rodLevel >= 1000},
+  {name:"초월 낚싯대", desc:"낚싯대 Lv.1200 달성", reward:0, check:()=> rodLevel >= 1200},
   {name:"행운아", desc:"영원 등급 1마리 수집", reward:7777777, check:()=> (gradeCounts["영원"]||0) >= 1},
   {name:"드래곤 헌터", desc:"용 계열 9종 도감 등록", reward:10000000000, check:()=> {
     const dragons = [
@@ -1201,11 +1254,13 @@ function getOwnedTitles(){
     "신화",
     "초월자",
     "불멸",
+    "공허",
     "초보",
     "베테랑",
     "중독자",
     "거장",
     "만렙",
+    "초월 낚싯대",
     "행운아",
     "드래곤 헌터",
     "부자",
@@ -1421,55 +1476,49 @@ function upgradeResearch(which){
 
 const combatAttackRanges = {
   "일반":[30,150], "희귀":[100,500], "영웅":[500,2000], "전설":[2000,8000],
-  "신화":[8000,20000], "초월":[20000,50000], "영원":[50000,100000]
+  "신화":[8000,20000], "초월":[20000,50000], "영원":[50000,100000], "공허":[100000,250000]
 };
 
 const combatHpRanges = {
   "일반":[150,900], "희귀":[500,3000], "영웅":[2500,12000], "전설":[10000,80000],
-  "신화":[40000,180000], "초월":[120000,500000], "영원":[300000,1000000]
+  "신화":[40000,180000], "초월":[120000,500000], "영원":[300000,1000000], "공허":[800000,2500000]
 };
 
 const materialInfo = {
-  "심연의 촉수":"크라켄의 힘이 깃든 촉수 조각.",
-  "리바이어던의 코어":"심해의 지배자 리바이어던의 힘이 응축된 코어."
+  "심연의 촉수":"크라켄에게서 얻을 수 있는 촉수 조각.",
+  "히드라의 독니":"히드라에게서 얻을 수 있는 맹독이 서린 독니.",
+  "리바이어던의 코어":"리바이어던에게서 얻을 수 있는 심해의 코어.",
+  "고대의 비늘":"베히모스에게서 얻을 수 있는 단단한 고대 비늘."
 };
 
 const bossList = [
   {
-    id:"kraken",
-    name:"심해의 크라켄",
-    grade:"영웅",
-    color:"#d2a8ff",
-    hp:50000,
-    attack:2500,
-    dodge:5,
-    critRate:10,
-    critDamage:180,
-    reward:1250000000,
-    drop:"심연의 촉수",
-    patterns:[
-      "촉수 강타 : 25% 확률로 피해 1.5배",
-      "먹물 뿌리기 : 15% 확률로 이번 공격의 회피율 감소"
-    ],
+    id:"kraken", name:"크라켄", grade:"영웅", color:"#d2a8ff",
+    hp:50000, attack:2500, dodge:5, critRate:10, critDamage:180, skillRate:25,
+    reward:1250000000, drop:"심연의 촉수",
+    skillName:"촉수 강타", skillDesc:"공격력 150% 피해",
     desc:"깊은 심해에 숨어있던 거대 크라켄.\n수많은 낚시꾼들을 바다 아래로 끌고 갔다."
   },
   {
-    id:"leviathan",
-    name:"리바이어던",
-    grade:"전설",
-    color:"#ff4d4f",
-    hp:500000,
-    attack:12000,
-    dodge:12,
-    critRate:15,
-    critDamage:220,
-    reward:25000000000,
-    drop:"리바이어던의 코어",
-    patterns:[
-      "심해 압박 : 25% 확률로 추가 피해",
-      "바다 가르기 : 15% 확률로 치명타 확률 증가"
-    ],
+    id:"hydra", name:"히드라", grade:"영웅", color:"#d2a8ff",
+    hp:150000, attack:6000, dodge:7, critRate:12, critDamage:190, skillRate:25,
+    reward:5000000000, drop:"히드라의 독니",
+    skillName:"독니 물어뜯기", skillDesc:"공격력 180% 피해",
+    desc:"바다 깊은 곳에서 여러 머리를 숨긴 채 먹잇감을 기다리는 괴수."
+  },
+  {
+    id:"leviathan", name:"리바이어던", grade:"신화", color:"#ff4d4f",
+    hp:500000, attack:12000, dodge:12, critRate:15, critDamage:220, skillRate:20,
+    reward:25000000000, drop:"리바이어던의 코어",
+    skillName:"대해일", skillDesc:"준비된 모든 물고기에게 공격력 100% 피해",
     desc:"전설 속에서만 존재한다고 여겨졌던 심해의 지배자.\n거대한 몸으로 바다를 가르며 지나갈 때마다\n수많은 생명체가 모습을 감춘다고 한다."
+  },
+  {
+    id:"behemoth", name:"베히모스", grade:"신화", color:"#ff4d4f",
+    hp:1500000, attack:25000, dodge:8, critRate:18, critDamage:240, skillRate:20,
+    reward:100000000000, drop:"고대의 비늘",
+    skillName:"대지 붕괴", skillDesc:"공격력 250% 피해",
+    desc:"심연 아래 잠들어 있던 거대한 고대 생명체."
   }
 ];
 
@@ -1509,36 +1558,86 @@ function randomInt(min,max){
 }
 
 function randomDodgeBySize(f){
-  if(f.grade === "영원") return Math.round((10 + Math.random() * 20) * 10) / 10;
+  if(["영원","공허"].includes(f.grade)) return Math.round((10 + Math.random() * 20) * 10) / 10;
   const ratio = getSizeRatio(f);
   const base = 20 - ratio * 18;
   const noise = (Math.random() * 6) - 3;
   return Math.round(clamp(base + noise, 1, 20) * 10) / 10;
 }
 
+function rollStarTier(){
+  const r = Math.random() * 100;
+  if(r < 2) return 3;
+  if(r < 10) return 2;
+  if(r < 30) return 1;
+  return 0;
+}
+
+function starText(tier){
+  if(tier === 3) return " ★★★";
+  if(tier === 2) return " ★★";
+  if(tier === 1) return " ★";
+  return "";
+}
+
+function rollByStarRange(min,max,tier,ratio=0.5){
+  const multiplier = tier === 3 ? 10 : tier === 2 ? 5 : tier === 1 ? 3 : 1;
+  const scaledMin = min * multiplier;
+  const scaledMax = max * multiplier;
+
+  if(tier === 0){
+    return weightedRandomBySize(min, max, ratio);
+  }
+
+  return randomInt(Math.floor(scaledMin), Math.floor(scaledMax));
+}
+
 function makeCombatStats(f){
   if(!f || f.grade === "쓰레기"){
-    return {attack:0, hp:0, maxHp:0, dodge:0, critRate:0, critDamage:0, status:"전투 불가"};
+    return {attack:0, hp:0, maxHp:0, dodge:0, critRate:0, critDamage:0, status:"전투 불가", stars:{attack:0,hp:0,dodge:0,critRate:0,critDamage:0}};
   }
+
   const atkRange = combatAttackRanges[f.grade] || [10,50];
   const hpRange = combatHpRanges[f.grade] || [50,200];
   const ratio = getSizeRatio(f);
-  const hp = randomInt(hpRange[0], hpRange[1]);
+
+  const stars = {
+    attack:rollStarTier(),
+    hp:rollStarTier(),
+    dodge:rollStarTier(),
+    critRate:rollStarTier(),
+    critDamage:rollStarTier()
+  };
+
+  const attack = rollByStarRange(atkRange[0], atkRange[1], stars.attack, ratio);
+  const hp = rollByStarRange(hpRange[0], hpRange[1], stars.hp, 0.5);
+
+  const dodgeBase = randomDodgeBySize(f);
+  const dodgeMultiplier = stars.dodge === 3 ? 10 : stars.dodge === 2 ? 5 : stars.dodge === 1 ? 3 : 1;
+  const dodge = Math.round(clamp(dodgeBase * dodgeMultiplier, 1, 50) * 10) / 10;
+
+  const critRateBase = Math.round((1 + Math.random() * 29) * 10) / 10;
+  const critRateMultiplier = stars.critRate === 3 ? 10 : stars.critRate === 2 ? 5 : stars.critRate === 1 ? 3 : 1;
+  const critRate = Math.round(clamp(critRateBase * critRateMultiplier, 1, 50) * 10) / 10;
+
+  const critDamageBase = Math.round(150 + Math.random() * 150);
+  const critDamageMultiplier = stars.critDamage === 3 ? 10 : stars.critDamage === 2 ? 5 : stars.critDamage === 1 ? 3 : 1;
+  const critDamage = Math.round(clamp(critDamageBase * critDamageMultiplier, 150, 500));
 
   return {
-    attack:weightedRandomBySize(atkRange[0], atkRange[1], ratio),
+    attack:attack,
     hp:hp,
     maxHp:hp,
-    dodge:randomDodgeBySize(f),
-    critRate:Math.round((1 + Math.random() * 29) * 10) / 10,
-    critDamage:Math.round(150 + Math.random() * 150),
-    status:"정상"
+    dodge:dodge,
+    critRate:critRate,
+    critDamage:critDamage,
+    status:"정상",
+    stars:stars
   };
 }
 
 function getStunMinutes(grade){
-  const map = {"일반":1,"희귀":3,"영웅":5,"전설":7,"신화":10,"초월":20,"영원":30};
-  return map[grade] || 1;
+  return 10;
 }
 
 function formatRemain(ms){
@@ -1555,7 +1654,9 @@ function recoverStunnedFish(){
 
   bucket.forEach(f => {
     const c = ensureCombatStats(f);
-    if(c.status === "기절" && c.stunUntil && now >= c.stunUntil){
+    if(c.status === "기절") c.status = "회복 중";
+
+    if(c.status === "회복 중" && c.stunUntil && now >= c.stunUntil){
       c.status = "정상";
       c.hp = c.maxHp || c.hp || 1;
       delete c.stunUntil;
@@ -1565,6 +1666,7 @@ function recoverStunnedFish(){
 
   if(changed) saveGame();
 }
+
 
 function ensureCombatStats(f){
   if(!f.combat) f.combat = makeCombatStats(f);
@@ -1577,9 +1679,11 @@ function ensureCombatStats(f){
     f.combat.dodge = 0;
     f.combat.critRate = 0;
     f.combat.critDamage = 0;
+    f.combat.stars = {attack:0,hp:0,dodge:0,critRate:0,critDamage:0};
     return f.combat;
   }
 
+  if(!f.combat.stars) f.combat.stars = {attack:0,hp:0,dodge:0,critRate:0,critDamage:0};
   if(!f.combat.maxHp) f.combat.maxHp = f.combat.hp || 1;
   if(f.combat.hp === undefined || f.combat.hp === null) f.combat.hp = f.combat.maxHp;
   if(f.combat.critRate === undefined) f.combat.critRate = Math.round((1 + Math.random() * 29) * 10) / 10;
@@ -1588,38 +1692,71 @@ function ensureCombatStats(f){
 
   return f.combat;
 }
+function resetAllCombatStats(){
+  let changed = false;
+
+  bucket.forEach(f => {
+    f.combat = makeCombatStats(f);
+    changed = true;
+  });
+
+  if(changed) saveGame();
+}
+
+function migrateCombatStatsToCurrentVersion(){
+  const targetVersion = 5;
+
+  if(window.__combatMigratedThisSession) return;
+  window.__combatMigratedThisSession = true;
+
+  let changed = false;
+
+  bucket.forEach(f => {
+    if(f && f.grade !== "쓰레기"){
+      f.combat = makeCombatStats(f);
+      f.combat.combatVersion = targetVersion;
+      changed = true;
+    } else if(f){
+      f.combat = makeCombatStats(f);
+      f.combat.combatVersion = targetVersion;
+      changed = true;
+    }
+  });
+
+  if(changed) saveGame();
+}
+
 
 function getStatRange(grade, stat){
   if(stat === "attack") return combatAttackRanges[grade] || [0,1];
   if(stat === "hp") return combatHpRanges[grade] || [0,1];
-  if(stat === "dodge") return grade === "영원" ? [10,30] : [1,20];
+  if(stat === "dodge") return ["영원","공허"].includes(grade) ? [10,30] : [1,20];
   if(stat === "critRate") return [1,30];
   if(stat === "critDamage") return [150,300];
   return [0,1];
 }
 
-function statStars(value, grade, stat){
+function statStars(value, grade, stat, combat=null){
   if(grade === "쓰레기") return "";
-  const range = getStatRange(grade, stat);
-  const min = range[0], max = range[1];
-  if(max <= min) return "";
-  const ratio = clamp((Number(value) - min) / (max - min), 0, 1);
-  if(ratio >= 0.99) return " ★★★";
-  if(ratio >= 0.90) return " ★★";
-  if(ratio >= 0.70) return " ★";
+  if(combat && combat.stars) return starText(combat.stars[stat] || 0);
   return "";
 }
 
 function getCombatStatusText(f){
   const c = ensureCombatStats(f);
 
-  if(c.status === "기절" && c.stunUntil){
+  if(c.status === "기절") c.status = "회복 중";
+
+  if(c.status === "회복 중" && c.stunUntil){
     const left = c.stunUntil - Date.now();
-    if(left > 0) return "기절 (" + formatRemain(left) + ")";
+    if(left > 0) return "회복 중 (" + formatRemain(left) + ")";
   }
 
-  return c.status || "정상";
+  if(c.status === "회복 중") return "회복 중";
+
+  return "정상";
 }
+
 
 function buildFishDetailText(displayNumber){
   recoverStunnedFish();
@@ -1640,11 +1777,11 @@ function buildFishDetailText(displayNumber){
     return s;
   }
 
-  s += "공격력" + statStars(c.attack, f.grade, "attack") + "\n" + Number(c.attack).toLocaleString() + "\n\n";
-  s += "체력" + statStars(c.maxHp, f.grade, "hp") + "\n" + Number(c.hp).toLocaleString() + " / " + Number(c.maxHp).toLocaleString() + "\n\n";
-  s += "회피율" + statStars(c.dodge, f.grade, "dodge") + "\n" + Number(c.dodge).toFixed(1) + "%\n\n";
-  s += "치명타 확률" + statStars(c.critRate, f.grade, "critRate") + "\n" + Number(c.critRate).toFixed(1) + "%\n\n";
-  s += "치명타 피해" + statStars(c.critDamage, f.grade, "critDamage") + "\n" + Number(c.critDamage).toFixed(0) + "%\n\n";
+  s += "공격력" + statStars(c.attack, f.grade, "attack", c) + "\n" + Number(c.attack).toLocaleString() + "\n\n";
+  s += "체력" + statStars(c.maxHp, f.grade, "hp", c) + "\n" + Number(c.hp).toLocaleString() + " / " + Number(c.maxHp).toLocaleString() + "\n\n";
+  s += "회피율" + statStars(c.dodge, f.grade, "dodge", c) + "\n" + Number(c.dodge).toFixed(1) + "%\n\n";
+  s += "치명타 확률" + statStars(c.critRate, f.grade, "critRate", c) + "\n" + Number(c.critRate).toFixed(1) + "%\n\n";
+  s += "치명타 피해" + statStars(c.critDamage, f.grade, "critDamage", c) + "\n" + Number(c.critDamage).toFixed(0) + "%\n\n";
   s += "상태\n" + getCombatStatusText(f);
   return s;
 }
@@ -1695,9 +1832,10 @@ function getBossById(id){
 }
 
 function isBossUnlocked(boss){
-  if(boss.id === "kraken") return true;
-  if(boss.id === "leviathan") return !!bossProgress.defeated.kraken;
-  return false;
+  const idx = bossList.findIndex(b => b.id === boss.id);
+  if(idx <= 0) return true;
+  const prev = bossList[idx - 1];
+  return !!bossProgress.defeated[prev.id];
 }
 
 function getSelectedBossId(){
@@ -1713,9 +1851,11 @@ function getCurrentBoss(){
     return getBossById(bossProgress.selectedBossId);
   }
 
-  if(!bossProgress.defeated.kraken) return getBossById("kraken");
-  if(!bossProgress.defeated.leviathan) return getBossById("leviathan");
-  return getBossById("leviathan");
+  for(const boss of bossList){
+    if(!bossProgress.defeated[boss.id]) return boss;
+  }
+
+  return bossList[bossList.length - 1];
 }
 
 function selectBoss(n){
@@ -1737,16 +1877,8 @@ function getBossHp(boss){
 }
 
 function getBossStatus(boss){
-  if(boss.id === "kraken"){
-    return bossProgress.defeated.kraken ? "처치 완료" : "도전 가능";
-  }
-
-  if(boss.id === "leviathan"){
-    if(!bossProgress.defeated.kraken) return "잠김";
-    return bossProgress.defeated.leviathan ? "처치 완료" : "도전 가능";
-  }
-
-  return "잠김";
+  if(!isBossUnlocked(boss)) return "잠김";
+  return bossProgress.defeated[boss.id] ? "처치 완료" : "도전 가능";
 }
 
 function addMaterial(name,count){
@@ -1761,6 +1893,8 @@ function buildBossBattleText(){
   s += "현재 보스\n" + bossColor(boss.name, boss) + "\n\n";
   s += "등급\n" + boss.grade + "\n\n";
   s += "HP\n" + hpBar(hp, boss.hp) + "\n\n";
+  const cooldownLeft = getBossCooldownLeft();
+  s += "쿨타임\n" + (cooldownLeft > 0 ? formatRemain(cooldownLeft) : "도전 가능") + "\n\n";
   s += "준비된 물고기\n" + bossPrepIndexes.length + " / 5\n\n";
   if(bossPrepIndexes.length > 0){
     bossPrepIndexes.forEach((idx,i)=>{
@@ -1783,20 +1917,21 @@ function showBossBattle(){
 function buildBossInfoText(){
   const boss = getCurrentBoss();
   const hp = getBossHp(boss);
-  let s = bossColor(boss.name, boss) + "\n\n";
+  let s = bossColor(boss.name, boss) + " [" + boss.grade + "]\n\n";
   s += line() + "\n\n";
-  s += "등급\n" + boss.grade + "\n\n";
   s += "설명\n" + boss.desc + "\n\n";
   s += line() + "\n\n";
-  s += "패턴\n";
-  boss.patterns.forEach(p => s += p + "\n");
-  s += "\n" + line() + "\n\n";
-  s += "HP\n" + hpBar(hp, boss.hp) + "\n\n";
+  s += "체력\n" + hpBar(hp, boss.hp) + "\n\n";
   s += "공격력\n" + boss.attack.toLocaleString() + "\n\n";
-  s += "회피율\n" + boss.dodge + "%\n\n";
-  s += "치명타 확률\n" + boss.critRate + "%\n\n";
-  s += "치명타 피해\n" + boss.critDamage + "%\n\n";
   s += "드랍\n" + boss.drop + "\n\n";
+  s += line() + "\n\n";
+  s += "스킬\n\n";
+  s += boss.skillName + "\n" + boss.skillDesc + "\n\n";
+  s += "패시브\n\n";
+  if(boss.id === "kraken") s += "먹물 난사\n회피 시도 시 회피 실패 처리\n\n";
+  else if(boss.id === "hydra") s += "재생\n매 턴 최대 체력의 5% 회복\n\n";
+  else if(boss.id === "leviathan") s += "심연의 분노\n체력 50% 이하 시 공격력 30% 증가\n\n";
+  else if(boss.id === "behemoth") s += "고대의 육체\n받는 피해 20% 감소\n\n";
   s += line();
   return s;
 }
@@ -1804,13 +1939,13 @@ function buildBossInfoText(){
 function showBossInfo(){ print(buildBossInfoText()); }
 
 function buildBossListText(){
-  let s = "보스목록\n\n" + line() + "\n\n";
+  let s = "보스목록\n\n────┬────────────────────\n";
   bossList.forEach((boss,i)=>{
     const selected = getCurrentBoss().id === boss.id ? " [선택됨]" : "";
-    s += bossColor(boss.name, boss) + " [" + getBossStatus(boss) + "]" + selected + "\n";
-    if(i !== bossList.length - 1) s += "\n" + line() + "\n\n";
+    s += fullWidthNumber(i+1) + "│" + bossColor(boss.name + " [" + getBossStatus(boss) + "]" + selected, boss) + "\n";
+    if(i !== bossList.length - 1) s += "────┼────────────────────\n";
   });
-  s += "\n" + line() + "\n\n";
+  s += "────┴────────────────────\n\n";
   s += "명령어 : 보스선택 번호";
   return s;
 }
@@ -1830,11 +1965,17 @@ function prepareBossFish(displayNumber){
   const c = ensureCombatStats(f);
 
   if(f.grade === "쓰레기") return print("쓰레기 등급은 전투에 참가할 수 없습니다.");
-  if(c.status === "기절") return print("기절한 물고기는 전투에 참가할 수 없습니다.\n남은 시간 : " + formatRemain((c.stunUntil || Date.now()) - Date.now()));
+  if(c.status === "기절") c.status = "회복 중";
 
   bossPrepIndexes.push(idx);
+  pendingRecoveryBattleConfirm = false;
   saveGame();
-  print(color(lineFish(f), f.grade) + "\n\n전투 준비 완료\n\n" + bossPrepIndexes.length + " / 5");
+
+  let msg = color(lineFish(f), f.grade) + "\n\n전투 준비 완료\n\n" + bossPrepIndexes.length + " / 5";
+  if(c.status === "회복 중"){
+    msg += "\n\n주의 : 이 물고기는 회복 중입니다.";
+  }
+  print(msg);
 }
 
 function unprepareBossFish(displayNumber){
@@ -1862,9 +2003,10 @@ function calcDamage(attackerAttack, critRate, critDamage){
 function stunFish(f){
   const c = ensureCombatStats(f);
   c.hp = 0;
-  c.status = "기절";
+  c.status = "회복 중";
   c.stunUntil = Date.now() + getStunMinutes(f.grade) * 60 * 1000;
 }
+
 
 function pickBossPattern(boss){
   const r = Math.random() * 100;
@@ -1882,97 +2024,202 @@ function pickBossPattern(boss){
   return "normal";
 }
 
+function getBossCooldownLeft(){
+  return Math.max(0, (bossProgress.cooldownUntil || 0) - Date.now());
+}
+
+function isBossCooldownActive(){
+  return getBossCooldownLeft() > 0;
+}
+
+function setBossCooldown(){
+  bossProgress.cooldownUntil = Date.now() + 5 * 60 * 1000;
+}
+
+function getAlivePreparedFishes(){
+  return bossPrepIndexes
+    .map(idx => bucket[idx])
+    .filter(f => {
+      if(!f || f.grade === "쓰레기") return false;
+      const c = ensureCombatStats(f);
+      if(c.status === "기절") c.status = "회복 중";
+      if(c.status === "회복 중" && c.hp <= 0) c.hp = 1;
+      return c.hp > 0;
+    });
+}
+
+function bossSingleTargetAttack(boss, targets, battleLog, bossAttackMultiplier=1, skillName="공격", ignoreDodge=false){
+  const alive = targets.filter(f => ensureCombatStats(f).hp > 0 && ensureCombatStats(f).status !== "기절");
+  if(alive.length === 0) return;
+
+  const f = alive[Math.floor(Math.random() * alive.length)];
+  const c = ensureCombatStats(f);
+  let bossAttack = Math.floor(boss.attack * bossAttackMultiplier);
+  if(boss.id === "leviathan" && boss._enraged) bossAttack = Math.floor(bossAttack * 1.3);
+
+  const dodgeRoll = Math.random() * 100 < c.dodge;
+
+  if(dodgeRoll && !ignoreDodge){
+    battleLog.push(bossColor(boss.name, boss) + "의 " + skillName + "\n" + color(lineFish(f), f.grade) + " 회피");
+    return;
+  }
+
+  const bossHit = calcDamage(bossAttack, boss.critRate, boss.critDamage);
+  c.hp = Math.max(0, c.hp - bossHit.damage);
+
+  let logText = bossColor(boss.name, boss) + "의 " + skillName + "\n";
+  if(dodgeRoll && ignoreDodge) logText += "회피 시도!\n먹물 때문에 회피에 실패했습니다.\n";
+  if(bossHit.crit) logText += "치명타!\n";
+  logText += bossHit.damage.toLocaleString() + " 피해\n\n";
+  logText += color(lineFish(f), f.grade) + "\n" + hpBar(c.hp, c.maxHp);
+  battleLog.push(logText);
+
+  if(c.hp <= 0){
+    stunFish(f);
+    battleLog.push(color(lineFish(f), f.grade) + "\n체력이 0이 되어 기절했습니다.");
+  }
+}
+
+function bossAllTargetAttack(boss, targets, battleLog){
+  const logs = [];
+  let bossAttack = boss.attack;
+  if(boss.id === "leviathan" && boss._enraged) bossAttack = Math.floor(bossAttack * 1.3);
+
+  targets.forEach(f => {
+    const c = ensureCombatStats(f);
+    if(c.hp <= 0 || c.status === "기절") return;
+
+    const dodgeRoll = Math.random() * 100 < c.dodge;
+    if(dodgeRoll){
+      logs.push(color(lineFish(f), f.grade) + "\n회피");
+      return;
+    }
+
+    const hit = calcDamage(bossAttack, boss.critRate, boss.critDamage);
+    c.hp = Math.max(0, c.hp - hit.damage);
+
+    let entry = color(lineFish(f), f.grade) + "\n";
+    if(hit.crit) entry += "치명타!\n";
+    entry += hit.damage.toLocaleString() + " 피해\n";
+    entry += hpBar(c.hp, c.maxHp);
+
+    if(c.hp <= 0){
+      stunFish(f);
+      entry += "\n체력이 0이 되어 기절했습니다.";
+    }
+
+    logs.push(entry);
+  });
+
+  if(logs.length > 0) battleLog.push(bossColor(boss.name, boss) + "의 대해일!\n\n" + logs.join("\n\n"));
+}
+
+function applyBossPassiveBeforeFishAttack(boss, damage){
+  if(boss.id === "behemoth") return Math.floor(damage * 0.8);
+  return damage;
+}
+
+function applyBossEndTurnPassive(boss, bossHp, battleLog){
+  if(boss.id === "hydra" && bossHp > 0){
+    const heal = Math.floor(boss.hp * 0.05);
+    const before = bossHp;
+    bossHp = Math.min(boss.hp, bossHp + heal);
+    if(bossHp > before) battleLog.push(bossColor(boss.name, boss) + "가 재생했습니다.\n" + (bossHp - before).toLocaleString() + " 회복\n\n" + hpBar(bossHp, boss.hp));
+  }
+
+  if(boss.id === "leviathan" && bossHp > 0 && bossHp <= boss.hp * 0.5 && !boss._enraged){
+    boss._enraged = true;
+    battleLog.push(bossColor(boss.name, boss) + "이 분노했습니다!\n공격력이 증가했습니다.");
+  }
+
+  return bossHp;
+}
+
+function getPreparedRecoveryFishes(){
+  return bossPrepIndexes
+    .map(idx => bucket[idx])
+    .filter(f => f && f.grade !== "쓰레기" && ensureCombatStats(f).status === "회복 중");
+}
+
 function runBossBattle(){
   if(!isBossMenu) return print("보스전에 입장한 뒤 사용할 수 있습니다.");
   recoverStunnedFish();
 
+  if(isBossCooldownActive()) return print("아직 보스전 쿨타임이 남아있습니다.\n\n남은 시간 : " + formatRemain(getBossCooldownLeft()));
   if(bossPrepIndexes.length === 0) return print("준비된 물고기가 없습니다.\n준비 번호 를 입력하세요.");
 
-  const boss = getCurrentBoss();
+  const recoveryFishes = getPreparedRecoveryFishes();
+  if(recoveryFishes.length > 0 && !pendingRecoveryBattleConfirm){
+    let msg = "회복 중인 물고기가 포함되어 있습니다.\n\n";
+    recoveryFishes.forEach(f => {
+      msg += color(lineFish(f), f.grade) + "\n";
+      msg += "상태 : " + getCombatStatusText(f) + "\n\n";
+    });
+    msg += "회복 중인 물고기도 전투에 참가합니다.\n\n계속하려면 전투 확인 을 입력하세요.";
+    pendingRecoveryBattleConfirm = true;
+    return print(msg.trim());
+  }
+
+  pendingRecoveryBattleConfirm = false;
+
+  const boss = {...getCurrentBoss(), _enraged:false};
   if(getBossStatus(boss) !== "도전 가능") return print("현재 도전 가능한 보스가 없습니다.");
 
   let bossHp = getBossHp(boss);
   let totalDamage = 0;
-  const participants = [];
+  const participants = getAlivePreparedFishes();
   const battleLog = [];
   let result = "처치 실패";
   let rewardMoney = 0;
   let rewardDrop = "";
 
-  for(const idx of bossPrepIndexes){
-    const f = bucket[idx];
-    if(!f) continue;
+  if(participants.length === 0) return print("전투 가능한 물고기가 없습니다.");
 
-    const c = ensureCombatStats(f);
-    if(f.grade === "쓰레기" || c.status === "기절") continue;
+  battleLog.push("전투 시작\n\n" + participants.map(f => color(lineFish(f), f.grade) + "\n" + hpBar(ensureCombatStats(f).hp, ensureCombatStats(f).maxHp)).join("\n\n"));
 
-    participants.push(f);
-    battleLog.push(color(lineFish(f), f.grade) + " 출전\n" + hpBar(c.hp, c.maxHp));
+  let turn = 1;
+  while(bossHp > 0 && participants.some(f => ensureCombatStats(f).hp > 0 && ensureCombatStats(f).status !== "기절") && turn <= 200){
+    battleLog.push("턴 " + turn);
 
-    while(c.hp > 0 && bossHp > 0){
-      if(Math.random() * 100 >= boss.dodge){
-        const hit = calcDamage(c.attack, c.critRate, c.critDamage);
-        bossHp = Math.max(0, bossHp - hit.damage);
-        totalDamage += hit.damage;
-
-        battleLog.push(
-          color(lineFish(f), f.grade) + " 공격\n" +
-          (hit.crit ? "치명타!\n" : "") +
-          hit.damage.toLocaleString() + " 피해\n\n" +
-          bossColor(boss.name, boss) + "\n" +
-          hpBar(bossHp, boss.hp)
-        );
-      } else {
-        battleLog.push(color(lineFish(f), f.grade) + " 공격\n" + bossColor(boss.name, boss) + " 회피");
-      }
-
+    for(const f of participants){
+      const c = ensureCombatStats(f);
+      if(c.hp <= 0 || c.status === "기절") continue;
       if(bossHp <= 0) break;
 
-      let bossAttack = boss.attack;
-      let bossCritRate = boss.critRate;
-      let fishDodge = c.dodge;
-      let patternText = "";
+      if(Math.random() * 100 >= boss.dodge){
+        const hit = calcDamage(c.attack, c.critRate, c.critDamage);
+        let damage = applyBossPassiveBeforeFishAttack(boss, hit.damage);
+        bossHp = Math.max(0, bossHp - damage);
+        totalDamage += damage;
 
-      const pattern = pickBossPattern(boss);
-
-      if(pattern === "tentacle"){
-        bossAttack = Math.floor(bossAttack * 1.5);
-        patternText = "촉수 강타\n";
-      } else if(pattern === "ink"){
-        fishDodge = Math.max(0, fishDodge / 2);
-        patternText = "먹물 뿌리기\n";
-      } else if(pattern === "pressure"){
-        bossAttack += Math.floor(c.hp * 0.2);
-        patternText = "심해 압박\n";
-      } else if(pattern === "slash"){
-        bossCritRate += 20;
-        patternText = "바다 가르기\n";
-      }
-
-      if(Math.random() * 100 >= fishDodge){
-        const bossHit = calcDamage(bossAttack, bossCritRate, boss.critDamage);
-        c.hp = Math.max(0, c.hp - bossHit.damage);
-
-        battleLog.push(
-          bossColor(boss.name, boss) + " 공격\n" +
-          patternText +
-          (bossHit.crit ? "치명타!\n" : "") +
-          bossHit.damage.toLocaleString() + " 피해\n\n" +
-          color(lineFish(f), f.grade) + "\n" +
-          hpBar(c.hp, c.maxHp)
-        );
+        let entry = color(lineFish(f), f.grade) + " 공격\n";
+        if(hit.crit) entry += "치명타!\n";
+        if(boss.id === "behemoth" && damage < hit.damage) entry += "베히모스가 피해를 감소시켰습니다.\n";
+        entry += damage.toLocaleString() + " 피해\n\n";
+        entry += bossColor(boss.name, boss) + "\n" + hpBar(bossHp, boss.hp);
+        battleLog.push(entry);
       } else {
-        battleLog.push(bossColor(boss.name, boss) + " 공격\n" + patternText + color(lineFish(f), f.grade) + " 회피");
-      }
-
-      if(c.hp <= 0){
-        stunFish(f);
-        battleLog.push(color(lineFish(f), f.grade) + "\n체력이 0이 되어 기절했습니다.");
-        break;
+        battleLog.push(color(lineFish(f), f.grade) + " 공격\n" + bossColor(boss.name, boss) + " 회피");
       }
     }
 
     if(bossHp <= 0) break;
+
+    bossHp = applyBossEndTurnPassive(boss, bossHp, battleLog);
+    const skillRoll = Math.random() * 100 < (boss.skillRate || 20);
+
+    if(skillRoll){
+      if(boss.id === "kraken") bossSingleTargetAttack(boss, participants, battleLog, 1.5, "촉수 강타", false);
+      else if(boss.id === "hydra") bossSingleTargetAttack(boss, participants, battleLog, 1.8, "독니 물어뜯기", false);
+      else if(boss.id === "leviathan") bossAllTargetAttack(boss, participants, battleLog);
+      else if(boss.id === "behemoth") bossSingleTargetAttack(boss, participants, battleLog, 2.5, "대지 붕괴", false);
+      else bossSingleTargetAttack(boss, participants, battleLog, 1, "공격", false);
+    } else {
+      if(boss.id === "kraken") bossSingleTargetAttack(boss, participants, battleLog, 1.2, "먹물 난사", true);
+      else bossSingleTargetAttack(boss, participants, battleLog, 1, "공격", false);
+    }
+
+    turn++;
   }
 
   bossProgress.hp[boss.id] = bossHp;
@@ -1988,9 +2235,19 @@ function runBossBattle(){
     bossProgress.hp[boss.id] = boss.hp;
   }
 
+  participants.forEach(f => {
+    const c = ensureCombatStats(f);
+    if(c.status !== "회복 중" && c.hp > 0){
+      c.hp = c.maxHp;
+      c.status = "정상";
+      delete c.stunUntil;
+    }
+  });
+
   const resultText = buildBattleResultText(boss, participants, totalDamage, result, rewardMoney, rewardDrop, battleLog);
   const summary = buildBattleSummaryText(boss, result, rewardMoney, rewardDrop);
 
+  setBossCooldown();
   bossPrepIndexes = [];
   saveGame();
 
@@ -2054,12 +2311,13 @@ function leaveBossMenu(){
   if(!isBossMenu) return print("보스전에 입장한 상태가 아닙니다.");
   isBossMenu = false;
   bossPrepIndexes = [];
+  pendingRecoveryBattleConfirm = false;
   print("보스전에서 나왔습니다.");
 }
 
 function isAllowedInBossMenu(cmd){
   if(!isBossMenu) return true;
-  if(cmd === "보스전" || cmd === "보스정보" || cmd === "보스목록" || cmd === "인벤토리" || cmd === "전투" || cmd === "나가기" || cmd === "명령어") return true;
+  if(cmd === "보스전" || cmd === "보스정보" || cmd === "보스목록" || cmd === "인벤토리" || cmd === "전투 확인" || cmd === "물고기도감" || cmd === "코어도감" || cmd === "전투" || cmd === "나가기" || cmd === "명령어") return true;
   if(cmd.startsWith("보스선택 ")) return true;
   if(cmd.startsWith("준비 ")) return true;
   if(cmd.startsWith("준비해제 ")) return true;
@@ -2080,32 +2338,12 @@ function updateWallet(){
 }
 
 function getUpgradeCost(level){
-  // 강화비용 기준점
-  // Lv.100 ≈ 7,500원
-  // Lv.200 ≈ 30,000원
-  // Lv.300 ≈ 150,000원
-  // Lv.400 ≈ 750,000원
-  // Lv.500 ≈ 3,500,000원
-  // Lv.600 ≈ 15,000,000원
-  // Lv.700 ≈ 75,000,000원
-  // Lv.800 ≈ 300,000,000원
-  // Lv.900 ≈ 1,500,000,000원
-  // Lv.950 ≈ 4,000,000,000원
-  // Lv.1000 ≈ 7,500,000,000원
-
   const points = [
-    [1, 1000],
-    [100, 7500],
-    [200, 30000],
-    [300, 150000],
-    [400, 750000],
-    [500, 3500000],
-    [600, 15000000],
-    [700, 75000000],
-    [800, 300000000],
-    [900, 1500000000],
-    [950, 4000000000],
-    [1000, 7500000000]
+    [1, 1000],[100, 7500],[200, 30000],[300, 150000],[400, 750000],
+    [500, 3500000],[600, 15000000],[700, 75000000],[800, 300000000],
+    [900, 1500000000],[950, 4000000000],[1000, 7500000000],
+    [1100, 15000000000],[1200, 30000000000],[1300, 75000000000],
+    [1400, 150000000000],[1500, 300000000000]
   ];
 
   if(level <= 1) return points[0][1];
@@ -2126,26 +2364,89 @@ function getUpgradeCost(level){
 
 function getUpgradeSuccessRate(level){
   if(level >= MAX_ROD) return 0;
-  const t = (level - 1) / (MAX_ROD - 1);
-  return Math.max(1, 100 - (99 * t)); // Lv.1 = 100%, Lv.1000 = 1%
+  if(level <= 1000){
+    const t = (level - 1) / (1000 - 1);
+    return Math.max(1, 100 - (99 * t));
+  }
+  const t = (level - 1000) / (1500 - 1000);
+  return Math.max(20, 100 - (80 * t));
+}
+
+function getCurrentPlayableMaxRod(){
+  return 1200;
+}
+
+function getBossMaterialRequirement(level){
+  if(level < 1000) return null;
+  if(level >= getCurrentPlayableMaxRod()) return "LOCKED";
+
+  let item = "";
+  let start = 1000;
+
+  if(level < 1050){ item = "심연의 촉수"; start = 1000; }
+  else if(level < 1100){ item = "히드라의 독니"; start = 1050; }
+  else if(level < 1150){ item = "리바이어던의 코어"; start = 1100; }
+  else if(level < 1200){ item = "고대의 비늘"; start = 1150; }
+  else return "LOCKED";
+
+  const amount = Math.floor((level - start) / 25) + 1;
+  return {item, amount};
+}
+
+function getRequiredBossMaterials(level){
+  const req = getBossMaterialRequirement(level);
+  if(!req || req === "LOCKED") return [];
+  return [{name:req.item, count:req.amount}];
+}
+
+function hasRequiredBossMaterials(level){
+  return getRequiredBossMaterials(level).every(m => (bossProgress.materials[m.name] || 0) >= m.count);
+}
+
+function formatRequiredBossMaterials(level){
+  const req = getRequiredBossMaterials(level);
+  if(req.length === 0) return "";
+  return req.map(m => m.name + " x" + m.count).join("\n");
+}
+
+function consumeRequiredBossMaterials(level){
+  getRequiredBossMaterials(level).forEach(m => {
+    bossProgress.materials[m.name] = Math.max(0, (bossProgress.materials[m.name] || 0) - m.count);
+  });
+}
+
+function getLockedUpgradeMessage(){
+  return "현재 버전의 최대 강화 레벨은 1200입니다.\n\n추후 업데이트에서 새로운 강화 단계가 추가될 예정입니다.";
 }
 
 function tryUpgradeSuccess(level){
   return Math.random() * 100 < getUpgradeSuccessRate(level);
 }
 
+function getRawGradeChances(){
+  if(rodLevel <= 1000){
+    const t = (rodLevel - 1) / (1000 - 1);
+    return [
+      {name:"쓰레기", chance: 18 - 17.5 * t},
+      {name:"일반", chance: 55 - 43 * t},
+      {name:"희귀", chance: 25 - 1 * t},
+      {name:"영웅", chance: 8 + 27 * t},
+      {name:"전설", chance: 2.2 + 27.8 * t},
+      {name:"신화", chance: 0.7 + 13.3 * t},
+      {name:"초월", chance: 0.1 + 6.9 * t},
+      {name:"영원", chance: rodLevel >= 400 ? 0.1 + ((rodLevel - 400) / (1000 - 400)) * 1.4 : 0},
+      {name:"공허", chance:0}
+    ];
+  }
+
+  const base = {"쓰레기":0.40,"일반":9.68,"희귀":19.35,"영웅":28.23,"전설":24.19,"신화":11.29,"초월":5.65,"영원":1.21,"공허":0};
+  const target = {"쓰레기":0,"일반":4,"희귀":14,"영웅":21,"전설":25,"신화":22,"초월":10,"영원":3,"공허":1};
+  const t = Math.min(1, (rodLevel - 1000) / 500);
+  return Object.keys(target).map(name => ({name, chance: base[name] + (target[name] - base[name]) * t}));
+}
+
 function pickGrade(){
-  const t = (rodLevel - 1) / (MAX_ROD - 1);
-  let chances = [
-    {name:"쓰레기", chance: 18 - 17.5 * t},
-    {name:"일반", chance: 55 - 43 * t},
-    {name:"희귀", chance: 25 - 1 * t},
-    {name:"영웅", chance: 8 + 27 * t},
-    {name:"전설", chance: 2.2 + 27.8 * t},
-    {name:"신화", chance: 0.7 + 13.3 * t},
-    {name:"초월", chance: 0.1 + 6.9 * t},
-    {name:"영원", chance: rodLevel >= 400 ? 0.1 + ((rodLevel - 400) / (MAX_ROD - 400)) * 1.4 : 0}
-  ];
+  let chances = getRawGradeChances();
   chances = chances.map(x => ({...x, chance: Math.max(0, x.chance)}));
   let total = chances.reduce((s,g)=>s+g.chance,0);
   let r = Math.random()*total;
@@ -2177,25 +2478,10 @@ function getEscapeChance(){
 }
 
 function getCurrentGradeChances(){
-  const t = (rodLevel - 1) / (MAX_ROD - 1);
-  let chances = [
-    {name:"쓰레기", chance: 18 - 17.5 * t},
-    {name:"일반", chance: 55 - 43 * t},
-    {name:"희귀", chance: 25 - 1 * t},
-    {name:"영웅", chance: 8 + 27 * t},
-    {name:"전설", chance: 2.2 + 27.8 * t},
-    {name:"신화", chance: 0.7 + 13.3 * t},
-    {name:"초월", chance: 0.1 + 6.9 * t},
-    {name:"영원", chance: rodLevel >= 400 ? 0.1 + ((rodLevel - 400) / (MAX_ROD - 400)) * 1.4 : 0}
-  ];
-
+  let chances = getRawGradeChances();
   chances = chances.map(x => ({...x, chance: Math.max(0, x.chance)}));
   const total = chances.reduce((s,g)=>s+g.chance,0);
-
-  return chances.map(x => ({
-    name:x.name,
-    chance: total === 0 ? 0 : x.chance / total * 100
-  }));
+  return chances.map(x => ({name:x.name, chance: total === 0 ? 0 : x.chance / total * 100}));
 }
 
 function makePrice(g,size){
@@ -2428,36 +2714,58 @@ function sellAll(){
   print(msg);
 }
 
-function buildCollectionText(){
-  let s="도감\n\n";
+function buildFishCollectionText(){
+  let s="물고기도감\n\n";
   let index=1;
   for(const grade of Object.keys(fishByGrade)){
     s+=color("["+grade+"]", grade)+"\n";
-    for(const name of [...fishByGrade[grade]].sort((a,b)=>a.localeCompare(b,"ko"))){
+    s+="────┬────────────────────\n";
+    const names = [...fishByGrade[grade]].sort((a,b)=>a.localeCompare(b,"ko"));
+    names.forEach((name,i)=>{
       const c=collection[name];
-      if(c){
-        s+=fullWidthNumber(index)+"│"+color(name, grade)+"\n";
-      } else {
-        s+=fullWidthNumber(index)+"│"+color("???", grade)+"\n";
-      }
+      const shown = c ? color("["+grade+"] "+displayFishName(name), grade) : color("???", grade);
+      s+=fullWidthNumber(index)+"│"+shown+"\n";
+      if(i!==names.length-1) s+="────┼────────────────────\n";
       index++;
-    }
-    s+="\n";
+    });
+    s+="────┴────────────────────\n\n";
   }
-  s+="────────────────────\n";
   s+="도감 진행률 : "+Object.keys(collection).length+"/"+allFishCount();
   return s;
 }
 
-function showCollection(){
+function showFishCollection(){
   const got = Object.keys(collection).length;
   const total = allFishCount();
   const percent = total === 0 ? 0 : (got / total * 100).toFixed(1);
-  const summary =
-    "도감 진행률\n\n" +
-    got + " / " + total + "\n" +
-    percent + "%";
-  printPreview("도감", summary, "도감 전체보기", buildCollectionText());
+  printPreview("물고기도감", "물고기도감 진행률\n\n" + got + " / " + total + "\n" + percent + "%", "물고기도감 전체보기", buildFishCollectionText());
+}
+
+function buildCoreCollectionText(){
+  let s="코어도감\n\n";
+  s+="────┬────────────────────\n";
+  bossList.forEach((boss,i)=>{
+    const owned = (bossProgress.materials && bossProgress.materials[boss.drop]) || 0;
+    const shown = owned > 0 || bossProgress.defeated[boss.id] ? boss.drop + " x" + owned.toLocaleString() : "???";
+    s+=fullWidthNumber(i+1)+"│"+shown+"\n";
+    if(i!==bossList.length-1) s+="────┼────────────────────\n";
+  });
+  s+="────┴────────────────────";
+  return s;
+}
+
+function showCoreCollection(){
+  const got = bossList.filter(b => ((bossProgress.materials && bossProgress.materials[b.drop]) || 0) > 0 || bossProgress.defeated[b.id]).length;
+  const total = bossList.length;
+  printPreview("코어도감", "코어도감 진행률\n\n" + got + " / " + total, "코어도감 전체보기", buildCoreCollectionText());
+}
+
+function buildCollectionText(){
+  return "도감\n\n물고기도감\n코어도감\n\n명령어 : 물고기도감 / 코어도감";
+}
+
+function showCollection(){
+  print(buildCollectionText());
 }
 
 async function showWallet(){
@@ -2489,7 +2797,10 @@ async function showOtherWallet(nickname){
 }
 
 function upgradeOne(){
-  if(rodLevel>=MAX_ROD) return print("이미 최대 레벨입니다.\nLv."+MAX_ROD);
+  if(rodLevel>=getCurrentPlayableMaxRod()) return print(getLockedUpgradeMessage());
+
+  const materialReq = getBossMaterialRequirement(rodLevel);
+  if(materialReq === "LOCKED") return print(getLockedUpgradeMessage());
 
   const cost=getUpgradeCost(rodLevel);
   const rate=getUpgradeSuccessRate(rodLevel);
@@ -2510,7 +2821,7 @@ function upgradeOne(){
 }
 
 function upgradeMax(){
-  if(rodLevel>=MAX_ROD) return print("이미 최대 레벨입니다.\nLv."+MAX_ROD);
+  if(rodLevel>=getCurrentPlayableMaxRod()) return print(getLockedUpgradeMessage());
 
   const before=rodLevel;
   let spent=0;
@@ -2518,7 +2829,7 @@ function upgradeMax(){
   let fail=0;
   let attempts=0;
 
-  while(rodLevel<MAX_ROD){
+  while(rodLevel<getCurrentPlayableMaxRod()){
     const cost=getUpgradeCost(rodLevel);
     if(money<cost) break;
 
@@ -2552,8 +2863,12 @@ function upgradeMax(){
   msg += "사용 금액 : "+formatMoney(spent)+"\n";
   msg += "남은 돈 : "+formatMoney(money);
 
-  if(rodLevel<MAX_ROD && attempts>=10000){
+  if(rodLevel>=getCurrentPlayableMaxRod()){
+    msg += "\n\n현재 버전의 최대 강화 레벨에 도달했습니다.\n추후 업데이트에서 새로운 강화 단계가 추가될 예정입니다.";
+  } else if(rodLevel<MAX_ROD && attempts>=10000){
     msg += "\n\n시도 횟수가 너무 많아 자동 중단되었습니다.";
+  } else if(rodLevel>=1000 && !hasRequiredBossMaterials(rodLevel)){
+    msg += "\n\n강화 재료가 부족하여 중단되었습니다.\n필요 재료\n" + formatRequiredBossMaterials(rodLevel);
   }
 
   print(msg);
@@ -2577,6 +2892,8 @@ function showCommands(){
 양동이
 양동이 닉네임
 도감
+물고기도감
+코어도감
 내정보
 정보 번호
 보스전
@@ -2587,6 +2904,7 @@ function showCommands(){
 준비 번호
 준비해제 번호
 전투
+전투 확인
 나가기
 지갑
 지갑 닉네임
@@ -2630,7 +2948,7 @@ function showCommands(){
 
 function buildGameInfoText(){
   const chanceLines = getCurrentGradeChances()
-    .map(x => x.name + " : " + x.chance.toFixed(x.name==="영원" ? 2 : 1) + "%")
+    .map(x => x.name + " : " + x.chance.toFixed(["영원","공허"].includes(x.name) ? 2 : 1) + "%")
     .join("\n");
 
   return `내정보
@@ -2640,14 +2958,15 @@ function buildGameInfoText(){
 현재 돈 : ${formatMoney(money)}
 총 수익 : ${formatMoney(totalEarned)}
 낚싯대 레벨 : ${rodLevel}/${MAX_ROD}
+현재 강화 가능 레벨 : 1200
 낚시 횟수 : ${totalFishingCount.toLocaleString()}회
 현재 칭호 : ${getCurrentTitle() || "없음"}
 업적 달성률 : ${completedAchievements.length}/${achievementList.length}
 
 [강화]
 
-강화 성공률 : ${rodLevel>=MAX_ROD ? "최대 레벨" : getUpgradeSuccessRate(rodLevel).toFixed(1)+"%"}
-다음 강화 비용 : ${rodLevel>=MAX_ROD ? "최대 레벨" : formatMoney(getUpgradeCost(rodLevel))}
+강화 성공률 : ${rodLevel>=getCurrentPlayableMaxRod() ? "추후 업데이트 예정" : getUpgradeSuccessRate(rodLevel).toFixed(1)+"%"}
+다음 강화 비용 : ${rodLevel>=getCurrentPlayableMaxRod() ? "추후 업데이트 예정" : formatMoney(getUpgradeCost(rodLevel))}
 
 [연구소]
 
@@ -2666,7 +2985,7 @@ ${chanceLines}
 [도주 확률]
 
 일반~신화 : ${getEscapeChance().toFixed(1)}%
-쓰레기/초월/영원 : 0%
+쓰레기/초월/영원/공허 : 0%
 
 [시세]
 
@@ -2678,7 +2997,7 @@ ${chanceLines}
 function showGameInfo(){
   const summary =
     "현재 돈 : " + formatMoney(money) + "\n" +
-    "낚싯대 : Lv." + rodLevel + "/" + MAX_ROD + "\n" +
+    "낚싯대 : Lv." + rodLevel + "/" + MAX_ROD + " (현재 " + getCurrentPlayableMaxRod() + "까지 강화 가능)\n" +
     "연구소 : 낚시기술 Lv." + getFishingResearchLevel() + " / 감정 Lv." + getAppraisalResearchLevel();
 
   printPreview("내정보", summary, "내정보 전체보기", buildGameInfoText());
@@ -2849,180 +3168,4 @@ async function sendFish(targetNickname, displayNumber){
       fishName: fish.name,
       fishGrade: fish.grade,
       fishSize: fish.size,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-      createdAtMillis: Date.now()
-    });
-
-    await refreshMyCloudData();
-    print(targetNickname + " 님에게 " + lineFish(fish) + objParticle(fish.name) + " 전송하였습니다.");
-  }catch(e){
-    console.error(e);
-    if(e.message === "TARGET_NOT_FOUND") print("존재하지 않는 닉네임입니다.");
-    else if(e.message === "FISH_NOT_FOUND") print("존재하지 않는 번호입니다.");
-    else if(e.message === "FISH_LOCKED") print("잠금된 물고기는 전송할 수 없습니다.");
-    else if(e.message === "MY_ACCOUNT_NOT_FOUND") print("현재 계정을 찾을 수 없습니다. 다시 로그인해주세요.");
-    else print("전송 중 오류가 발생했습니다.");
-  }finally{
-    isOnlineActionRunning = false;
-  }
-}
-
-function requireLoginForCommand(cmd){
-  const allowed = ["명령어", "회원가입", "로그인"];
-
-  if(allowed.includes(cmd)) return true;
-
-  // 다른 사람 정보 조회/랭킹도 로그인 없이 막음
-  return false;
-}
-
-function runCommand(){
-  let cmd=input.value.trim();
-  input.value="";
-  if(!cmd) return;
-
-  // 예전처럼 !를 붙여도 작동하게 호환
-  if(cmd.startsWith("!")) cmd = cmd.slice(1).trim();
-
-  print("> "+cmd);
-
-  if(!currentUser && !requireLoginForCommand(cmd)){
-    return print("로그인 후 이용 가능합니다.\n\n회원가입 또는 로그인 을 입력하세요.");
-  }
-
-  if(!isAllowedInBossMenu(cmd)){
-    return blockedBossCommand();
-  }
-
-  if(cmd==="명령어") showCommands();
-  else if(cmd==="낚시") fish();
-  else if(cmd==="양동이") showBucket();
-  else if(cmd.startsWith("양동이 ")) showOtherBucket(cmd.split(" ")[1]);
-  else if(cmd==="도감") showCollection();
-  else if(cmd==="내정보") showGameInfo();
-  else if(cmd.startsWith("정보 ")){ const p=cmd.split(" "); showFishInfo(Number(p[1])); }
-  else if(cmd==="정보") print("사용법 : 내정보 / 정보 번호");
-  else if(cmd==="보스전") showBossBattle();
-  else if(cmd==="보스정보") showBossInfo();
-  else if(cmd==="보스목록") showBossList();
-  else if(cmd.startsWith("보스선택 ")){ const p=cmd.split(" "); selectBoss(Number(p[1])); }
-  else if(cmd==="인벤토리") showInventory();
-  else if(cmd.startsWith("준비해제 ")){ const p=cmd.split(" "); unprepareBossFish(Number(p[1])); }
-  else if(cmd.startsWith("준비 ")){ const p=cmd.split(" "); prepareBossFish(Number(p[1])); }
-  else if(cmd==="전투") runBossBattle();
-  else if(cmd==="나가기") leaveBossMenu();
-  else if(cmd==="연구소") showResearchLab();
-  else if(cmd==="연구소1 강화") upgradeResearch(1);
-  else if(cmd==="연구소2 강화") upgradeResearch(2);
-  else if(cmd==="시세") showMarket();
-  else if(cmd==="랭킹") showRanking();
-  else if(cmd.startsWith("메세지 ")) sendMessage(cmd.split(" ")[1]);
-  else if(cmd==="지갑") showWallet();
-  else if(cmd.startsWith("지갑 ")) showOtherWallet(cmd.split(" ")[1]);
-  else if(cmd==="업적") showAchievements();
-  else if(cmd==="칭호") showTitles();
-  else if(cmd.startsWith("칭호 장착 ")) equipTitle(cmd.split(" ")[2]);
-  else if(cmd==="칭호 장착해제") unequipTitle();
-  else if(cmd==="회원가입") registerUser();
-  else if(cmd==="로그인") loginUser();
-  else if(cmd==="로그아웃") logoutUser();
-  else if(cmd==="탈퇴") deleteAccount();
-  else if(cmd.startsWith("송금 ")){ const p=cmd.split(" "); sendMoney(p[1], p[2]); }
-  else if(cmd.startsWith("전송 ")){ const p=cmd.split(" "); sendFish(p[1], p[2]); }
-  else if(cmd==="강화") upgradeOne();
-  else if(cmd==="일괄강화" || cmd==="강화 최대") upgradeMax();
-  else if(cmd.startsWith("정렬 ")) sortBucket(cmd.split(" ")[1]);
-  else if(cmd==="일괄판매" || cmd==="물고기 일괄판매") sellAll();
-  else if(cmd.startsWith("판매 ")) sellOne(Number(cmd.split(" ")[1]));
-  else if(cmd.startsWith("물고기 판매 ")) sellOne(Number(cmd.split(" ")[2]));
-  else if(cmd.startsWith("잠금해제 ")) lockOne(Number(cmd.split(" ")[1]), false);
-  else if(cmd.startsWith("잠금 ")) lockOne(Number(cmd.split(" ")[1]), true);
-  else print("없는 명령어입니다. 명령어 를 입력해보세요.");
-}
-
-input.addEventListener("keydown", e=>{ if(e.key==="Enter") runCommand(); });
-
-loadGame();
-
-if(!currentUser){
-  resetGameData();
-  refreshMarketIfNeeded();
-  saveGame();
-  updateWallet();
-  print("로그인이 필요합니다.\n\n처음이라면 회원가입 을 입력하세요.\n이미 계정이 있다면 로그인 을 입력하세요.");
-  checkGameVersion();
-} else {
-  updateWallet();
-  print(currentUser + " 님으로 접속 중입니다.\n클라우드 데이터를 불러오는 중입니다.");
-  checkGameVersion();
-
-  (async function(){
-    let startupAchievements = [];
-
-    try{
-      const snap = await db.collection("users").doc(currentUser).get();
-
-      if(!snap.exists){
-        currentUser = null;
-        localStorage.removeItem("textFishingCurrentUser");
-        resetGameData();
-        updateWallet();
-        print("저장된 계정을 찾을 수 없습니다.\n다시 로그인해주세요.");
-        return;
-      }
-
-      const data = snap.data();
-      applyGameState(data.gameState);
-      updateWallet();
-
-      print(currentUser + " 님 데이터 불러오기 완료.");
-    }catch(e){
-      console.error(e);
-      print("클라우드 데이터를 불러오지 못했습니다.\n네트워크 상태를 확인한 뒤 다시 로그인해주세요.");
-      return;
-    }
-
-    try{
-      refreshMarketIfNeeded();
-    }catch(e){
-      console.error(e);
-    }
-
-    try{
-      startupAchievements = updateAchievements();
-      checkSpecialTitles();
-      saveGame();
-      updateWallet();
-      printAchievementRewards(startupAchievements);
-    }catch(e){
-      console.error(e);
-    }
-
-    try{
-      startServerAlertListener();
-    }catch(e){
-      console.error(e);
-    }
-
-    try{
-      await showUpdateNoticeIfNeeded();
-    }catch(e){
-      console.error(e);
-    }
-
-    try{
-      await showNewNotifications();
-    }catch(e){
-      console.error(e);
-    }
-
-    try{
-      await showNewMessages();
-    }catch(e){
-      console.error(e);
-    }
-  })();
-}
-</script>
-</body>
-</html>
+      createdAt: firebase
