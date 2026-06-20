@@ -750,7 +750,7 @@ function allFishCount(){
 
 
 function getMarketHour(){
-  return Math.floor(Date.now() / (1000 * 60 * 60));
+  return Math.floor(Date.now() / (1000 * 60 * 10));
 }
 
 function getMarketTargets(){
@@ -758,13 +758,20 @@ function getMarketTargets(){
   return targetGrades.flatMap(g => fishByGrade[g].map(name => ({name, grade:g})));
 }
 
+function getFishGradeByName(name){
+  for(const grade of Object.keys(fishByGrade)){
+    if(fishByGrade[grade].includes(name)) return grade;
+  }
+  return "";
+}
+
 function refreshMarketIfNeeded(){
   const nowHour = getMarketHour();
-  if(marketHour === nowHour && marketRates && Object.keys(marketRates).length > 0) return;
+  if(marketHour === nowHour && marketRates && Object.keys(marketRates).length === 10) return;
 
   const targets = getMarketTargets();
   const selected = [];
-  const count = Math.min(5, targets.length);
+  const count = Math.min(10, targets.length);
 
   while(selected.length < count){
     const pick = targets[Math.floor(Math.random() * targets.length)];
@@ -792,7 +799,7 @@ function applyMarketPrice(f){
 }
 
 function getNextMarketMinutes(){
-  const next = (getMarketHour() + 1) * 1000 * 60 * 60;
+  const next = (getMarketHour() + 1) * 1000 * 60 * 10;
   return Math.max(0, Math.ceil((next - Date.now()) / (1000 * 60)));
 }
 
@@ -805,13 +812,38 @@ function buildMarketText(){
   if(entries.length === 0){
     s += "현재 적용 중인 시세가 없습니다.\n";
   } else {
-    entries.sort((a,b)=>b[1]-a[1] || a[0].localeCompare(b[0],"ko"));
-    entries.forEach(([name, bonus], i)=>{
-      s += fullWidthNumber(i+1) + "│" + name + " +" + bonus + "%\n";
+    const marketGradeOrder = {"영원":0,"초월":1,"신화":2,"전설":3};
+
+    entries.sort((a,b)=>{
+      const gradeA = getFishGradeByName(a[0]);
+      const gradeB = getFishGradeByName(b[0]);
+
+      return (marketGradeOrder[gradeA] ?? 99) - (marketGradeOrder[gradeB] ?? 99)
+        || b[1] - a[1]
+        || a[0].localeCompare(b[0],"ko");
     });
+
+    s += "────┬────────────────────\n";
+
+    entries.forEach(([name, bonus], i)=>{
+      const grade = getFishGradeByName(name);
+      const discovered = !!collection[name];
+
+      const shownGrade = discovered ? grade : "???";
+      const shownName = discovered ? displayFishName(name) : "???";
+      const line = "[" + shownGrade + "] " + shownName + " +" + bonus + "%";
+
+      s += fullWidthNumber(i+1) + "│" + color(line, discovered ? grade : "") + "\n";
+
+      if(i !== entries.length - 1){
+        s += "────┼────────────────────\n";
+      }
+    });
+
+    s += "────┴────────────────────";
   }
 
-  s += "\n다음 갱신까지 : 약 " + getNextMarketMinutes() + "분";
+  s += "\n\n다음 갱신까지 : 약 " + getNextMarketMinutes() + "분";
   return s;
 }
 
@@ -1623,8 +1655,8 @@ ${chanceLines}
 
 [시세]
 
-전설~영원 물고기 중 5종
-1시간마다 갱신
+전설~영원 물고기 중 10종
+10분마다 갱신
 +보너스만 적용`);
 }
 
