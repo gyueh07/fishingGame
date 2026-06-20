@@ -93,7 +93,7 @@ button:hover { background:#30363d; }
 
 <div class="box cmd">
 <b>주요 명령어</b><br>
-<span>명령어</span><span>낚시</span><span>양동이</span><span>양동이 닉네임</span><span>도감</span><span>정보</span><span>시세</span><span>랭킹</span>
+<span>명령어</span><span>낚시</span><span>양동이</span><span>양동이 닉네임</span><span>도감</span><span>내정보</span><span>정보 1</span><span>보스전</span><span>보스정보</span><span>보스목록</span><span>시세</span><span>랭킹</span>
 <span>지갑</span><span>지갑 닉네임</span><span>메세지 닉네임</span><span>연구소</span><span>연구소1 강화</span><span>연구소2 강화</span><span>업적</span><span>칭호</span><span>칭호 장착 번호</span><span>칭호 장착해제</span><span>회원가입</span><span>로그인</span><span>로그아웃</span><span>탈퇴</span><span>강화</span><span>일괄강화</span>
 <span>정렬 오름차순</span><span>정렬 내림차순</span><span>송금 닉네임 금액</span><span>전송 닉네임 번호</span>
 <span>잠금 1</span><span>잠금해제 1</span>
@@ -1384,6 +1384,177 @@ function upgradeResearch(which){
   print(name + " 강화 완료\n\nLv." + level + " → Lv." + researchLevels[key] + "\n효과 : " + effect + "\n사용 금액 : " + formatMoney(cost));
 }
 
+
+const combatAttackRanges = {
+  "일반":[30,150], "희귀":[100,500], "영웅":[500,2000], "전설":[2000,8000],
+  "신화":[8000,20000], "초월":[20000,50000], "영원":[50000,100000]
+};
+
+const combatHpRanges = {
+  "일반":[150,900], "희귀":[500,3000], "영웅":[2500,12000], "전설":[10000,80000],
+  "신화":[40000,180000], "초월":[120000,500000], "영원":[300000,1000000]
+};
+
+const bossList = [
+  {
+    id:"kraken",
+    name:"심해의 크라켄",
+    grade:"영웅",
+    hp:50000,
+    drop:"심연의 촉수",
+    status:"도전 가능",
+    desc:"깊은 심해에 숨어있던 거대 크라켄.\n수많은 낚시꾼들을 바다 아래로 끌고 갔다."
+  },
+  {
+    id:"leviathan",
+    name:"리바이어던",
+    grade:"전설",
+    hp:500000,
+    drop:"리바이어던의 코어",
+    status:"잠김",
+    desc:"전설 속에서만 존재한다고 여겨졌던 심해의 지배자.\n거대한 몸으로 바다를 가르며 지나갈 때마다\n수많은 생명체가 모습을 감춘다고 한다."
+  }
+];
+
+function clamp(n,min,max){ return Math.max(min, Math.min(max, n)); }
+
+function getSizeRatio(f){
+  const range = sizeData[f.name];
+  if(f.size === null || !Array.isArray(range)) return 0.5;
+  const min = range[0], max = range[1];
+  if(max <= min) return 0.5;
+  return clamp((Number(f.size) - min) / (max - min), 0, 1);
+}
+
+function weightedRandomBySize(min,max,ratio){
+  const roll = (Math.random() + Math.random() + ratio) / 3;
+  return Math.floor(min + (max - min) * clamp(roll,0,1));
+}
+
+function randomInt(min,max){
+  return Math.floor(min + Math.random() * (max - min + 1));
+}
+
+function randomDodgeBySize(f){
+  if(f.grade === "영원") return Math.round((10 + Math.random() * 20) * 10) / 10;
+  const ratio = getSizeRatio(f);
+  const base = 20 - ratio * 18;
+  const noise = (Math.random() * 6) - 3;
+  return Math.round(clamp(base + noise, 1, 20) * 10) / 10;
+}
+
+function makeCombatStats(f){
+  if(!f || f.grade === "쓰레기"){
+    return {attack:0, hp:0, dodge:0, status:"전투 불가"};
+  }
+  const atkRange = combatAttackRanges[f.grade] || [10,50];
+  const hpRange = combatHpRanges[f.grade] || [50,200];
+  const ratio = getSizeRatio(f);
+  return {
+    attack:weightedRandomBySize(atkRange[0], atkRange[1], ratio),
+    hp:randomInt(hpRange[0], hpRange[1]),
+    dodge:randomDodgeBySize(f),
+    status:"정상"
+  };
+}
+
+function ensureCombatStats(f){
+  if(!f.combat) f.combat = makeCombatStats(f);
+  if(!f.combat.status) f.combat.status = f.grade === "쓰레기" ? "전투 불가" : "정상";
+  return f.combat;
+}
+
+function getStatRange(grade, stat){
+  if(stat === "attack") return combatAttackRanges[grade] || [0,1];
+  if(stat === "hp") return combatHpRanges[grade] || [0,1];
+  if(stat === "dodge") return grade === "영원" ? [10,30] : [1,20];
+  return [0,1];
+}
+
+function statStars(value, grade, stat){
+  if(grade === "쓰레기") return "";
+  const range = getStatRange(grade, stat);
+  const min = range[0], max = range[1];
+  if(max <= min) return "";
+  const ratio = clamp((Number(value) - min) / (max - min), 0, 1);
+  if(ratio >= 0.99) return " ★★★";
+  if(ratio >= 0.90) return " ★★";
+  if(ratio >= 0.70) return " ★";
+  return "";
+}
+
+function buildFishDetailText(displayNumber){
+  const idx = getBucketIndexByDisplayNumber(displayNumber);
+  if(idx < 0 || !bucket[idx]) return "존재하지 않는 번호입니다.";
+  const f = bucket[idx];
+  const c = ensureCombatStats(f);
+  saveGame();
+
+  let s = color(lineFish(f), f.grade) + "\n\n";
+  s += "크기\n" + (f.size === null ? "측정 불가" : formatSize(f.size) + "cm") + "\n\n";
+  s += "판매가\n" + formatMoney(applyMarketPrice(f)) + "\n\n";
+
+  if(f.grade === "쓰레기"){
+    s += "전투\n쓰레기 등급은 전투에 참가할 수 없습니다.\n\n";
+    s += "상태\n전투 불가";
+    return s;
+  }
+
+  s += "공격력" + statStars(c.attack, f.grade, "attack") + "\n" + Number(c.attack).toLocaleString() + "\n\n";
+  s += "체력" + statStars(c.hp, f.grade, "hp") + "\n" + Number(c.hp).toLocaleString() + "\n\n";
+  s += "회피율" + statStars(c.dodge, f.grade, "dodge") + "\n" + Number(c.dodge).toFixed(1) + "%\n\n";
+  s += "상태\n" + (c.status || "정상");
+  return s;
+}
+
+function showFishInfo(displayNumber){
+  const idx = getBucketIndexByDisplayNumber(displayNumber);
+  if(idx < 0 || !bucket[idx]) return print("존재하지 않는 번호입니다.");
+  const f = bucket[idx];
+  printPreview("정보 " + displayNumber, color(lineFish(f), f.grade), "상세정보 전체보기", buildFishDetailText(displayNumber));
+}
+
+function getCurrentBoss(){ return bossList[0]; }
+
+function buildBossBattleText(){
+  const boss = getCurrentBoss();
+  let s = "보스전\n\n";
+  s += "현재 보스\n" + boss.name + "\n\n";
+  s += "등급\n" + boss.grade + "\n\n";
+  s += "HP\n" + boss.hp.toLocaleString() + " / " + boss.hp.toLocaleString() + "\n\n";
+  s += "준비된 물고기\n0 / 5\n\n";
+  s += "드랍\n" + boss.drop + "\n\n";
+  s += "명령어\n보스정보\n보스목록\n\n";
+  s += "전투와 준비 기능은 다음 업데이트에서 추가됩니다.";
+  return s;
+}
+
+function showBossBattle(){ print(buildBossBattleText()); }
+
+function buildBossInfoText(){
+  const boss = getCurrentBoss();
+  let s = boss.name + "\n\n";
+  s += "등급\n" + boss.grade + "\n\n";
+  s += "설명\n" + boss.desc + "\n\n";
+  s += "HP\n" + boss.hp.toLocaleString() + " / " + boss.hp.toLocaleString() + "\n\n";
+  s += "드랍\n" + boss.drop;
+  return s;
+}
+
+function showBossInfo(){ print(buildBossInfoText()); }
+
+function buildBossListText(){
+  let s = "보스목록\n\n────┬────────────────────\n";
+  bossList.forEach((boss,i)=>{
+    s += rankNumber(i+1) + "│" + boss.name + " [" + boss.status + "]\n";
+    if(i !== bossList.length - 1) s += "────┼────────────────────\n";
+  });
+  s += "────┴────────────────────";
+  return s;
+}
+
+function showBossList(){ print(buildBossListText()); }
+
 function updateWallet(){
   const shownMoney = currentUser ? money : 0;
   document.getElementById("wallet").innerHTML =
@@ -1542,6 +1713,7 @@ function fish(){
     const size=makeSizeByName(name);
     const price=makePrice(g,size);
     const caught={grade:g.name,name,size,price,locked:false,time:new Date().toLocaleString()};
+    caught.combat = makeCombatStats(caught);
 
     const escapeGrades = ["일반","희귀","영웅","전설","신화"];
     if(escapeGrades.includes(g.name)){
@@ -1888,7 +2060,11 @@ function showCommands(){
 양동이
 양동이 닉네임
 도감
-정보
+내정보
+정보 번호
+보스전
+보스정보
+보스목록
 지갑
 지갑 닉네임
 메세지 닉네임
@@ -1934,7 +2110,7 @@ function buildGameInfoText(){
     .map(x => x.name + " : " + x.chance.toFixed(x.name==="영원" ? 2 : 1) + "%")
     .join("\n");
 
-  return `정보
+  return `내정보
 
 [기본 정보]
 
@@ -1982,7 +2158,7 @@ function showGameInfo(){
     "낚싯대 : Lv." + rodLevel + "/" + MAX_ROD + "\n" +
     "연구소 : 낚시기술 Lv." + getFishingResearchLevel() + " / 감정 Lv." + getAppraisalResearchLevel();
 
-  printPreview("정보", summary, "정보 전체보기", buildGameInfoText());
+  printPreview("내정보", summary, "내정보 전체보기", buildGameInfoText());
 }
 
 async function sendMoney(targetNickname, amount){
@@ -2196,7 +2372,12 @@ function runCommand(){
   else if(cmd==="양동이") showBucket();
   else if(cmd.startsWith("양동이 ")) showOtherBucket(cmd.split(" ")[1]);
   else if(cmd==="도감") showCollection();
-  else if(cmd==="정보") showGameInfo();
+  else if(cmd==="내정보") showGameInfo();
+  else if(cmd.startsWith("정보 ")){ const p=cmd.split(" "); showFishInfo(Number(p[1])); }
+  else if(cmd==="정보") print("사용법 : 내정보 / 정보 번호");
+  else if(cmd==="보스전") showBossBattle();
+  else if(cmd==="보스정보") showBossInfo();
+  else if(cmd==="보스목록") showBossList();
   else if(cmd==="연구소") showResearchLab();
   else if(cmd==="연구소1 강화") upgradeResearch(1);
   else if(cmd==="연구소2 강화") upgradeResearch(2);
