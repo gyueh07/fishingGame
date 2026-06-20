@@ -450,15 +450,41 @@ async function loginUser(){
     localStorage.setItem("textFishingCurrentUser", currentUser);
 
     applyGameState(data.gameState);
-    checkSpecialTitles();
-    saveGame();
     updateWallet();
 
-    startServerAlertListener();
+    try{
+      checkSpecialTitles();
+      saveGame();
+      updateWallet();
+    }catch(e){
+      console.error(e);
+    }
+
+    try{
+      startServerAlertListener();
+    }catch(e){
+      console.error(e);
+    }
+
     print(nickname + " 님 로그인 완료.\n게임을 시작할 수 있습니다.");
-    await showUpdateNoticeIfNeeded();
-    await showNewNotifications();
-    await showNewMessages();
+
+    try{
+      await showUpdateNoticeIfNeeded();
+    }catch(e){
+      console.error(e);
+    }
+
+    try{
+      await showNewNotifications();
+    }catch(e){
+      console.error(e);
+    }
+
+    try{
+      await showNewMessages();
+    }catch(e){
+      console.error(e);
+    }
   }catch(e){
     console.error(e);
     print("로그인 중 오류가 발생했습니다.");
@@ -578,8 +604,7 @@ async function showUpdateNoticeIfNeeded(){
     if(btn) btn.onclick = async () => {
       openModal(title, modalContent);
       await markUpdateNoticesRead(unread);
-      btn.textContent = "확인 완료";
-      btn.disabled = true;
+      // 업데이트는 전체보기를 누르면 읽음 처리됩니다.
     };
   }, 0);
 }
@@ -2218,6 +2243,8 @@ if(!currentUser){
   checkGameVersion();
 
   (async function(){
+    let startupAchievements = [];
+
     try{
       const snap = await db.collection("users").doc(currentUser).get();
 
@@ -2232,21 +2259,53 @@ if(!currentUser){
 
       const data = snap.data();
       applyGameState(data.gameState);
+      updateWallet();
+
+      print(currentUser + " 님 데이터 불러오기 완료.");
+    }catch(e){
+      console.error(e);
+      print("클라우드 데이터를 불러오지 못했습니다.\n네트워크 상태를 확인한 뒤 다시 로그인해주세요.");
+      return;
+    }
+
+    try{
       refreshMarketIfNeeded();
-      const startupAchievements = updateAchievements();
+    }catch(e){
+      console.error(e);
+    }
+
+    try{
+      startupAchievements = updateAchievements();
       checkSpecialTitles();
       saveGame();
       updateWallet();
-      startServerAlertListener();
-
-      print(currentUser + " 님 데이터 불러오기 완료.");
       printAchievementRewards(startupAchievements);
+    }catch(e){
+      console.error(e);
+    }
+
+    try{
+      startServerAlertListener();
+    }catch(e){
+      console.error(e);
+    }
+
+    try{
       await showUpdateNoticeIfNeeded();
+    }catch(e){
+      console.error(e);
+    }
+
+    try{
       await showNewNotifications();
+    }catch(e){
+      console.error(e);
+    }
+
+    try{
       await showNewMessages();
     }catch(e){
       console.error(e);
-      print("클라우드 데이터를 불러오는 중 일부 오류가 발생했습니다.\n로그인 상태는 유지됩니다. 새로고침 후 다시 확인해주세요.");
     }
   })();
 }
