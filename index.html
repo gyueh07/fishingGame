@@ -722,11 +722,15 @@ function startServerAlertListener(){
           print(sender + " 님이 메세지를 보냈습니다.\n\n" + body);
           setTimeout(() => {
             refreshMyCloudData().then(() => {
-              messages = (messages || []).filter(m => !(
-                m.from === data.from &&
-                m.createdAtMillis === data.createdAtMillis &&
-                m.text === data.text
-              ));
+              messages = (messages || []).filter(m => {
+                if(data.messageId && m.id === data.messageId) return false;
+
+                return !(
+                  m.from === data.from &&
+                  m.text === data.text &&
+                  Math.abs((m.createdAtMillis || 0) - (data.createdAtMillis || 0)) < 5000
+                );
+              });
               saveGame();
             });
           }, 300);
@@ -1837,11 +1841,15 @@ async function sendMessage(targetNickname){
       return print("존재하지 않는 닉네임입니다.");
     }
 
+    const messageId = currentUser + "_" + Date.now() + "_" + Math.random().toString(36).slice(2);
+    const createdAtMillis = Date.now();
+
     const msg = {
+      id: messageId,
       from: currentUser,
       fromTitle: getCurrentTitle(),
       text: messageText,
-      createdAtMillis: Date.now()
+      createdAtMillis
     };
 
     await db.runTransaction(async (tx)=>{
@@ -1851,7 +1859,9 @@ async function sendMessage(targetNickname){
       const data = snap.data();
       const state = data.gameState || {};
       const list = state.messages || [];
-      list.push(msg);
+      if(!list.some(m => m.id === messageId)){
+        list.push(msg);
+      }
 
       tx.set(targetRef, {
         gameState: {...state, messages: list},
@@ -1861,12 +1871,13 @@ async function sendMessage(targetNickname){
 
     await db.collection("serverAlerts").add({
       type: "userMessage",
+      messageId,
       from: currentUser,
       fromTitle: getCurrentTitle(),
       to: targetNickname,
       text: messageText,
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-      createdAtMillis: Date.now()
+      createdAtMillis
     });
 
     print(targetNickname + " 님에게 메세지를 보냈습니다.");
@@ -2167,3 +2178,5 @@ if(!currentUser){
   })();
 }
 </script>
+</body>
+</html>
