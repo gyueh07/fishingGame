@@ -236,6 +236,26 @@ const UPDATE_NOTICES = [
       "전투 스탯 자동 변환이 계정당 1회만 적용되도록 수정되었습니다.",
       "회복 중 물고기가 전투에서 살아남으면 정상 상태로 회복되도록 수정되었습니다."
     ]
+  },
+  {
+    id: "2026-06-20-crit-star-fix-1",
+    title: "치명타 별 시스템 수정",
+    lines: [
+      "치명타 확률과 치명타 피해가 별 구간 방식으로 변경되었습니다.",
+      "별 없음 70%, ★ 20%, ★★ 8%, ★★★ 2% 확률이 적용됩니다.",
+      "치명타 확률은 별 없음 10~20%, ★ 20~30%, ★★ 30~40%, ★★★ 40~50%로 생성됩니다.",
+      "치명타 피해는 별 없음 150~250%, ★ 250~350%, ★★ 350~450%, ★★★ 450~500%로 생성됩니다.",
+      "기존 물고기의 치명타 확률과 치명타 피해가 새 기준으로 다시 생성됩니다."
+    ]
+  },
+  {
+    id: "2026-06-20-boss-next-fix-1",
+    title: "보스 진행 오류 수정",
+    lines: [
+      "보스 처치 후 다음 보스가 자동으로 선택되도록 수정되었습니다.",
+      "이미 처치한 보스가 선택된 상태로 남아 전투가 막히던 문제가 수정되었습니다.",
+      "보스 처치 완료 후에도 보스목록에서 다음 도전 가능한 보스를 확인할 수 있습니다."
+    ]
   }
 ];
 
@@ -1603,6 +1623,34 @@ function rollByStarRange(min,max,tier,ratio=0.5){
 
   return randomInt(Math.floor(scaledMin), Math.floor(scaledMax));
 }
+function rollCritRateByStar(tier){
+  if(tier === 3) return Math.round((40 + Math.random() * 10) * 10) / 10;
+  if(tier === 2) return Math.round((30 + Math.random() * 10) * 10) / 10;
+  if(tier === 1) return Math.round((20 + Math.random() * 10) * 10) / 10;
+  return Math.round((10 + Math.random() * 10) * 10) / 10;
+}
+
+function rollCritDamageByStar(tier){
+  if(tier === 3) return randomInt(450, 500);
+  if(tier === 2) return randomInt(350, 450);
+  if(tier === 1) return randomInt(250, 350);
+  return randomInt(150, 250);
+}
+
+function rerollCritStats(f){
+  const c = ensureCombatStats(f);
+  if(f.grade === "쓰레기") return c;
+
+  if(!c.stars) c.stars = {attack:0,hp:0,dodge:0,critRate:0,critDamage:0};
+
+  c.stars.critRate = rollStarTier();
+  c.stars.critDamage = rollStarTier();
+  c.critRate = rollCritRateByStar(c.stars.critRate);
+  c.critDamage = rollCritDamageByStar(c.stars.critDamage);
+
+  return c;
+}
+
 
 function makeCombatStats(f){
   if(!f || f.grade === "쓰레기"){
@@ -1628,13 +1676,8 @@ function makeCombatStats(f){
   const dodgeMultiplier = stars.dodge === 3 ? 10 : stars.dodge === 2 ? 5 : stars.dodge === 1 ? 3 : 1;
   const dodge = Math.round(clamp(dodgeBase * dodgeMultiplier, 1, 50) * 10) / 10;
 
-  const critRateBase = Math.round((1 + Math.random() * 29) * 10) / 10;
-  const critRateMultiplier = stars.critRate === 3 ? 10 : stars.critRate === 2 ? 5 : stars.critRate === 1 ? 3 : 1;
-  const critRate = Math.round(clamp(critRateBase * critRateMultiplier, 1, 50) * 10) / 10;
-
-  const critDamageBase = Math.round(150 + Math.random() * 150);
-  const critDamageMultiplier = stars.critDamage === 3 ? 10 : stars.critDamage === 2 ? 5 : stars.critDamage === 1 ? 3 : 1;
-  const critDamage = Math.round(clamp(critDamageBase * critDamageMultiplier, 150, 500));
+  const critRate = rollCritRateByStar(stars.critRate);
+  const critDamage = rollCritDamageByStar(stars.critDamage);
 
   return {
     attack:attack,
@@ -1698,8 +1741,9 @@ function ensureCombatStats(f){
   if(!f.combat.stars) f.combat.stars = {attack:0,hp:0,dodge:0,critRate:0,critDamage:0};
   if(!f.combat.maxHp) f.combat.maxHp = f.combat.hp || 1;
   if(f.combat.hp === undefined || f.combat.hp === null) f.combat.hp = f.combat.maxHp;
-  if(f.combat.critRate === undefined) f.combat.critRate = Math.round((1 + Math.random() * 29) * 10) / 10;
-  if(f.combat.critDamage === undefined) f.combat.critDamage = Math.round(150 + Math.random() * 150);
+  if(f.combat.critRate === undefined || f.combat.critDamage === undefined){
+    rerollCritStats(f);
+  }
   if(!f.combat.status) f.combat.status = "정상";
 
   return f.combat;
@@ -1716,14 +1760,29 @@ function resetAllCombatStats(){
 }
 
 function migrateCombatStatsToCurrentVersion(){
-  const targetVersion = 6;
+  const targetVersion = 7;
   let changed = false;
 
   bucket.forEach(f => {
     if(!f) return;
 
-    if(!f.combat || Number(f.combat.combatVersion || 0) < targetVersion){
+    const currentVersion = Number((f.combat && f.combat.combatVersion) || 0);
+
+    if(!f.combat){
       f.combat = makeCombatStats(f);
+      f.combat.combatVersion = targetVersion;
+      changed = true;
+      return;
+    }
+
+    if(currentVersion < targetVersion){
+      if(f.grade === "쓰레기"){
+        f.combat = makeCombatStats(f);
+      } else {
+        ensureCombatStats(f);
+        rerollCritStats(f);
+      }
+
       f.combat.combatVersion = targetVersion;
       changed = true;
     }
@@ -1845,20 +1904,38 @@ function isBossUnlocked(boss){
 }
 
 function getSelectedBossId(){
-  if(bossProgress.selectedBossId && isBossUnlocked(getBossById(bossProgress.selectedBossId))){
-    return bossProgress.selectedBossId;
+  const selected = getBossById(bossProgress.selectedBossId);
+
+  if(
+    bossProgress.selectedBossId &&
+    selected &&
+    isBossUnlocked(selected) &&
+    !bossProgress.defeated[selected.id]
+  ){
+    return selected.id;
   }
 
   return getCurrentBoss().id;
 }
 
 function getCurrentBoss(){
-  if(bossProgress.selectedBossId && isBossUnlocked(getBossById(bossProgress.selectedBossId))){
-    return getBossById(bossProgress.selectedBossId);
+  const selected = getBossById(bossProgress.selectedBossId);
+
+  if(
+    bossProgress.selectedBossId &&
+    selected &&
+    isBossUnlocked(selected) &&
+    !bossProgress.defeated[selected.id]
+  ){
+    return selected;
   }
 
   for(const boss of bossList){
-    if(!bossProgress.defeated[boss.id]) return boss;
+    if(isBossUnlocked(boss) && !bossProgress.defeated[boss.id]){
+      bossProgress.selectedBossId = boss.id;
+      if(!bossProgress.hp[boss.id]) bossProgress.hp[boss.id] = boss.hp;
+      return boss;
+    }
   }
 
   return bossList[bossList.length - 1];
@@ -1869,6 +1946,7 @@ function selectBoss(n){
 
   if(!boss) return print("존재하지 않는 보스 번호입니다.");
   if(!isBossUnlocked(boss)) return print("아직 해금되지 않은 보스입니다.");
+  if(bossProgress.defeated[boss.id]) return print("이미 처치한 보스입니다.\n다음 보스에 도전하세요.");
 
   bossProgress.selectedBossId = boss.id;
   if(!bossProgress.hp[boss.id]) bossProgress.hp[boss.id] = boss.hp;
@@ -2239,6 +2317,12 @@ function runBossBattle(){
     addMaterial(rewardDrop, 1);
     bossProgress.defeated[boss.id] = true;
     bossProgress.hp[boss.id] = boss.hp;
+
+    const nextBoss = bossList.find(b => isBossUnlocked(b) && !bossProgress.defeated[b.id]);
+    if(nextBoss){
+      bossProgress.selectedBossId = nextBoss.id;
+      if(!bossProgress.hp[nextBoss.id]) bossProgress.hp[nextBoss.id] = nextBoss.hp;
+    }
   }
 
   participants.forEach(f => {
