@@ -93,7 +93,7 @@ button:hover { background:#30363d; }
 
 <div class="box cmd">
 <b>주요 명령어</b><br>
-<span>명령어</span><span>낚시</span><span>양동이</span><span>양동이 닉네임</span><span>도감</span><span>내정보</span><span>정보 1</span><span>보스전</span><span>보스정보</span><span>보스목록</span><span>준비 1</span><span>준비해제 1</span><span>전투</span><span>나가기</span><span>시세</span><span>랭킹</span>
+<span>명령어</span><span>낚시</span><span>양동이</span><span>양동이 닉네임</span><span>도감</span><span>내정보</span><span>정보 1</span><span>보스전</span><span>보스정보</span><span>보스목록</span><span>보스선택 1</span><span>인벤토리</span><span>준비 1</span><span>준비해제 1</span><span>전투</span><span>나가기</span><span>시세</span><span>랭킹</span>
 <span>지갑</span><span>지갑 닉네임</span><span>메세지 닉네임</span><span>연구소</span><span>연구소1 강화</span><span>연구소2 강화</span><span>업적</span><span>칭호</span><span>칭호 장착 번호</span><span>칭호 장착해제</span><span>회원가입</span><span>로그인</span><span>로그아웃</span><span>탈퇴</span><span>강화</span><span>일괄강화</span>
 <span>정렬 오름차순</span><span>정렬 내림차순</span><span>송금 닉네임 금액</span><span>전송 닉네임 번호</span>
 <span>잠금 1</span><span>잠금해제 1</span>
@@ -167,6 +167,18 @@ const UPDATE_NOTICES = [
       "미획득 시세 물고기는 [???] ??? 로 표시됩니다.",
       "메세지 기능이 추가되었습니다.",
       "업데이트/알림/메세지가 각각 따로 표시됩니다."
+    ]
+  },
+  {
+    id: "2026-06-20-boss-expansion-1",
+    title: "보스전 확장 업데이트",
+    lines: [
+      "인벤토리 기능이 추가되었습니다.",
+      "보스선택 기능이 추가되었습니다.",
+      "보스별 패턴이 추가되었습니다.",
+      "전투 결과 전체보기에서 상세 로그를 볼 수 있게 되었습니다.",
+      "전투 로그에 체력바가 추가되었습니다.",
+      "보스별 색상이 적용되었습니다."
     ]
   }
 ];
@@ -1406,6 +1418,7 @@ function upgradeResearch(which){
 
 
 
+
 const combatAttackRanges = {
   "일반":[30,150], "희귀":[100,500], "영웅":[500,2000], "전설":[2000,8000],
   "신화":[8000,20000], "초월":[20000,50000], "영원":[50000,100000]
@@ -1416,11 +1429,17 @@ const combatHpRanges = {
   "신화":[40000,180000], "초월":[120000,500000], "영원":[300000,1000000]
 };
 
+const materialInfo = {
+  "심연의 촉수":"크라켄의 힘이 깃든 촉수 조각.",
+  "리바이어던의 코어":"심해의 지배자 리바이어던의 힘이 응축된 코어."
+};
+
 const bossList = [
   {
     id:"kraken",
     name:"심해의 크라켄",
     grade:"영웅",
+    color:"#d2a8ff",
     hp:50000,
     attack:2500,
     dodge:5,
@@ -1428,12 +1447,17 @@ const bossList = [
     critDamage:180,
     reward:1250000000,
     drop:"심연의 촉수",
+    patterns:[
+      "촉수 강타 : 25% 확률로 피해 1.5배",
+      "먹물 뿌리기 : 15% 확률로 이번 공격의 회피율 감소"
+    ],
     desc:"깊은 심해에 숨어있던 거대 크라켄.\n수많은 낚시꾼들을 바다 아래로 끌고 갔다."
   },
   {
     id:"leviathan",
     name:"리바이어던",
     grade:"전설",
+    color:"#ff4d4f",
     hp:500000,
     attack:12000,
     dodge:12,
@@ -1441,12 +1465,28 @@ const bossList = [
     critDamage:220,
     reward:25000000000,
     drop:"리바이어던의 코어",
+    patterns:[
+      "심해 압박 : 25% 확률로 추가 피해",
+      "바다 가르기 : 15% 확률로 치명타 확률 증가"
+    ],
     desc:"전설 속에서만 존재한다고 여겨졌던 심해의 지배자.\n거대한 몸으로 바다를 가르며 지나갈 때마다\n수많은 생명체가 모습을 감춘다고 한다."
   }
 ];
 
 function line(){
   return "────────────────────";
+}
+
+function bossColor(text,boss){
+  return `<span style="color:${boss.color || '#e6edf3'}">${text}</span>`;
+}
+
+function hpBar(current,max,size=10){
+  current = Math.max(0, Number(current || 0));
+  max = Math.max(1, Number(max || 1));
+  const ratio = Math.max(0, Math.min(1, current / max));
+  const filled = Math.round(ratio * size);
+  return "[" + "█".repeat(filled) + "░".repeat(size - filled) + "] " + Math.floor(current).toLocaleString() + " / " + Math.floor(max).toLocaleString();
 }
 
 function clamp(n,min,max){ return Math.max(min, Math.min(max, n)); }
@@ -1618,14 +1658,77 @@ function showFishInfo(displayNumber){
   printPreview("정보 " + displayNumber, color(lineFish(f), f.grade), "상세정보 전체보기", buildFishDetailText(displayNumber));
 }
 
+function buildInventoryText(){
+  const materials = bossProgress.materials || {};
+  const entries = Object.entries(materials).filter(([name,count]) => count > 0);
+
+  if(entries.length === 0) return "인벤토리가 비어있습니다.";
+
+  let s = "인벤토리\n\n";
+  s += "────┬────────────────────\n";
+
+  entries.forEach(([name,count],i)=>{
+    s += fullWidthNumber(i+1) + "│" + name + " x" + count.toLocaleString() + "\n";
+    if(i !== entries.length - 1) s += "────┼────────────────────\n";
+  });
+
+  s += "────┴────────────────────";
+  return s;
+}
+
+function showInventory(){
+  const materials = bossProgress.materials || {};
+  const count = Object.values(materials).filter(v => v > 0).length;
+
+  if(count === 0) return print("인벤토리가 비어있습니다.");
+
+  printPreview(
+    "인벤토리",
+    "보유 재료 : " + count + "종",
+    "인벤토리 전체보기",
+    buildInventoryText()
+  );
+}
+
 function getBossById(id){
   return bossList.find(b => b.id === id) || bossList[0];
 }
 
+function isBossUnlocked(boss){
+  if(boss.id === "kraken") return true;
+  if(boss.id === "leviathan") return !!bossProgress.defeated.kraken;
+  return false;
+}
+
+function getSelectedBossId(){
+  if(bossProgress.selectedBossId && isBossUnlocked(getBossById(bossProgress.selectedBossId))){
+    return bossProgress.selectedBossId;
+  }
+
+  return getCurrentBoss().id;
+}
+
 function getCurrentBoss(){
+  if(bossProgress.selectedBossId && isBossUnlocked(getBossById(bossProgress.selectedBossId))){
+    return getBossById(bossProgress.selectedBossId);
+  }
+
   if(!bossProgress.defeated.kraken) return getBossById("kraken");
   if(!bossProgress.defeated.leviathan) return getBossById("leviathan");
   return getBossById("leviathan");
+}
+
+function selectBoss(n){
+  const boss = bossList[Number(n)-1];
+
+  if(!boss) return print("존재하지 않는 보스 번호입니다.");
+  if(!isBossUnlocked(boss)) return print("아직 해금되지 않은 보스입니다.");
+
+  bossProgress.selectedBossId = boss.id;
+  if(!bossProgress.hp[boss.id]) bossProgress.hp[boss.id] = boss.hp;
+  saveGame();
+
+  print(bossColor(boss.name, boss) + "을 선택했습니다.");
 }
 
 function getBossHp(boss){
@@ -1655,9 +1758,9 @@ function buildBossBattleText(){
   const hp = getBossHp(boss);
   let s = "보스전\n\n";
   s += line() + "\n\n";
-  s += "현재 보스\n" + boss.name + "\n\n";
+  s += "현재 보스\n" + bossColor(boss.name, boss) + "\n\n";
   s += "등급\n" + boss.grade + "\n\n";
-  s += "HP\n" + hp.toLocaleString() + " / " + boss.hp.toLocaleString() + "\n\n";
+  s += "HP\n" + hpBar(hp, boss.hp) + "\n\n";
   s += "준비된 물고기\n" + bossPrepIndexes.length + " / 5\n\n";
   if(bossPrepIndexes.length > 0){
     bossPrepIndexes.forEach((idx,i)=>{
@@ -1666,7 +1769,7 @@ function buildBossBattleText(){
     s += "\n";
   }
   s += "드랍\n" + boss.drop + "\n\n";
-  s += "명령어\n준비 번호\n준비해제 번호\n정보 번호\n전투\n보스정보\n보스목록\n나가기\n\n";
+  s += "명령어\n준비 번호\n준비해제 번호\n정보 번호\n전투\n보스정보\n보스목록\n보스선택 번호\n인벤토리\n나가기\n\n";
   s += line();
   return s;
 }
@@ -1680,12 +1783,15 @@ function showBossBattle(){
 function buildBossInfoText(){
   const boss = getCurrentBoss();
   const hp = getBossHp(boss);
-  let s = boss.name + "\n\n";
+  let s = bossColor(boss.name, boss) + "\n\n";
   s += line() + "\n\n";
   s += "등급\n" + boss.grade + "\n\n";
   s += "설명\n" + boss.desc + "\n\n";
   s += line() + "\n\n";
-  s += "HP\n" + hp.toLocaleString() + " / " + boss.hp.toLocaleString() + "\n\n";
+  s += "패턴\n";
+  boss.patterns.forEach(p => s += p + "\n");
+  s += "\n" + line() + "\n\n";
+  s += "HP\n" + hpBar(hp, boss.hp) + "\n\n";
   s += "공격력\n" + boss.attack.toLocaleString() + "\n\n";
   s += "회피율\n" + boss.dodge + "%\n\n";
   s += "치명타 확률\n" + boss.critRate + "%\n\n";
@@ -1700,10 +1806,12 @@ function showBossInfo(){ print(buildBossInfoText()); }
 function buildBossListText(){
   let s = "보스목록\n\n" + line() + "\n\n";
   bossList.forEach((boss,i)=>{
-    s += boss.name + " [" + getBossStatus(boss) + "]\n";
+    const selected = getCurrentBoss().id === boss.id ? " [선택됨]" : "";
+    s += bossColor(boss.name, boss) + " [" + getBossStatus(boss) + "]" + selected + "\n";
     if(i !== bossList.length - 1) s += "\n" + line() + "\n\n";
   });
-  s += "\n" + line();
+  s += "\n" + line() + "\n\n";
+  s += "명령어 : 보스선택 번호";
   return s;
 }
 
@@ -1758,6 +1866,22 @@ function stunFish(f){
   c.stunUntil = Date.now() + getStunMinutes(f.grade) * 60 * 1000;
 }
 
+function pickBossPattern(boss){
+  const r = Math.random() * 100;
+
+  if(boss.id === "kraken"){
+    if(r < 25) return "tentacle";
+    if(r < 40) return "ink";
+  }
+
+  if(boss.id === "leviathan"){
+    if(r < 25) return "pressure";
+    if(r < 40) return "slash";
+  }
+
+  return "normal";
+}
+
 function runBossBattle(){
   if(!isBossMenu) return print("보스전에 입장한 뒤 사용할 수 있습니다.");
   recoverStunnedFish();
@@ -1770,6 +1894,7 @@ function runBossBattle(){
   let bossHp = getBossHp(boss);
   let totalDamage = 0;
   const participants = [];
+  const battleLog = [];
   let result = "처치 실패";
   let rewardMoney = 0;
   let rewardDrop = "";
@@ -1782,23 +1907,67 @@ function runBossBattle(){
     if(f.grade === "쓰레기" || c.status === "기절") continue;
 
     participants.push(f);
+    battleLog.push(color(lineFish(f), f.grade) + " 출전\n" + hpBar(c.hp, c.maxHp));
 
     while(c.hp > 0 && bossHp > 0){
       if(Math.random() * 100 >= boss.dodge){
         const hit = calcDamage(c.attack, c.critRate, c.critDamage);
         bossHp = Math.max(0, bossHp - hit.damage);
         totalDamage += hit.damage;
+
+        battleLog.push(
+          color(lineFish(f), f.grade) + " 공격\n" +
+          (hit.crit ? "치명타!\n" : "") +
+          hit.damage.toLocaleString() + " 피해\n\n" +
+          bossColor(boss.name, boss) + "\n" +
+          hpBar(bossHp, boss.hp)
+        );
+      } else {
+        battleLog.push(color(lineFish(f), f.grade) + " 공격\n" + bossColor(boss.name, boss) + " 회피");
       }
 
       if(bossHp <= 0) break;
 
-      if(Math.random() * 100 >= c.dodge){
-        const bossHit = calcDamage(boss.attack, boss.critRate, boss.critDamage);
+      let bossAttack = boss.attack;
+      let bossCritRate = boss.critRate;
+      let fishDodge = c.dodge;
+      let patternText = "";
+
+      const pattern = pickBossPattern(boss);
+
+      if(pattern === "tentacle"){
+        bossAttack = Math.floor(bossAttack * 1.5);
+        patternText = "촉수 강타\n";
+      } else if(pattern === "ink"){
+        fishDodge = Math.max(0, fishDodge / 2);
+        patternText = "먹물 뿌리기\n";
+      } else if(pattern === "pressure"){
+        bossAttack += Math.floor(c.hp * 0.2);
+        patternText = "심해 압박\n";
+      } else if(pattern === "slash"){
+        bossCritRate += 20;
+        patternText = "바다 가르기\n";
+      }
+
+      if(Math.random() * 100 >= fishDodge){
+        const bossHit = calcDamage(bossAttack, bossCritRate, boss.critDamage);
         c.hp = Math.max(0, c.hp - bossHit.damage);
+
+        battleLog.push(
+          bossColor(boss.name, boss) + " 공격\n" +
+          patternText +
+          (bossHit.crit ? "치명타!\n" : "") +
+          bossHit.damage.toLocaleString() + " 피해\n\n" +
+          color(lineFish(f), f.grade) + "\n" +
+          hpBar(c.hp, c.maxHp)
+        );
+      } else {
+        battleLog.push(bossColor(boss.name, boss) + " 공격\n" + patternText + color(lineFish(f), f.grade) + " 회피");
       }
 
       if(c.hp <= 0){
         stunFish(f);
+        battleLog.push(color(lineFish(f), f.grade) + "\n체력이 0이 되어 기절했습니다.");
         break;
       }
     }
@@ -1819,7 +1988,7 @@ function runBossBattle(){
     bossProgress.hp[boss.id] = boss.hp;
   }
 
-  const resultText = buildBattleResultText(boss, participants, totalDamage, result, rewardMoney, rewardDrop);
+  const resultText = buildBattleResultText(boss, participants, totalDamage, result, rewardMoney, rewardDrop, battleLog);
   const summary = buildBattleSummaryText(boss, result, rewardMoney, rewardDrop);
 
   bossPrepIndexes = [];
@@ -1830,7 +1999,7 @@ function runBossBattle(){
 
 function buildBattleSummaryText(boss, result, rewardMoney, rewardDrop){
   let s = line() + "\n\n";
-  s += boss.name + " " + result + "\n\n";
+  s += bossColor(boss.name, boss) + " " + result + "\n\n";
 
   if(result === "처치 성공"){
     s += "획득\n\n";
@@ -1842,9 +2011,17 @@ function buildBattleSummaryText(boss, result, rewardMoney, rewardDrop){
   return s;
 }
 
-function buildBattleResultText(boss, participants, totalDamage, result, rewardMoney, rewardDrop){
+function buildBattleResultText(boss, participants, totalDamage, result, rewardMoney, rewardDrop, battleLog){
   let s = "전투 결과\n\n";
   s += line() + "\n\n";
+
+  if(battleLog && battleLog.length > 0){
+    battleLog.forEach((entry,i)=>{
+      s += entry + "\n";
+      s += "\n" + line() + "\n\n";
+    });
+  }
+
   s += "참가 물고기\n\n";
 
   if(participants.length === 0){
@@ -1882,7 +2059,8 @@ function leaveBossMenu(){
 
 function isAllowedInBossMenu(cmd){
   if(!isBossMenu) return true;
-  if(cmd === "보스전" || cmd === "보스정보" || cmd === "보스목록" || cmd === "전투" || cmd === "나가기" || cmd === "명령어") return true;
+  if(cmd === "보스전" || cmd === "보스정보" || cmd === "보스목록" || cmd === "인벤토리" || cmd === "전투" || cmd === "나가기" || cmd === "명령어") return true;
+  if(cmd.startsWith("보스선택 ")) return true;
   if(cmd.startsWith("준비 ")) return true;
   if(cmd.startsWith("준비해제 ")) return true;
   if(cmd.startsWith("정보 ")) return true;
@@ -2404,6 +2582,8 @@ function showCommands(){
 보스전
 보스정보
 보스목록
+보스선택 번호
+인벤토리
 준비 번호
 준비해제 번호
 전투
@@ -2725,6 +2905,8 @@ function runCommand(){
   else if(cmd==="보스전") showBossBattle();
   else if(cmd==="보스정보") showBossInfo();
   else if(cmd==="보스목록") showBossList();
+  else if(cmd.startsWith("보스선택 ")){ const p=cmd.split(" "); selectBoss(Number(p[1])); }
+  else if(cmd==="인벤토리") showInventory();
   else if(cmd.startsWith("준비해제 ")){ const p=cmd.split(" "); unprepareBossFish(Number(p[1])); }
   else if(cmd.startsWith("준비 ")){ const p=cmd.split(" "); prepareBossFish(Number(p[1])); }
   else if(cmd==="전투") runBossBattle();
