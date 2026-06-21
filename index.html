@@ -2467,7 +2467,9 @@ function spawnBabyDragons(boss, battleLog){
   if(!boss._summons) boss._summons = [];
 
   for(let i=0;i<3;i++){
-    const babyHp = randomInt(100000, 300000);\n    const babyAttack = randomInt(10000, 30000);\n    boss._summons.push({name:"새끼 용", hp:babyHp, maxHp:babyHp, attack:babyAttack});
+    const babyHp = randomInt(100000, 300000);
+    const babyAttack = randomInt(10000, 30000);
+    boss._summons.push({name:"새끼 용", hp:babyHp, maxHp:babyHp, attack:babyAttack});
   }
 
   battleLog.push(bossColor(boss.name, boss) + "의 괴수 탄생\n새끼 용 3마리를 소환했습니다.");
