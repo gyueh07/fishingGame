@@ -94,7 +94,7 @@ button:hover { background:#30363d; }
 <div class="box cmd">
 <b>주요 명령어</b><br>
 <span>명령어</span><span>낚시</span><span>양동이</span><span>양동이 닉네임</span><span>도감</span><span>물고기도감</span><span>코어도감</span><span>내정보</span><span>정보 1</span><span>보스전</span><span>보스정보</span><span>보스목록</span><span>보스선택 1</span><span>인벤토리</span><span>준비 1</span><span>준비해제 1</span><span>전투</span><span>전투 확인</span><span>나가기</span><span>시세</span><span>랭킹</span>
-<span>지갑</span><span>지갑 닉네임</span><span>메세지 닉네임</span><span>연구소</span><span>연구소1 강화</span><span>연구소2 강화</span><span>훈련소</span><span>훈련소1 강화</span><span>훈련소2 강화</span><span>훈련소3 강화</span><span>대전 닉네임</span><span>대전준비 1</span><span>대전해제 1</span><span>대전목록</span><span>대전수락</span><span>대전거절</span><span>업적</span><span>칭호</span><span>칭호 장착 번호</span><span>칭호 장착해제</span><span>회원가입</span><span>로그인</span><span>로그아웃</span><span>탈퇴</span><span>강화</span><span>일괄강화</span>
+<span>지갑</span><span>지갑 닉네임</span><span>메세지 닉네임</span><span>연구소</span><span>연구소1 강화</span><span>연구소2 강화</span><span>훈련소</span><span>훈련소1 강화</span><span>훈련소2 강화</span><span>훈련소3 강화</span><span>대전 닉네임</span><span>대전준비 1</span><span>대전해제 1</span><span>대전목록</span><span>대전수락</span><span>대전거절</span><span>대전취소</span><span>업적</span><span>칭호</span><span>칭호 장착 번호</span><span>칭호 장착해제</span><span>회원가입</span><span>로그인</span><span>로그아웃</span><span>탈퇴</span><span>강화</span><span>일괄강화</span>
 <span>정렬 오름차순</span><span>정렬 내림차순</span><span>송금 닉네임 금액</span><span>전송 닉네임 번호</span>
 <span>잠금 1</span><span>잠금해제 1</span>
 <span>판매 1</span><span>일괄판매</span>
@@ -3771,6 +3771,25 @@ async function requestPvp(nickname){
     const online = await isUserOnline(nickname);
     if(!online) return print("현재 접속 중인 유저가 아닙니다.");
 
+    const id = getPvpDocId(currentUser, nickname);
+    const reverseId = getPvpDocId(nickname, currentUser);
+    const myReqSnap = await db.collection("pvpRequests").doc(id).get();
+    const reverseReqSnap = await db.collection("pvpRequests").doc(reverseId).get();
+
+    if(myReqSnap.exists){
+      const d = myReqSnap.data() || {};
+      if(d.status === "pending"){
+        return print("이미 대전 신청을 보냈습니다.");
+      }
+    }
+
+    if(reverseReqSnap.exists){
+      const d = reverseReqSnap.data() || {};
+      if(d.status === "pending"){
+        return print("상대가 이미 나에게 대전을 신청했습니다.\n\n대전수락 또는 대전거절 을 입력하세요.");
+      }
+    }
+
     if(await hasActivePvpWithUser(nickname)){
       return print("상대가 대전중인 상태입니다.");
     }
@@ -3782,9 +3801,7 @@ async function requestPvp(nickname){
     const team = buildPvpTeamFromIndexes(pvpPrepIndexes, bucket, trainingLevels);
     if(team.length === 0) return print("대전에 참가할 수 있는 물고기가 없습니다.");
 
-    const id = getPvpDocId(currentUser, nickname);
-
-    await db.collection("pvpRequests").doc(id).set({
+    const payload = {
       from: currentUser,
       fromTitle: getCurrentTitle(),
       to: nickname,
@@ -3795,7 +3812,19 @@ async function requestPvp(nickname){
       createdAtMillis: Date.now(),
       updatedAtMillis: Date.now(),
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
+    };
+
+    await db.collection("pvpRequests").doc(id).set(payload);
+
+    // 상대가 알림 리스너를 놓쳐도 로그인 시 알림으로 확인 가능하게 저장
+    await db.collection("users").doc(nickname).set({
+      gameState:{
+        notifications: firebase.firestore.FieldValue.arrayUnion(
+          "⚔️ 대전 신청\n\n" + formatCurrentUserName() + " 님이 대전을 신청했습니다.\n\n대전수락\n대전거절"
+        )
+      },
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, {merge:true});
 
     await db.collection("serverAlerts").add({
       type:"pvpRequest",
@@ -4545,6 +4574,33 @@ function unpreparePvpFish(n){
   print("대전 준비가 해제되었습니다.");
 }
 
+
+async function cancelPvpRequest(){
+  if(!currentUser) return print("로그인 후 사용 가능합니다.");
+
+  try{
+    const snap = await db.collection("pvpRequests")
+      .where("from", "==", currentUser)
+      .where("status", "==", "pending")
+      .get();
+
+    if(snap.empty) return print("취소할 대전 신청이 없습니다.");
+
+    const batch = db.batch();
+    snap.docs.forEach(doc => batch.update(doc.ref, {
+      status:"cancelled",
+      cancelledAtMillis:Date.now(),
+      updatedAtMillis:Date.now()
+    }));
+    await batch.commit();
+
+    print("대전 신청을 취소했습니다.");
+  }catch(e){
+    console.error(e);
+    print("대전 취소 중 오류가 발생했습니다.");
+  }
+}
+
 function runCommand(){
 
   let cmd=input.value.trim();
@@ -4562,6 +4618,7 @@ function runCommand(){
   if(cmd === "대전목록") return showPvpPrepList();
   if(cmd === "대전수락") return acceptLatestPvpRequest();
   if(cmd === "대전거절") return rejectLatestPvpRequest();
+  if(cmd === "대전취소") return cancelPvpRequest();
 
 
   if(!currentUser && !requireLoginForCommand(cmd)){
