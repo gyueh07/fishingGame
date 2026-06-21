@@ -4537,13 +4537,6 @@ function unpreparePvpFish(n){
 
 function runCommand(){
 
-  if(cmd.startsWith("대전 ") && cmd.split(/\s+/).length === 2) return sendPvpRequest(cmd.split(/\s+/)[1]);
-  if(cmd.startsWith("대전준비 ")) return preparePvpFish(cmd.split(/\s+/)[1]);
-  if(cmd.startsWith("대전해제 ")) return unpreparePvpFish(cmd.split(/\s+/)[1]);
-  if(cmd === "대전목록") return showPvpPrepList();
-  if(cmd === "대전수락") return acceptLatestPvpRequest();
-  if(cmd === "대전거절") return rejectLatestPvpRequest();
-
   let cmd=input.value.trim();
   input.value="";
   if(!cmd) return;
@@ -4552,6 +4545,14 @@ function runCommand(){
   if(cmd.startsWith("!")) cmd = cmd.slice(1).trim();
 
   print("> "+cmd);
+
+  if(cmd.startsWith("대전 ") && cmd.split(/\s+/).length === 2) return sendPvpRequest(cmd.split(/\s+/)[1]);
+  if(cmd.startsWith("대전준비 ")) return preparePvpFish(cmd.split(/\s+/)[1]);
+  if(cmd.startsWith("대전해제 ")) return unpreparePvpFish(cmd.split(/\s+/)[1]);
+  if(cmd === "대전목록") return showPvpPrepList();
+  if(cmd === "대전수락") return acceptLatestPvpRequest();
+  if(cmd === "대전거절") return rejectLatestPvpRequest();
+
 
   if(!currentUser && !requireLoginForCommand(cmd)){
     return print("로그인 후 이용 가능합니다.\n\n회원가입 또는 로그인 을 입력하세요.");
