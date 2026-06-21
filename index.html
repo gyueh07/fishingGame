@@ -220,7 +220,7 @@ const UPDATE_NOTICES = [
     id: "2026-06-20-combat-recovery-1",
     title: "전투 회복 업데이트",
     lines: [
-      "기존 물고기 전투 스탯이 새 전투 시스템 기준으로 재생성됩니다.",
+      "기존 물고기의 별/공격력/체력/회피율/치명타가 새 전투 시스템 기준으로 다시 생성됩니다.",
       "전투 상태 표시가 정상 / 회복 중으로 정리되었습니다.",
       "회복 중인 물고기도 전투에 참가할 수 있습니다.",
       "회복 중인 물고기가 포함된 상태로 전투를 시작하면 확인이 필요합니다.",
@@ -1539,6 +1539,8 @@ function upgradeResearch(which){
 
 
 
+const COMBAT_VERSION = 11;
+
 const combatAttackRanges = {
   "일반":[30,150], "희귀":[100,500], "영웅":[500,2000], "전설":[2000,8000],
   "신화":[8000,20000], "초월":[20000,50000], "영원":[50000,100000], "공허":[100000,250000]
@@ -1719,7 +1721,7 @@ function rerollCritStats(f){
 
 function makeCombatStats(f){
   if(!f || f.grade === "쓰레기"){
-    return {attack:0, hp:0, maxHp:0, dodge:0, critRate:0, critDamage:0, status:"전투 불가", stars:{attack:0,hp:0,dodge:0,critRate:0,critDamage:0}};
+    return {attack:0, hp:0, maxHp:0, dodge:0, critRate:0, critDamage:0, status:"전투 불가", combatVersion:COMBAT_VERSION, stars:{attack:0,hp:0,dodge:0,critRate:0,critDamage:0}};
   }
 
   const atkRange = combatAttackRanges[f.grade] || [10,50];
@@ -1752,6 +1754,7 @@ function makeCombatStats(f){
     critRate:critRate,
     critDamage:critDamage,
     status:"정상",
+    combatVersion:COMBAT_VERSION,
     stars:stars
   };
 }
@@ -1831,6 +1834,7 @@ function ensureCombatStats(f){
     f.combat.dodge = 0;
     f.combat.critRate = 0;
     f.combat.critDamage = 0;
+    f.combat.combatVersion = COMBAT_VERSION;
     f.combat.stars = {attack:0,hp:0,dodge:0,critRate:0,critDamage:0};
     return f.combat;
   }
@@ -1857,7 +1861,7 @@ function resetAllCombatStats(){
 }
 
 function migrateCombatStatsToCurrentVersion(){
-  const targetVersion = 10;
+  const targetVersion = COMBAT_VERSION;
   let changed = false;
 
   bucket.forEach(f => {
