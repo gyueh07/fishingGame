@@ -1602,7 +1602,7 @@ const bossList = [
     id:"bahamut", name:"바하무트", grade:"신화", color:"#ff4d4f",
     hp:9000000, attack:60000, dodge:12, critRate:22, critDamage:280, skillRate:40,
     reward:200000000000, drop:"용왕의 심장",
-    skillName:"메가 플레어 / 용왕의 포효", skillDesc:"메가 플레어 15% : 공격력 3배, 사용 후 다음 턴 행동 불가\n용왕의 포효 25% : 공격력 1.5배, 다음 턴 공격력 50% 증가\n일반 공격 60% : 공격력 1배",
+    skillName:"메가 플레어 / 용왕의 포효", skillDesc:"메가 플레어 15% : 공격력 3배, 다음 턴 참가 물고기 전체 행동 불가\n용왕의 포효 25% : 공격력 1.5배, 사용할 때마다 공격력 30,000 누적 증가",
     desc:"태초의 바다를 지배하던 용왕.\n분노한 포효는 하늘과 바다를 갈라놓는다."
   },
   {
@@ -2123,8 +2123,8 @@ function buildBossInfoText(){
     s += "윤회의 불꽃 (15%)\n전체 공격\n공격력 1.5배\n화상 1중첩 대상 추가 피해\n화상 2중첩 대상 대폭 추가 피해\n\n";
     } else if(boss.id === "bahamut"){
     s += "패시브 - 드래곤 스케일\n전투 중 가장 큰 피해 기록 저장\n기록보다 크거나 같은 피해를 받으면 50% 감소\n감소 적용 후 새 기록으로 갱신\n\n";
-    s += "메가 플레어 (15%)\n공격력 3배\n사용 후 다음 턴 행동 불가\n\n";
-    s += "용왕의 포효 (25%)\n공격력 1.5배\n다음 턴 공격력 50% 증가\n\n";
+    s += "메가 플레어 (15%)\n공격력 3배\n다음 턴 참가 물고기 전체 행동 불가\n\n";
+    s += "용왕의 포효 (25%)\n공격력 1.5배\n사용할 때마다 공격력 30,000 누적 증가\n\n";
     } else if(boss.id === "tiamat"){
     s += "패시브 - 태초의 바다\n매 턴 최대 체력의 2% 회복\n\n";
     s += "창세의 바다 (25%)\n공격력 2배\n\n";
@@ -2277,11 +2277,6 @@ function getBossAttackMultiplier(boss){
     multiplier *= 1.3;
   }
 
-  if(boss._bahamutRoarBoost){
-    multiplier *= 1.5;
-    boss._bahamutRoarBoost = false;
-  }
-
   if(boss.id === "jormungandr"){
     const maxBoost = boss._ringCompleted ? 1.0 : 0.5;
     const boost = Math.min(maxBoost, Number(boss._attackBoost || 0));
@@ -2292,7 +2287,8 @@ function getBossAttackMultiplier(boss){
 }
 
 function getBossAttackValue(boss, bossAttackMultiplier=1){
-  return Math.floor(boss.attack * bossAttackMultiplier * getBossAttackMultiplier(boss));
+  const bonusAttack = Number(boss._bahamutAttackBonus || 0);
+  return Math.floor((boss.attack + bonusAttack) * bossAttackMultiplier * getBossAttackMultiplier(boss));
 }
 
 function getAliveTargets(targets){
@@ -2468,7 +2464,8 @@ function spawnBabyDragons(boss, battleLog){
     boss._summons.push({name:"새끼 용", hp:babyHp, maxHp:babyHp, attack:babyAttack});
   }
 
-  battleLog.push(bossColor(boss.name, boss) + "의 괴수 탄생 (15%)\n새끼 용 3마리를 소환했습니다.");
+  battleLog.push(bossColor(boss.name, boss) + "의 괴수 탄생 (15%)
+새끼 용 3마리를 소환했습니다.");
 }
 
 function getAliveSummons(boss){
@@ -2510,24 +2507,22 @@ function runBossAction(boss, participants, battleLog){
   }
 
   if(boss.id === "bahamut"){
-    if(boss._skipTurn){
-      boss._skipTurn = false;
-      battleLog.push(bossColor(boss.name, boss) + "은 메가 플레어의 반동으로 행동하지 못했습니다.");
+    const r = Math.random() * 100;
+
+    if(r < 15){
+      bossSingleTargetAttack(boss, participants, battleLog, 3, "메가 플레어", false);
+      boss._fishDisabledNextTurn = true;
+      battleLog.push(bossColor(boss.name, boss) + "의 메가 플레어 여파\n다음 턴 참가 물고기 전체가 행동할 수 없습니다.");
       return;
     }
 
-    const r = Math.random() * 100;
-    if(r < 15){
-      bossSingleTargetAttack(boss, participants, battleLog, 3, "메가 플레어", false);
-      boss._skipTurn = true;
-      return;
-    }
     if(r < 40){
       bossSingleTargetAttack(boss, participants, battleLog, 1.5, "용왕의 포효", false);
-      boss._bahamutRoarBoost = true;
-      battleLog.push(bossColor(boss.name, boss) + "의 다음 턴 공격력이 50% 증가합니다.");
+      boss._bahamutAttackBonus = Number(boss._bahamutAttackBonus || 0) + Math.floor(boss.attack * 0.5);
+      battleLog.push(bossColor(boss.name, boss) + "의 공격력이 누적 증가했습니다.\n현재 공격력 : " + (boss.attack + boss._bahamutAttackBonus).toLocaleString());
       return;
     }
+
     return bossSingleTargetAttack(boss, participants, battleLog, 1, "일반 공격", false);
   }
 
@@ -2611,8 +2606,8 @@ function runBossBattle(){
     _enraged:false,
     _revived:false,
     _damageRecord:0,
-    _skipTurn:false,
-    _bahamutRoarBoost:false,
+    _fishDisabledNextTurn:false,
+    _bahamutAttackBonus:0,
     _summons:[],
     _attackBoost:0,
     _ring:0,
@@ -2638,7 +2633,14 @@ function runBossBattle(){
 
   let turn = 1;
   while(bossHp > 0 && participants.some(f => ensureCombatStats(f).hp > 0 && ensureCombatStats(f).status !== "기절") && turn <= 200){
+    boss._fishDisabledThisTurn = !!boss._fishDisabledNextTurn;
+    boss._fishDisabledNextTurn = false;
+
     battleLog.push("턴 " + turn);
+
+    if(boss._fishDisabledThisTurn){
+      battleLog.push(bossColor(boss.name, boss) + "의 메가 플레어 여파\n참가 물고기 전체가 이번 턴 행동할 수 없습니다.");
+    }
 
     if(boss.id === "jormungandr"){
       const limit = boss._ringCompleted ? 1.0 : 0.5;
@@ -2656,6 +2658,11 @@ function runBossBattle(){
       const c = ensureCombatStats(f);
       if(c.hp <= 0 || c.status === "기절") continue;
       if(bossHp <= 0) break;
+
+      if(boss._fishDisabledThisTurn){
+        battleLog.push(color(lineFish(f), f.grade) + "\n메가 플레어의 여파로 행동할 수 없습니다.");
+        continue;
+      }
 
       const summons = getAliveSummons(boss);
       const targetSummon = summons.length > 0 ? summons[0] : null;
