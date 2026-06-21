@@ -94,7 +94,7 @@ button:hover { background:#30363d; }
 <div class="box cmd">
 <b>주요 명령어</b><br>
 <span>명령어</span><span>낚시</span><span>양동이</span><span>양동이 닉네임</span><span>도감</span><span>물고기도감</span><span>코어도감</span><span>내정보</span><span>정보 1</span><span>보스전</span><span>보스정보</span><span>보스목록</span><span>보스선택 1</span><span>인벤토리</span><span>준비 1</span><span>준비해제 1</span><span>전투</span><span>전투 확인</span><span>나가기</span><span>시세</span><span>랭킹</span>
-<span>지갑</span><span>지갑 닉네임</span><span>메세지 닉네임</span><span>연구소</span><span>연구소1 강화</span><span>연구소2 강화</span><span>업적</span><span>칭호</span><span>칭호 장착 번호</span><span>칭호 장착해제</span><span>회원가입</span><span>로그인</span><span>로그아웃</span><span>탈퇴</span><span>강화</span><span>일괄강화</span>
+<span>지갑</span><span>지갑 닉네임</span><span>메세지 닉네임</span><span>연구소</span><span>연구소1 강화</span><span>연구소2 강화</span><span>훈련소</span><span>훈련소1 강화</span><span>훈련소2 강화</span><span>훈련소3 강화</span><span>업적</span><span>칭호</span><span>칭호 장착 번호</span><span>칭호 장착해제</span><span>회원가입</span><span>로그인</span><span>로그아웃</span><span>탈퇴</span><span>강화</span><span>일괄강화</span>
 <span>정렬 오름차순</span><span>정렬 내림차순</span><span>송금 닉네임 금액</span><span>전송 닉네임 번호</span>
 <span>잠금 1</span><span>잠금해제 1</span>
 <span>판매 1</span><span>일괄판매</span>
@@ -147,6 +147,7 @@ let marketHour=null, marketRates={};
 let notifications=[];
 let messages=[];
 let researchLevels={fishing:0, appraisal:0};
+let trainingLevels={attack:0,hp:0,critDamage:0};
 let unlockedTitles=[];
 let equippedTitle="";
 let seenUpdateNoticeIds=[];
@@ -288,6 +289,18 @@ const UPDATE_NOTICES = [
       "재도전 처치 시에는 상금 없이 보스 재료만 획득합니다.",
       "피닉스, 바하무트, 티아마트, 요르문간드의 전용 스킬 효과가 적용되었습니다."
     ]
+
+  },
+  {
+    id: "2026-06-21-training-lab-1",
+    title: "훈련소 업데이트",
+    lines: [
+      "훈련소가 추가되었습니다.",
+      "훈련소1은 모든 전투 물고기의 공격력을 증가시킵니다.",
+      "훈련소2는 모든 전투 물고기의 체력을 증가시킵니다.",
+      "훈련소3은 모든 전투 물고기의 치명타 피해를 증가시킵니다.",
+      "훈련소는 별 시스템과 별개로 적용되며 골드만 사용합니다."
+    ]
   }
 ];
 
@@ -336,6 +349,7 @@ function getGameState(){
     notifications,
     messages,
     researchLevels,
+    trainingLevels,
     unlockedTitles,
     equippedTitle,
     seenUpdateNoticeIds,
@@ -374,6 +388,16 @@ function normalizeResearchLevels(value){
   };
 }
 
+function normalizeTrainingLevels(value){
+  const base = {attack:0,hp:0,critDamage:0};
+  if(!value || typeof value !== "object") return base;
+  return {
+    attack: Math.min(MAX_RESEARCH || 10, Math.max(0, Number(value.attack || 0))),
+    hp: Math.min(MAX_RESEARCH || 10, Math.max(0, Number(value.hp || 0))),
+    critDamage: Math.min(MAX_RESEARCH || 10, Math.max(0, Number(value.critDamage || 0)))
+  };
+}
+
 function applyGameState(s){
   if(!s) return;
   money=s.money??money;
@@ -390,6 +414,7 @@ function applyGameState(s){
   notifications=s.notifications??notifications;
   messages=Array.isArray(s.messages)?s.messages:messages;
   researchLevels=normalizeResearchLevels(s.researchLevels??researchLevels);
+  trainingLevels=normalizeTrainingLevels(s.trainingLevels??trainingLevels);
   unlockedTitles=Array.isArray(s.unlockedTitles)?s.unlockedTitles:unlockedTitles;
   equippedTitle=s.equippedTitle??equippedTitle;
   seenUpdateNoticeIds=normalizeUpdateNoticeIds(s.seenUpdateNoticeIds, s.lastSeenUpdateVersion);
@@ -437,6 +462,7 @@ function resetGameData(){
   notifications = [];
   messages = [];
   researchLevels = {fishing:0, appraisal:0};
+  trainingLevels = {attack:0,hp:0,critDamage:0};
   unlockedTitles = [];
   equippedTitle = "";
   seenUpdateNoticeIds = [];
@@ -1404,7 +1430,7 @@ function unequipTitle(){
 }
 
 function saveGame(){
-  localStorage.setItem("textFishingSpeciesSizeSave", JSON.stringify({money,totalEarned,rodLevel,bucket,collection,ranking,totalFishingCount,gradeCounts,completedAchievements,marketHour,marketRates,notifications,messages,researchLevels,unlockedTitles,equippedTitle,seenUpdateNoticeIds,bossProgress}));
+  localStorage.setItem("textFishingSpeciesSizeSave", JSON.stringify({money,totalEarned,rodLevel,bucket,collection,ranking,totalFishingCount,gradeCounts,completedAchievements,marketHour,marketRates,notifications,messages,researchLevels,trainingLevels,unlockedTitles,equippedTitle,seenUpdateNoticeIds,bossProgress}));
   syncCloudSoon();
 }
 function loadGame(){
@@ -1423,6 +1449,7 @@ function loadGame(){
     notifications=Array.isArray(s.notifications)?s.notifications:[];
     messages=Array.isArray(s.messages)?s.messages:[];
     researchLevels=normalizeResearchLevels(s.researchLevels);
+    trainingLevels=normalizeTrainingLevels(s.trainingLevels);
     unlockedTitles=Array.isArray(s.unlockedTitles)?s.unlockedTitles:[];
     equippedTitle=s.equippedTitle??"";
     seenUpdateNoticeIds=normalizeUpdateNoticeIds(s.seenUpdateNoticeIds, s.lastSeenUpdateVersion);
@@ -1537,6 +1564,135 @@ function upgradeResearch(which){
 
   print(name + " 강화 완료\n\nLv." + level + " → Lv." + researchLevels[key] + "\n효과 : " + effect + "\n사용 금액 : " + formatMoney(cost));
 }
+
+const MAX_TRAINING = 10;
+
+function getTrainingLevel(key){
+  trainingLevels = normalizeTrainingLevels(trainingLevels);
+  return Math.min(MAX_TRAINING, Math.max(0, Number(trainingLevels[key] || 0)));
+}
+
+function getTrainingCost(level){
+  return getResearchCost(level);
+}
+
+function getTrainingAttackBonus(){
+  return getTrainingLevel("attack") * 10;
+}
+
+function getTrainingHpBonus(){
+  return getTrainingLevel("hp") * 10;
+}
+
+function getTrainingCritDamageBonus(){
+  return getTrainingLevel("critDamage") * 20;
+}
+
+function buildTrainingLine(num, name, level, effectText){
+  const maxed = level >= MAX_TRAINING;
+  let s = fullWidthNumber(num) + "│" + name + " Lv." + level + (maxed ? " [MAX]" : "") + "\n";
+  s += "    효과 : " + effectText + "\n";
+  s += "    비용 : " + (maxed ? "최대 레벨" : formatMoney(getTrainingCost(level)));
+  return s;
+}
+
+function buildTrainingText(){
+  const attackLevel = getTrainingLevel("attack");
+  const hpLevel = getTrainingLevel("hp");
+  const critDamageLevel = getTrainingLevel("critDamage");
+
+  let s = "훈련소\n\n";
+  s += "별 시스템과 별개로 모든 전투 물고기에 적용됩니다.\n";
+  s += "골드만 사용하며 비용은 연구소와 동일합니다.\n\n";
+  s += "────┬────────────────────\n";
+  s += buildTrainingLine(1, "공격 훈련", attackLevel, "공격력 +" + getTrainingAttackBonus() + "%") + "\n";
+  s += "────┼────────────────────\n";
+  s += buildTrainingLine(2, "체력 훈련", hpLevel, "체력 +" + getTrainingHpBonus() + "%") + "\n";
+  s += "────┼────────────────────\n";
+  s += buildTrainingLine(3, "치명타 피해 훈련", critDamageLevel, "치명타 피해 +" + getTrainingCritDamageBonus() + "%") + "\n";
+  s += "────┴────────────────────\n\n";
+  s += "명령어 : 훈련소1 강화 / 훈련소2 강화 / 훈련소3 강화";
+  return s;
+}
+
+function showTrainingLab(){
+  print(buildTrainingText());
+}
+
+function upgradeTraining(which){
+  const map = {
+    1:["attack", "공격 훈련"],
+    2:["hp", "체력 훈련"],
+    3:["critDamage", "치명타 피해 훈련"]
+  };
+
+  const data = map[which];
+  if(!data) return print("사용법 : 훈련소1 강화 / 훈련소2 강화 / 훈련소3 강화");
+
+  const key = data[0];
+  const name = data[1];
+  const level = getTrainingLevel(key);
+
+  if(level >= MAX_TRAINING){
+    return print(name + "는 이미 최대 레벨입니다.\nLv." + MAX_TRAINING + " [MAX]");
+  }
+
+  const cost = getTrainingCost(level);
+
+  if(money < cost){
+    return print("돈이 부족합니다.\n훈련 비용 : " + formatMoney(cost));
+  }
+
+  money -= cost;
+  trainingLevels[key] = level + 1;
+
+  // 체력 훈련은 기존 물고기 최대 체력에도 즉시 반영되도록 다음 조회 때 재계산합니다.
+  bucket.forEach(f => {
+    if(f && f.combat) delete f.combat._trainingHpLevel;
+  });
+
+  saveGame();
+
+  let effect = "";
+  if(key === "attack") effect = "공격력 +" + getTrainingAttackBonus() + "%";
+  else if(key === "hp") effect = "체력 +" + getTrainingHpBonus() + "%";
+  else effect = "치명타 피해 +" + getTrainingCritDamageBonus() + "%";
+
+  print(name + " 강화 완료\n\nLv." + level + " → Lv." + trainingLevels[key] + "\n효과 : " + effect + "\n사용 금액 : " + formatMoney(cost));
+}
+
+function applyTrainingBonusesToCombat(c){
+  if(!c) return c;
+  if(c.status === "전투 불가") return c;
+
+  if(c._baseAttack === undefined) c._baseAttack = Number(c.attack || 0);
+  if(c._baseMaxHp === undefined) c._baseMaxHp = Number(c.maxHp || c.hp || 1);
+  if(c._baseCritDamage === undefined) c._baseCritDamage = Number(c.critDamage || 0);
+
+  const attackLevel = getTrainingLevel("attack");
+  const hpLevel = getTrainingLevel("hp");
+  const critDamageLevel = getTrainingLevel("critDamage");
+
+  c.attack = Math.floor(c._baseAttack * (1 + attackLevel * 0.10));
+
+  const oldMaxHp = Math.max(1, Number(c.maxHp || c._baseMaxHp || 1));
+  const newMaxHp = Math.max(1, Math.floor(c._baseMaxHp * (1 + hpLevel * 0.10)));
+
+  if(c._trainingHpLevel !== hpLevel || c.maxHp !== newMaxHp){
+    const hpRatio = oldMaxHp > 0 ? clamp(Number(c.hp || oldMaxHp) / oldMaxHp, 0, 1) : 1;
+    c.maxHp = newMaxHp;
+    if(c.status === "정상") c.hp = newMaxHp;
+    else c.hp = Math.max(1, Math.min(newMaxHp, Math.floor(newMaxHp * hpRatio)));
+    c._trainingHpLevel = hpLevel;
+  } else {
+    c.maxHp = newMaxHp;
+  }
+
+  c.critDamage = Math.floor(c._baseCritDamage + critDamageLevel * 20);
+
+  return c;
+}
+
 
 
 
@@ -1772,6 +1928,9 @@ function makeCombatStats(f){
     dodge:dodge,
     critRate:critRate,
     critDamage:critDamage,
+    _baseAttack:attack,
+    _baseMaxHp:hp,
+    _baseCritDamage:critDamage,
     status:"정상",
     combatVersion:COMBAT_VERSION,
     stars:stars
@@ -1865,6 +2024,8 @@ function ensureCombatStats(f){
     rerollCritStats(f);
   }
   if(!f.combat.status) f.combat.status = "정상";
+
+  applyTrainingBonusesToCombat(f.combat);
 
   return f.combat;
 }
@@ -3466,6 +3627,10 @@ function showCommands(){
 연구소
 연구소1 강화
 연구소2 강화
+훈련소
+훈련소1 강화
+훈련소2 강화
+훈련소3 강화
 업적
 칭호
 칭호 장착 번호
@@ -3532,6 +3697,20 @@ function buildGameInfoText(){
 효과 : 판매가 +${getAppraisalBonus()}%
 다음 비용 : ${getAppraisalResearchLevel()>=MAX_RESEARCH ? "최대 레벨" : formatMoney(getResearchCost(getAppraisalResearchLevel()))}
 
+[훈련소]
+
+공격 훈련 : Lv.${getTrainingLevel("attack")}/${MAX_TRAINING}
+효과 : 공격력 +${getTrainingAttackBonus()}%
+다음 비용 : ${getTrainingLevel("attack")>=MAX_TRAINING ? "최대 레벨" : formatMoney(getTrainingCost(getTrainingLevel("attack")))}
+
+체력 훈련 : Lv.${getTrainingLevel("hp")}/${MAX_TRAINING}
+효과 : 체력 +${getTrainingHpBonus()}%
+다음 비용 : ${getTrainingLevel("hp")>=MAX_TRAINING ? "최대 레벨" : formatMoney(getTrainingCost(getTrainingLevel("hp")))}
+
+치명타 피해 훈련 : Lv.${getTrainingLevel("critDamage")}/${MAX_TRAINING}
+효과 : 치명타 피해 +${getTrainingCritDamageBonus()}%
+다음 비용 : ${getTrainingLevel("critDamage")>=MAX_TRAINING ? "최대 레벨" : formatMoney(getTrainingCost(getTrainingLevel("critDamage")))}
+
 [현재 등장 확률]
 
 ${chanceLines}
@@ -3552,7 +3731,8 @@ function showGameInfo(){
   const summary =
     "현재 돈 : " + formatMoney(money) + "\n" +
     "낚싯대 : Lv." + rodLevel + "/" + MAX_ROD + " (현재 " + getCurrentPlayableMaxRod() + "까지 강화 가능)\n" +
-    "연구소 : 낚시기술 Lv." + getFishingResearchLevel() + " / 감정 Lv." + getAppraisalResearchLevel();
+    "연구소 : 낚시기술 Lv." + getFishingResearchLevel() + " / 감정 Lv." + getAppraisalResearchLevel() + "\n" +
+    "훈련소 : 공격 Lv." + getTrainingLevel("attack") + " / 체력 Lv." + getTrainingLevel("hp") + " / 치피 Lv." + getTrainingLevel("critDamage");
 
   printPreview("내정보", summary, "내정보 전체보기", buildGameInfoText());
 }
@@ -3892,6 +4072,10 @@ function runCommand(){
   else if(cmd==="연구소") showResearchLab();
   else if(cmd==="연구소1 강화") upgradeResearch(1);
   else if(cmd==="연구소2 강화") upgradeResearch(2);
+  else if(cmd==="훈련소") showTrainingLab();
+  else if(cmd==="훈련소1 강화") upgradeTraining(1);
+  else if(cmd==="훈련소2 강화") upgradeTraining(2);
+  else if(cmd==="훈련소3 강화") upgradeTraining(3);
   else if(cmd==="시세") showMarket();
   else if(cmd==="랭킹") showRanking();
   else if(cmd.startsWith("메세지 ")) sendMessage(cmd.split(" ")[1]);
