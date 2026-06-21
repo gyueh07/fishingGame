@@ -2121,28 +2121,24 @@ function buildBossInfoText(){
     s += "패시브 - 불사\n사망 시 체력 50%로 1회 부활\n\n";
     s += "재의 낙인 (25%)\n공격력 1배\n화상 1중첩 부여\n\n";
     s += "윤회의 불꽃 (15%)\n전체 공격\n공격력 1.5배\n화상 1중첩 대상 추가 피해\n화상 2중첩 대상 대폭 추가 피해\n\n";
-    s += "일반 공격 (60%)\n공격력 1배\n\n";
-  } else if(boss.id === "bahamut"){
+    } else if(boss.id === "bahamut"){
     s += "패시브 - 드래곤 스케일\n전투 중 가장 큰 피해 기록 저장\n기록보다 크거나 같은 피해를 받으면 50% 감소\n감소 적용 후 새 기록으로 갱신\n\n";
     s += "메가 플레어 (15%)\n공격력 3배\n사용 후 다음 턴 행동 불가\n\n";
     s += "용왕의 포효 (25%)\n공격력 1.5배\n다음 턴 공격력 50% 증가\n\n";
-    s += "일반 공격 (60%)\n공격력 1배\n\n";
-  } else if(boss.id === "tiamat"){
+    } else if(boss.id === "tiamat"){
     s += "패시브 - 태초의 바다\n매 턴 최대 체력의 2% 회복\n\n";
     s += "창세의 바다 (25%)\n공격력 2배\n\n";
     s += "괴수 탄생 (15%)\n새끼 용 3마리 소환\n\n";
     s += "새끼 용\nHP 100,000~300,000 랜덤\n공격력 10,000~30,000 랜덤\n일반 공격만 사용\n\n";
-    s += "일반 공격 (60%)\n공격력 1배\n\n";
-  } else if(boss.id === "jormungandr"){
+    } else if(boss.id === "jormungandr"){
     s += "패시브 - 세계를 감은 자\n매 턴 공격력 5% 증가\n기본 최대 50% 증가\n세계의 고리 완성 시 최대 100% 증가\n\n";
     s += "미드가르드 감기 (25%)\n공격력 2배\n세계의 고리 1단계 진행\n\n";
     s += "세계의 고리\n3단계 완성 시 공격력 증가 한도가 100%로 확장\n완성 즉시 공격력이 더 강해짐\n\n";
     s += "종말의 독 (15%)\n공격력 1.2배\n독 1중첩 부여\n\n";
     s += "독\n턴 시작 시 최대 체력의 2% 피해\n최대 3중첩\n\n";
-    s += "일반 공격 (60%)\n공격력 1배\n\n";
-  } else {
+    } else {
     s += "스킬\n\n";
-    s += boss.skillName + "\n" + boss.skillDesc + "\n\n";
+    s += boss.skillName + (boss.skillRate ? " (" + boss.skillRate + "%)" : "") + "\n" + boss.skillDesc + "\n\n";
     s += "패시브\n\n";
     if(boss.id === "kraken") s += "먹물 난사\n회피 시도 시 회피 실패 처리\n\n";
     else if(boss.id === "hydra") s += "재생\n매 턴 최대 체력의 5% 회복\n\n";
@@ -2472,7 +2468,7 @@ function spawnBabyDragons(boss, battleLog){
     boss._summons.push({name:"새끼 용", hp:babyHp, maxHp:babyHp, attack:babyAttack});
   }
 
-  battleLog.push(bossColor(boss.name, boss) + "의 괴수 탄생\n새끼 용 3마리를 소환했습니다.");
+  battleLog.push(bossColor(boss.name, boss) + "의 괴수 탄생 (15%)\n새끼 용 3마리를 소환했습니다.");
 }
 
 function getAliveSummons(boss){
