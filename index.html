@@ -1191,23 +1191,40 @@ function getFishGradeByName(name){
   return "";
 }
 
+function seededRandom(seed){
+  let x = Math.sin(seed) * 10000;
+  return x - Math.floor(x);
+}
+
+function seededShuffle(list, seed){
+  const arr = [...list];
+
+  for(let i = arr.length - 1; i > 0; i--){
+    const r = seededRandom(seed + i * 97);
+    const j = Math.floor(r * (i + 1));
+    const temp = arr[i];
+    arr[i] = arr[j];
+    arr[j] = temp;
+  }
+
+  return arr;
+}
+
 function refreshMarketIfNeeded(){
   const nowHour = getMarketHour();
+
+  // 같은 10분 구간이면 무조건 기존 시세 유지
   if(marketHour === nowHour && marketRates && Object.keys(marketRates).length === 10) return;
 
   const targets = getMarketTargets();
-  const selected = [];
-  const count = Math.min(10, targets.length);
-
-  while(selected.length < count){
-    const pick = targets[Math.floor(Math.random() * targets.length)];
-    if(!selected.some(x => x.name === pick.name)) selected.push(pick);
-  }
-
+  const selected = seededShuffle(targets, nowHour).slice(0, Math.min(10, targets.length));
   const bonusOptions = [20, 50, 100, 200];
+
   marketRates = {};
-  selected.forEach(x => {
-    marketRates[x.name] = bonusOptions[Math.floor(Math.random() * bonusOptions.length)];
+
+  selected.forEach((x, i) => {
+    const bonusIndex = Math.floor(seededRandom(nowHour * 31 + i * 17) * bonusOptions.length);
+    marketRates[x.name] = bonusOptions[bonusIndex];
   });
 
   marketHour = nowHour;
@@ -1220,8 +1237,12 @@ function getMarketBonus(name){
 }
 
 function applyMarketPrice(f){
-  const bonus = getMarketBonus(f.name);
-  return Math.floor(f.price * (1 + bonus / 100) * getAppraisalMultiplier());
+  const marketBonus = getMarketBonus(f.name);
+  const appraisalBonus = Math.round((getAppraisalMultiplier() - 1) * 100);
+
+  return Math.floor(
+    f.price * (1 + (marketBonus + appraisalBonus) / 100)
+  );
 }
 
 function getNextMarketMinutes(){
