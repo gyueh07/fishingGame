@@ -4537,7 +4537,7 @@ function unpreparePvpFish(n){
 
 function runCommand(){
 
-  if(cmd.startsWith("대전 ") && cmd.split(/\s+/).length >= 2) return sendPvpRequest(cmd.split(/\s+/)[1]);
+  if(cmd.startsWith("대전 ") && cmd.split(/\s+/).length === 2) return sendPvpRequest(cmd.split(/\s+/)[1]);
   if(cmd.startsWith("대전준비 ")) return preparePvpFish(cmd.split(/\s+/)[1]);
   if(cmd.startsWith("대전해제 ")) return unpreparePvpFish(cmd.split(/\s+/)[1]);
   if(cmd === "대전목록") return showPvpPrepList();
