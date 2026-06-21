@@ -188,7 +188,8 @@ const UPDATE_NOTICES = [
     title: "보스전 밸런스 업데이트",
     lines: [
       "별 시스템이 개편되었습니다.",
-      "★ 개체는 3배 구간, ★★ 개체는 5배 구간, ★★★ 개체는 10배 구간에서 스탯이 생성됩니다.",
+      "공격력/체력은 ★ 3배, ★★ 7배, ★★★ 20배 구간에서 생성됩니다.",
+      "회피율은 ★ 1.5배, ★★ 2.5배, ★★★ 4.5배 구간에서 생성됩니다.",
       "보스전 쿨타임 5분이 추가되었습니다.",
       "물고기 기절 회복 시간이 전 등급 공통 10분으로 변경되었습니다."
     ]
@@ -1856,7 +1857,7 @@ function resetAllCombatStats(){
 }
 
 function migrateCombatStatsToCurrentVersion(){
-  const targetVersion = 9;
+  const targetVersion = 10;
   let changed = false;
 
   bucket.forEach(f => {
@@ -1864,21 +1865,8 @@ function migrateCombatStatsToCurrentVersion(){
 
     const currentVersion = Number((f.combat && f.combat.combatVersion) || 0);
 
-    if(!f.combat){
-      f.combat = makeCombatStats(f);
-      f.combat.combatVersion = targetVersion;
-      changed = true;
-      return;
-    }
-
     if(currentVersion < targetVersion){
-      if(f.grade === "쓰레기"){
-        f.combat = makeCombatStats(f);
-      } else {
-        ensureCombatStats(f);
-        rerollCritStats(f);
-      }
-
+      f.combat = makeCombatStats(f);
       f.combat.combatVersion = targetVersion;
       changed = true;
     }
