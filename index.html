@@ -94,7 +94,7 @@ button:hover { background:#30363d; }
 <div class="box cmd">
 <b>주요 명령어</b><br>
 <span>명령어</span><span>낚시</span><span>양동이</span><span>양동이 닉네임</span><span>도감</span><span>물고기도감</span><span>코어도감</span><span>내정보</span><span>정보 1</span><span>보스전</span><span>보스정보</span><span>보스목록</span><span>보스선택 1</span><span>인벤토리</span><span>준비 1</span><span>준비해제 1</span><span>전투</span><span>전투 확인</span><span>나가기</span><span>시세</span><span>랭킹</span>
-<span>지갑</span><span>지갑 닉네임</span><span>메세지 닉네임</span><span>연구소</span><span>연구소1 강화</span><span>연구소2 강화</span><span>훈련소</span><span>훈련소1 강화</span><span>훈련소2 강화</span><span>훈련소3 강화</span><span>대전 닉네임</span><span>대전준비 1</span><span>대전해제 1</span><span>대전목록</span><span>대전수락</span><span>대전거절</span><span>대전취소</span><span>업적</span><span>칭호</span><span>칭호 장착 번호</span><span>칭호 장착해제</span><span>회원가입</span><span>로그인</span><span>로그아웃</span><span>탈퇴</span><span>강화</span><span>일괄강화</span>
+<span>지갑</span><span>지갑 닉네임</span><span>메세지 닉네임</span><span>연구소</span><span>연구소1 강화</span><span>연구소2 강화</span><span>훈련소</span><span>훈련소1 강화</span><span>훈련소2 강화</span><span>훈련소3 강화</span><span>대전 닉네임</span><span>대전수락</span><span>대전거절</span><span>대전준비 1</span><span>대전해제 1</span><span>대전목록</span><span>대전준비완료</span><span>대전취소</span><span>업적</span><span>칭호</span><span>칭호 장착 번호</span><span>칭호 장착해제</span><span>회원가입</span><span>로그인</span><span>로그아웃</span><span>탈퇴</span><span>강화</span><span>일괄강화</span>
 <span>정렬 오름차순</span><span>정렬 내림차순</span><span>송금 닉네임 금액</span><span>전송 닉네임 번호</span>
 <span>잠금 1</span><span>잠금해제 1</span>
 <span>판매 1</span><span>일괄판매</span>
@@ -310,6 +310,7 @@ const UPDATE_NOTICES = [
     title: "1대1 대전 업데이트",
     lines: [
       "온라인 유저에게 1대1 대전을 신청할 수 있습니다.",
+      "대전수락 후 대전준비를 할 수 있습니다.",
       "대전은 서로 최대 3마리씩 출전합니다.",
       "보스전처럼 체력 숫자와 체력바가 포함된 전체보기 로그가 제공됩니다.",
       "대전에서는 기절, 회복, 보상, 재료 획득이 적용되지 않습니다.",
@@ -973,6 +974,27 @@ function startServerAlertListener(){
           if(data.to !== currentUser) return;
           const sender = formatUserName(data.from, data.fromTitle);
           print("⚔️ 대전 신청\n\n" + sender + " 님이 대전을 신청했습니다.\n\n대전수락\n대전거절");
+          return;
+        }
+
+        if(data.type === "pvpAccepted"){
+          if(data.to !== currentUser) return;
+          const sender = formatUserName(data.from, data.fromTitle);
+          print("⚔️ 대전 수락\n\n" + sender + " 님이 대전을 수락했습니다.\n\n이제 대전준비 번호 로 물고기를 고르고 대전준비완료 를 입력하세요.");
+          return;
+        }
+
+        if(data.type === "pvpReady"){
+          if(data.to !== currentUser) return;
+          const sender = formatUserName(data.from, data.fromTitle);
+          print("⚔️ 대전 준비완료\n\n" + sender + " 님이 준비완료했습니다.");
+          return;
+        }
+
+        if(data.type === "pvpCancelled"){
+          if(data.to !== currentUser) return;
+          const sender = formatUserName(data.from, data.fromTitle);
+          print("⚔️ 대전 취소\n\n" + sender + " 님이 대전을 취소했습니다.");
           return;
         }
 
@@ -3633,8 +3655,39 @@ function upgradeMax(){
 }
 
 
-function getPvpDocId(from,to){
-  return cleanNickname(from) + "__" + cleanNickname(to);
+
+function getPvpDocId(a,b){
+  const x = cleanNickname(a);
+  const y = cleanNickname(b);
+  return [x,y].sort().join("__");
+}
+
+function getMyActivePvpRef(){
+  if(!currentUser) return null;
+  return db.collection("pvpActive").doc(currentUser);
+}
+
+async function getMyActivePvp(){
+  if(!currentUser) return null;
+  const snap = await getMyActivePvpRef().get();
+  if(!snap.exists) return null;
+  const data = snap.data() || {};
+  if(data.status === "cancelled" || data.status === "finished" || data.status === "rejected") return null;
+  return data;
+}
+
+async function setBothActivePvp(roomId, a, b, data){
+  const batch = db.batch();
+  batch.set(db.collection("pvpActive").doc(a), {roomId, opponent:b, ...data}, {merge:true});
+  batch.set(db.collection("pvpActive").doc(b), {roomId, opponent:a, ...data}, {merge:true});
+  await batch.commit();
+}
+
+async function clearBothActivePvp(a,b){
+  const batch = db.batch();
+  if(a) batch.delete(db.collection("pvpActive").doc(a));
+  if(b) batch.delete(db.collection("pvpActive").doc(b));
+  await batch.commit();
 }
 
 async function updateOnlinePresence(){
@@ -3715,210 +3768,6 @@ function buildPvpTeamFromIndexes(indexes, sourceBucket, levels){
     .map(f => cloneForPvp(f, levels));
 }
 
-function showPvpPrepList(){
-  if(pvpPrepIndexes.length === 0){
-    return print("대전 준비 물고기가 없습니다.\n\n대전준비 번호 를 입력하세요.");
-  }
-
-  let s = "대전 준비 목록\n\n";
-  getPvpPreparedFishes().forEach((f,i)=>{
-    s += (i+1) + ". " + color(lineFish(f), f.grade) + "\n";
-  });
-  s += "\n최대 3마리까지 출전합니다.";
-  print(s.trim());
-}
-
-function preparePvpFish(n){
-  const idx = Number(n) - 1;
-  const f = bucket[idx];
-
-  if(!f) return print("존재하지 않는 양동이 번호입니다.");
-  if(f.grade === "쓰레기") return print("쓰레기는 대전에 참가할 수 없습니다.");
-
-  if(pvpPrepIndexes.includes(idx)){
-    return print("이미 대전 준비된 물고기입니다.");
-  }
-
-  if(pvpPrepIndexes.length >= 3){
-    return print("대전에는 최대 3마리까지만 준비할 수 있습니다.");
-  }
-
-  pvpPrepIndexes.push(idx);
-  saveGame();
-  print("대전 준비 완료\n\n" + color(lineFish(f), f.grade) + "\n\n현재 준비 : " + pvpPrepIndexes.length + " / 3");
-}
-
-function unpreparePvpFish(n){
-  const order = Number(n) - 1;
-  if(order < 0 || order >= pvpPrepIndexes.length) return print("존재하지 않는 대전 준비 번호입니다.");
-  const idx = pvpPrepIndexes.splice(order, 1)[0];
-  saveGame();
-  const f = bucket[idx];
-  print("대전 준비 해제\n\n" + (f ? color(lineFish(f), f.grade) : "알 수 없는 물고기"));
-}
-
-async function requestPvp(nickname){
-  if(!currentUser) return print("로그인 후 사용 가능합니다.");
-
-  nickname = cleanNickname(nickname);
-  if(!nickname) return print("사용법 : 대전 닉네임");
-  if(nickname === currentUser) return print("자기 자신에게는 대전을 신청할 수 없습니다.");
-
-  try{
-    const userSnap = await db.collection("users").doc(nickname).get();
-    if(!userSnap.exists) return print("존재하지 않는 닉네임입니다.");
-
-    const online = await isUserOnline(nickname);
-    if(!online) return print("현재 접속 중인 유저가 아닙니다.");
-
-    const id = getPvpDocId(currentUser, nickname);
-    const reverseId = getPvpDocId(nickname, currentUser);
-    const myReqSnap = await db.collection("pvpRequests").doc(id).get();
-    const reverseReqSnap = await db.collection("pvpRequests").doc(reverseId).get();
-
-    if(myReqSnap.exists){
-      const d = myReqSnap.data() || {};
-      if(d.status === "pending"){
-        return print("이미 대전 신청을 보냈습니다.");
-      }
-    }
-
-    if(reverseReqSnap.exists){
-      const d = reverseReqSnap.data() || {};
-      if(d.status === "pending"){
-        return print("상대가 이미 나에게 대전을 신청했습니다.\n\n대전수락 또는 대전거절 을 입력하세요.");
-      }
-    }
-
-    if(await hasActivePvpWithUser(nickname)){
-      return print("상대가 대전중인 상태입니다.");
-    }
-
-    if(pvpPrepIndexes.length === 0){
-      return print("대전 준비 물고기가 없습니다.\n\n대전준비 번호 를 먼저 입력하세요.");
-    }
-
-    const team = buildPvpTeamFromIndexes(pvpPrepIndexes, bucket, trainingLevels);
-    if(team.length === 0) return print("대전에 참가할 수 있는 물고기가 없습니다.");
-
-    const payload = {
-      from: currentUser,
-      fromTitle: getCurrentTitle(),
-      to: nickname,
-      users: [currentUser, nickname],
-      status: "pending",
-      fromTeam: team,
-      fromTraining: trainingLevels,
-      createdAtMillis: Date.now(),
-      updatedAtMillis: Date.now(),
-      createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    };
-
-    await db.collection("pvpRequests").doc(id).set(payload);
-
-    // 상대가 알림 리스너를 놓쳐도 로그인 시 알림으로 확인 가능하게 저장
-    await db.collection("users").doc(nickname).set({
-      gameState:{
-        notifications: firebase.firestore.FieldValue.arrayUnion(
-          "⚔️ 대전 신청\n\n" + formatCurrentUserName() + " 님이 대전을 신청했습니다.\n\n대전수락\n대전거절"
-        )
-      },
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    }, {merge:true});
-
-    await db.collection("serverAlerts").add({
-      type:"pvpRequest",
-      from:currentUser,
-      fromTitle:getCurrentTitle(),
-      to:nickname,
-      createdAtMillis:Date.now(),
-      createdAt:firebase.firestore.FieldValue.serverTimestamp()
-    });
-
-    print(nickname + " 님에게 대전 신청을 보냈습니다.");
-  }catch(e){
-    console.error(e);
-    print("대전 신청 중 오류가 발생했습니다.");
-  }
-}
-
-async function rejectPvp(nickname){
-  nickname = cleanNickname(nickname);
-  if(!nickname) return print("사용법 : 대전거절");
-
-  try{
-    const id = getPvpDocId(nickname, currentUser);
-    const ref = db.collection("pvpRequests").doc(id);
-    const snap = await ref.get();
-    if(!snap.exists || (snap.data().status !== "pending")) return print("대전 신청을 찾을 수 없습니다.");
-
-    await ref.set({status:"rejected", rejectedAtMillis:Date.now()}, {merge:true});
-    await db.collection("serverAlerts").add({
-      type:"pvpRejected",
-      from:currentUser,
-      fromTitle:getCurrentTitle(),
-      to:nickname,
-      createdAtMillis:Date.now(),
-      createdAt:firebase.firestore.FieldValue.serverTimestamp()
-    });
-
-    print(nickname + " 님의 대전 신청을 거절했습니다.");
-  }catch(e){
-    console.error(e);
-    print("대전 거절 중 오류가 발생했습니다.");
-  }
-}
-
-async function acceptPvp(nickname){
-  nickname = cleanNickname(nickname);
-  if(!nickname) return print("사용법 : 대전수락");
-  if(pvpPrepIndexes.length === 0) return print("대전 준비 물고기가 없습니다.\n\n대전준비 번호 를 먼저 입력하세요.");
-
-  try{
-    const id = getPvpDocId(nickname, currentUser);
-    const ref = db.collection("pvpRequests").doc(id);
-    const snap = await ref.get();
-
-    if(!snap.exists) return print("대전 신청을 찾을 수 없습니다.");
-
-    const req = snap.data();
-    if(req.status !== "pending") return print("이미 처리된 대전 신청입니다.");
-
-    const myTeam = buildPvpTeamFromIndexes(pvpPrepIndexes, bucket, trainingLevels);
-    if(myTeam.length === 0) return print("대전에 참가할 수 있는 물고기가 없습니다.");
-
-    const result = simulatePvpBattle({
-      leftName: req.from,
-      leftTitle: req.fromTitle || "",
-      leftTeam: req.fromTeam || [],
-      rightName: currentUser,
-      rightTitle: getCurrentTitle(),
-      rightTeam: myTeam
-    });
-
-    await ref.set({
-      status:"accepted",
-      acceptedAtMillis:Date.now(),
-      resultSummary:result.summary,
-      resultLog:result.fullLog
-    }, {merge:true});
-
-    await db.collection("serverAlerts").add({
-      type:"pvpResult",
-      to:req.from,
-      summary:result.summary,
-      fullLog:result.fullLog,
-      createdAtMillis:Date.now(),
-      createdAt:firebase.firestore.FieldValue.serverTimestamp()
-    });
-
-    printPvpResultPreview(result.summary, result.fullLog);
-  }catch(e){
-    console.error(e);
-    print("대전 수락 중 오류가 발생했습니다.");
-  }
-}
-
 function pvpDisplayName(name,title){
   return title ? "[" + title + "] " + name : name;
 }
@@ -3935,16 +3784,25 @@ function pvpFishLabel(f){
   return color(lineFish(f), f.grade);
 }
 
+function pvpHpBar(cur,max){
+  cur = Math.max(0, Math.floor(cur));
+  max = Math.max(1, Math.floor(max));
+  const ratio = Math.max(0, Math.min(1, cur / max));
+  const filled = Math.round(ratio * 10);
+  return "HP " + cur.toLocaleString() + " / " + max.toLocaleString() + "\n" +
+    "█".repeat(filled) + "░".repeat(10-filled) + " " + Math.floor(ratio*100) + "%";
+}
+
 function simulatePvpBattle({leftName,leftTitle,leftTeam,rightName,rightTitle,rightTeam}){
   const left = (leftTeam || []).map(f => JSON.parse(JSON.stringify(f))).slice(0,3);
   const right = (rightTeam || []).map(f => JSON.parse(JSON.stringify(f))).slice(0,3);
 
-  let log = "";
-  log += "1대1 대전 시작\n\n";
-  log += pvpDisplayName(leftName,leftTitle) + "\n" + pvpTeamLine(left) + "\n\n";
-  log += "VS\n\n";
-  log += pvpDisplayName(rightName,rightTitle) + "\n" + pvpTeamLine(right) + "\n\n";
-  log += "━━━━━━━━━━━━━━\n\n";
+  let logText = "";
+  logText += "1대1 대전 시작\n\n";
+  logText += pvpDisplayName(leftName,leftTitle) + "\n" + pvpTeamLine(left) + "\n\n";
+  logText += "VS\n\n";
+  logText += pvpDisplayName(rightName,rightTitle) + "\n" + pvpTeamLine(right) + "\n\n";
+  logText += "━━━━━━━━━━━━━━\n\n";
 
   let turn = 1;
   let leftDamage = 0;
@@ -3956,89 +3814,425 @@ function simulatePvpBattle({leftName,leftTitle,leftTeam,rightName,rightTitle,rig
     const lc = lf.combat;
     const rc = rf.combat;
 
-    log += "턴 " + turn + "\n\n";
+    logText += "턴 " + turn + "\n\n";
 
-    if(Math.random()*100 < Number(rc.dodge || 0)){
-      log += pvpFishLabel(rf) + " 회피\n\n";
-    } else {
-      const hit = calcDamage(Number(lc.attack || 0), Number(lc.critRate || 0), Number(lc.critDamage || 0));
-      rc.hp = Math.max(0, Number(rc.hp || 0) - hit.damage);
-      leftDamage += hit.damage;
-
-      log += pvpFishLabel(lf) + " 공격\n";
-      if(hit.crit) log += "치명타!\n";
-      log += hit.damage.toLocaleString() + " 피해\n\n";
-      log += pvpFishLabel(rf) + "\n" + hpBar(rc.hp, rc.maxHp) + "\n\n";
-
-      if(rc.hp <= 0){
-        log += pvpFishLabel(rf) + " 쓰러짐\n\n";
-        const next = pvpAlive(right);
-        if(next) log += pvpDisplayName(rightName,rightTitle) + "의 다음 물고기 출전\n" + pvpFishLabel(next) + "\n" + hpBar(next.combat.hp, next.combat.maxHp) + "\n\n";
-      }
+    if(Math.random() * 100 < Number(rc.evasion || 0)){
+      logText += pvpFishLabel(rf) + " 회피!\n\n";
+    }else{
+      let dmg = Math.max(1, Number(lc.attack || 1));
+      const crit = Math.random() * 100 < Number(lc.critRate || 0);
+      if(crit) dmg = Math.floor(dmg * Number(lc.critDamage || 150) / 100);
+      rc.hp = Math.max(0, Math.floor(rc.hp - dmg));
+      leftDamage += dmg;
+      logText += pvpFishLabel(lf) + " 공격!\n";
+      if(crit) logText += "치명타!\n";
+      logText += "피해량 : " + dmg.toLocaleString() + "\n\n";
+      logText += pvpFishLabel(rf) + "\n" + pvpHpBar(rc.hp, rc.maxHp) + "\n\n";
+      if(rc.hp <= 0) logText += pvpFishLabel(rf) + " 쓰러짐\n\n";
     }
 
     if(!pvpAlive(right)) break;
 
-    const lf2 = pvpAlive(left);
-    const rf2 = pvpAlive(right);
-    const lc2 = lf2.combat;
-    const rc2 = rf2.combat;
-
-    if(Math.random()*100 < Number(lc2.dodge || 0)){
-      log += pvpFishLabel(lf2) + " 회피\n\n";
-    } else {
-      const hit = calcDamage(Number(rc2.attack || 0), Number(rc2.critRate || 0), Number(rc2.critDamage || 0));
-      lc2.hp = Math.max(0, Number(lc2.hp || 0) - hit.damage);
-      rightDamage += hit.damage;
-
-      log += pvpFishLabel(rf2) + " 공격\n";
-      if(hit.crit) log += "치명타!\n";
-      log += hit.damage.toLocaleString() + " 피해\n\n";
-      log += pvpFishLabel(lf2) + "\n" + hpBar(lc2.hp, lc2.maxHp) + "\n\n";
-
-      if(lc2.hp <= 0){
-        log += pvpFishLabel(lf2) + " 쓰러짐\n\n";
-        const next = pvpAlive(left);
-        if(next) log += pvpDisplayName(leftName,leftTitle) + "의 다음 물고기 출전\n" + pvpFishLabel(next) + "\n" + hpBar(next.combat.hp, next.combat.maxHp) + "\n\n";
-      }
+    if(Math.random() * 100 < Number(lc.evasion || 0)){
+      logText += pvpFishLabel(lf) + " 회피!\n\n";
+    }else{
+      let dmg = Math.max(1, Number(rc.attack || 1));
+      const crit = Math.random() * 100 < Number(rc.critRate || 0);
+      if(crit) dmg = Math.floor(dmg * Number(rc.critDamage || 150) / 100);
+      lc.hp = Math.max(0, Math.floor(lc.hp - dmg));
+      rightDamage += dmg;
+      logText += pvpFishLabel(rf) + " 공격!\n";
+      if(crit) logText += "치명타!\n";
+      logText += "피해량 : " + dmg.toLocaleString() + "\n\n";
+      logText += pvpFishLabel(lf) + "\n" + pvpHpBar(lc.hp, lc.maxHp) + "\n\n";
+      if(lc.hp <= 0) logText += pvpFishLabel(lf) + " 쓰러짐\n\n";
     }
 
-    log += "━━━━━━━━━━━━━━\n\n";
+    logText += "━━━━━━━━━━━━━━\n\n";
     turn++;
   }
 
-  const leftAlive = left.filter(f=>f.combat && f.combat.hp>0).length;
-  const rightAlive = right.filter(f=>f.combat && f.combat.hp>0).length;
+  const leftWin = !!pvpAlive(left) && !pvpAlive(right);
+  const rightWin = !!pvpAlive(right) && !pvpAlive(left);
   let winner = "무승부";
-
-  if(leftAlive > 0 && rightAlive <= 0) winner = pvpDisplayName(leftName,leftTitle);
-  else if(rightAlive > 0 && leftAlive <= 0) winner = pvpDisplayName(rightName,rightTitle);
+  if(leftWin) winner = pvpDisplayName(leftName,leftTitle);
+  if(rightWin) winner = pvpDisplayName(rightName,rightTitle);
 
   const summary =
     "대전 결과\n\n" +
-    pvpDisplayName(leftName,leftTitle) + " VS " + pvpDisplayName(rightName,rightTitle) + "\n\n" +
     "승자 : " + winner + "\n" +
-    "총 턴 : " + Math.min(turn,300).toLocaleString() + "턴";
+    "총 턴 : " + Math.min(turn,300) + "\n" +
+    pvpDisplayName(leftName,leftTitle) + " 피해량 : " + leftDamage.toLocaleString() + "\n" +
+    pvpDisplayName(rightName,rightTitle) + " 피해량 : " + rightDamage.toLocaleString();
 
-  log += "전투 결과\n\n";
-  log += "승자 : " + winner + "\n";
-  log += "총 턴 : " + Math.min(turn,300).toLocaleString() + "턴\n";
-  log += pvpDisplayName(leftName,leftTitle) + " 총 피해량 : " + leftDamage.toLocaleString() + "\n";
-  log += pvpDisplayName(rightName,rightTitle) + " 총 피해량 : " + rightDamage.toLocaleString() + "\n\n";
-  log += "남은 물고기\n\n";
-  log += pvpDisplayName(leftName,leftTitle) + " : " + leftAlive + "마리\n";
-  left.filter(f=>f.combat && f.combat.hp>0).forEach(f=>{ log += pvpFishLabel(f) + "\n" + hpBar(f.combat.hp, f.combat.maxHp) + "\n"; });
-  log += "\n";
-  log += pvpDisplayName(rightName,rightTitle) + " : " + rightAlive + "마리\n";
-  right.filter(f=>f.combat && f.combat.hp>0).forEach(f=>{ log += pvpFishLabel(f) + "\n" + hpBar(f.combat.hp, f.combat.maxHp) + "\n"; });
-  log += "\n\n※ 대전은 보상, 기절, 회복이 적용되지 않습니다.";
-
-  return {summary, fullLog:log};
+  logText += "전투 종료\n\n" + summary;
+  return {summary, fullLog:logText};
 }
 
 function printPvpResultPreview(summary, fullLog){
-  printPreview("⚔️ 1대1 대전", summary, "대전 전체보기", fullLog);
+  printPreview("대전 결과", summary, "대전 전체보기", fullLog);
 }
+
+async function requestPvp(nickname){
+  if(!currentUser) return print("로그인 후 사용 가능합니다.");
+
+  nickname = cleanNickname(nickname);
+  if(!nickname) return print("사용법 : 대전 닉네임");
+  if(nickname === currentUser) return print("자기 자신에게는 대전을 신청할 수 없습니다.");
+
+  try{
+    const userSnap = await db.collection("users").doc(nickname).get();
+    if(!userSnap.exists) return print("존재하지 않는 닉네임입니다.");
+
+    const online = await isUserOnline(nickname);
+    if(!online) return print("현재 접속 중인 유저가 아닙니다.");
+
+    const myActive = await getMyActivePvp();
+    if(myActive) return print("이미 진행 중인 대전이 있습니다.\n\n대전취소 로 취소할 수 있습니다.");
+
+    const targetActiveSnap = await db.collection("pvpActive").doc(nickname).get();
+    if(targetActiveSnap.exists){
+      const targetActive = targetActiveSnap.data() || {};
+      if(!["cancelled","finished","rejected"].includes(targetActive.status)){
+        return print("상대가 대전중인 상태입니다.");
+      }
+    }
+
+    const roomId = getPvpDocId(currentUser, nickname);
+    const roomRef = db.collection("pvpRooms").doc(roomId);
+    const oldRoomSnap = await roomRef.get();
+    if(oldRoomSnap.exists && (oldRoomSnap.data() || {}).status === "requested"){
+      return print("이미 대전 신청을 보냈습니다.");
+    }
+
+    await roomRef.set({
+      roomId,
+      from: currentUser,
+      fromTitle: getCurrentTitle(),
+      to: nickname,
+      toTitle: "",
+      users: [currentUser, nickname],
+      status: "requested",
+      createdAtMillis: Date.now(),
+      updatedAtMillis: Date.now(),
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    await setBothActivePvp(roomId, currentUser, nickname, {
+      status:"requested",
+      requester:currentUser,
+      accepted:false,
+      ready:false,
+      prepIndexes:[],
+      updatedAtMillis:Date.now()
+    });
+
+    await db.collection("serverAlerts").add({
+      type:"pvpRequest",
+      roomId,
+      from:currentUser,
+      fromTitle:getCurrentTitle(),
+      to:nickname,
+      createdAtMillis:Date.now(),
+      createdAt:firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    print(nickname + " 님에게 대전 신청을 보냈습니다.\n\n상대가 대전수락 하면 대전준비를 할 수 있습니다.");
+  }catch(e){
+    console.error(e);
+    print("대전 신청 중 오류가 발생했습니다.");
+  }
+}
+
+async function acceptLatestPvpRequest(){
+  if(!currentUser) return print("로그인 후 사용 가능합니다.");
+  try{
+    const active = await getMyActivePvp();
+    if(!active || active.status !== "requested" || active.requester === currentUser){
+      return print("수락할 대전 신청이 없습니다.");
+    }
+
+    const roomRef = db.collection("pvpRooms").doc(active.roomId);
+    const roomSnap = await roomRef.get();
+    if(!roomSnap.exists) return print("대전 신청을 찾을 수 없습니다.");
+    const room = roomSnap.data() || {};
+    if(room.status !== "requested") return print("이미 처리된 대전 신청입니다.");
+
+    await roomRef.set({
+      status:"accepted",
+      acceptedAtMillis:Date.now(),
+      updatedAtMillis:Date.now(),
+      toTitle:getCurrentTitle(),
+      [currentUser + "_ready"]: false,
+      [room.from + "_ready"]: false,
+      [currentUser + "_team"]: [],
+      [room.from + "_team"]: []
+    }, {merge:true});
+
+    await setBothActivePvp(active.roomId, room.from, room.to, {
+      status:"accepted",
+      requester:room.from,
+      accepted:true,
+      ready:false,
+      prepIndexes:[],
+      updatedAtMillis:Date.now()
+    });
+
+    await db.collection("serverAlerts").add({
+      type:"pvpAccepted",
+      roomId:active.roomId,
+      from:currentUser,
+      fromTitle:getCurrentTitle(),
+      to:room.from,
+      createdAtMillis:Date.now(),
+      createdAt:firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    print("대전을 수락했습니다.\n\n이제 대전준비 번호 로 물고기를 고르고 대전준비완료 를 입력하세요.");
+  }catch(e){
+    console.error(e);
+    print("대전 수락 중 오류가 발생했습니다.");
+  }
+}
+
+async function rejectLatestPvpRequest(){
+  if(!currentUser) return print("로그인 후 사용 가능합니다.");
+  try{
+    const active = await getMyActivePvp();
+    if(!active || active.status !== "requested" || active.requester === currentUser){
+      return print("거절할 대전 신청이 없습니다.");
+    }
+
+    const roomRef = db.collection("pvpRooms").doc(active.roomId);
+    const roomSnap = await roomRef.get();
+    if(roomSnap.exists){
+      const room = roomSnap.data() || {};
+      await roomRef.set({status:"rejected", rejectedAtMillis:Date.now(), updatedAtMillis:Date.now()}, {merge:true});
+      await clearBothActivePvp(room.from, room.to);
+      await db.collection("serverAlerts").add({
+        type:"pvpRejected",
+        from:currentUser,
+        fromTitle:getCurrentTitle(),
+        to:room.from,
+        createdAtMillis:Date.now(),
+        createdAt:firebase.firestore.FieldValue.serverTimestamp()
+      });
+    }else{
+      await getMyActivePvpRef().delete();
+    }
+
+    print("대전 신청을 거절했습니다.");
+  }catch(e){
+    console.error(e);
+    print("대전 거절 중 오류가 발생했습니다.");
+  }
+}
+
+async function cancelPvpRequest(){
+  if(!currentUser) return print("로그인 후 사용 가능합니다.");
+  try{
+    const active = await getMyActivePvp();
+    if(!active) return print("취소할 대전이 없습니다.");
+
+    const roomRef = db.collection("pvpRooms").doc(active.roomId);
+    const roomSnap = await roomRef.get();
+    if(!roomSnap.exists){
+      await getMyActivePvpRef().delete();
+      return print("대전 상태를 정리했습니다.");
+    }
+
+    const room = roomSnap.data() || {};
+    const opponent = currentUser === room.from ? room.to : room.from;
+
+    await roomRef.set({status:"cancelled", cancelledBy:currentUser, cancelledAtMillis:Date.now(), updatedAtMillis:Date.now()}, {merge:true});
+    await clearBothActivePvp(room.from, room.to);
+
+    await db.collection("serverAlerts").add({
+      type:"pvpCancelled",
+      from:currentUser,
+      fromTitle:getCurrentTitle(),
+      to:opponent,
+      createdAtMillis:Date.now(),
+      createdAt:firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    pvpPrepIndexes = [];
+    saveGame();
+    print("대전을 취소했습니다.");
+  }catch(e){
+    console.error(e);
+    print("대전 취소 중 오류가 발생했습니다.");
+  }
+}
+
+async function preparePvpFish(n){
+  const active = await getMyActivePvp();
+  if(!active || active.status !== "accepted"){
+    return print("대전이 성립된 후에 준비할 수 있습니다.\n\n먼저 대전 닉네임 또는 대전수락 을 진행하세요.");
+  }
+
+  const bucketNo = Number(n);
+  const idx = bucketNo - 1;
+  const f = bucket[idx];
+
+  if(!f) return print("존재하지 않는 양동이 번호입니다.");
+  if(f.grade === "쓰레기") return print("쓰레기는 대전에 참가할 수 없습니다.");
+
+  if(pvpPrepIndexes.includes(idx)){
+    return print("이미 대전 준비된 물고기입니다.");
+  }
+
+  if(pvpPrepIndexes.length >= 3){
+    return print("대전에는 최대 3마리까지만 출전할 수 있습니다.");
+  }
+
+  pvpPrepIndexes.push(idx);
+  saveGame();
+
+  print("대전 준비 완료\n\n양동이 " + bucketNo + "번\n" + color(lineFish(f), f.grade));
+}
+
+async function unpreparePvpFish(n){
+  const active = await getMyActivePvp();
+  if(!active || active.status !== "accepted"){
+    return print("대전이 성립된 후에 해제할 수 있습니다.");
+  }
+
+  const bucketNo = Number(n);
+  const idx = bucketNo - 1;
+  const pos = pvpPrepIndexes.indexOf(idx);
+
+  if(pos === -1) return print("해당 양동이 번호는 대전 준비 목록에 없습니다.");
+
+  pvpPrepIndexes.splice(pos,1);
+  saveGame();
+  print("대전 준비가 해제되었습니다.\n\n양동이 " + bucketNo + "번");
+}
+
+async function showPvpPrepList(){
+  const active = await getMyActivePvp();
+  if(!active) return print("진행 중인 대전이 없습니다.");
+
+  let s = "대전목록\n\n";
+  s += "상대 : " + active.opponent + "\n";
+  s += "상태 : " + (active.status === "requested" ? "수락 대기중" : active.status === "accepted" ? "준비중" : active.status) + "\n\n";
+
+  if(active.status !== "accepted"){
+    s += "상대가 대전수락을 하면 준비할 수 있습니다.";
+    return print(s);
+  }
+
+  if(pvpPrepIndexes.length === 0){
+    s += "준비한 물고기가 없습니다.\n\n대전준비 양동이번호";
+    return print(s);
+  }
+
+  s += "출전 물고기\n\n";
+  pvpPrepIndexes.forEach((bucketIndex,i)=>{
+    const f = bucket[bucketIndex];
+    if(f) s += (i+1) + ". 양동이 " + (bucketIndex+1) + "번 " + color(lineFish(f), f.grade) + "\n";
+  });
+  s += "\n대전준비완료 를 입력하면 준비 완료됩니다.";
+  print(s.trim());
+}
+
+async function finishPvpReady(){
+  const active = await getMyActivePvp();
+  if(!active || active.status !== "accepted"){
+    return print("대전이 성립된 후에 준비완료할 수 있습니다.");
+  }
+
+  if(pvpPrepIndexes.length === 0){
+    return print("대전 준비 물고기가 없습니다.\n\n대전준비 양동이번호 를 먼저 입력하세요.");
+  }
+
+  const team = buildPvpTeamFromIndexes(pvpPrepIndexes, bucket, trainingLevels);
+  if(team.length === 0) return print("대전에 참가할 수 있는 물고기가 없습니다.");
+
+  try{
+    const roomRef = db.collection("pvpRooms").doc(active.roomId);
+    const roomSnap = await roomRef.get();
+    if(!roomSnap.exists) return print("대전방을 찾을 수 없습니다.");
+
+    const room = roomSnap.data() || {};
+    if(room.status !== "accepted") return print("현재 준비할 수 없는 대전 상태입니다.");
+
+    const myKey = currentUser + "_ready";
+    const myTeamKey = currentUser + "_team";
+    const opp = currentUser === room.from ? room.to : room.from;
+    const oppKey = opp + "_ready";
+    const oppTeamKey = opp + "_team";
+
+    await roomRef.set({
+      [myKey]: true,
+      [myTeamKey]: team,
+      updatedAtMillis:Date.now()
+    }, {merge:true});
+
+    await getMyActivePvpRef().set({
+      ready:true,
+      prepIndexes:pvpPrepIndexes,
+      updatedAtMillis:Date.now()
+    }, {merge:true});
+
+    const afterSnap = await roomRef.get();
+    const after = afterSnap.data() || {};
+    const bothReady = !!after[myKey] && !!after[oppKey];
+
+    await db.collection("serverAlerts").add({
+      type:"pvpReady",
+      from:currentUser,
+      fromTitle:getCurrentTitle(),
+      to:opp,
+      createdAtMillis:Date.now(),
+      createdAt:firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    if(!bothReady){
+      return print("대전 준비완료\n\n상대 대기중...");
+    }
+
+    const leftName = room.from;
+    const rightName = room.to;
+    const result = simulatePvpBattle({
+      leftName,
+      leftTitle: room.fromTitle || "",
+      leftTeam: after[leftName + "_team"] || [],
+      rightName,
+      rightTitle: room.toTitle || "",
+      rightTeam: after[rightName + "_team"] || []
+    });
+
+    await roomRef.set({
+      status:"finished",
+      finishedAtMillis:Date.now(),
+      resultSummary:result.summary,
+      resultLog:result.fullLog,
+      updatedAtMillis:Date.now()
+    }, {merge:true});
+
+    await clearBothActivePvp(room.from, room.to);
+
+    pvpPrepIndexes = [];
+    saveGame();
+
+    await db.collection("serverAlerts").add({
+      type:"pvpResult",
+      to:opp,
+      summary:result.summary,
+      fullLog:result.fullLog,
+      createdAtMillis:Date.now(),
+      createdAt:firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    printPvpResultPreview(result.summary, result.fullLog);
+  }catch(e){
+    console.error(e);
+    print("대전 준비완료 중 오류가 발생했습니다.");
+  }
+}
+
+
 
 function showCommands(){
   if(!currentUser){
@@ -4489,118 +4683,6 @@ function requireLoginForCommand(cmd){
 }
 
 
-async function hasActivePvpWithUser(nickname){
-  try{
-    if(!nickname) return false;
-    const since = Date.now() - 1000 * 60 * 5;
-    const snap = await db.collection("pvpRequests")
-      .where("users", "array-contains", nickname)
-      .where("status", "==", "pending")
-      .get();
-    return snap.docs.some(doc => {
-      const d = doc.data() || {};
-      return (d.createdAtMillis || 0) >= since;
-    });
-  }catch(e){
-    console.error(e);
-    return false;
-  }
-}
-
-async function getLatestIncomingPvpRequest(){
-  if(!currentUser) return null;
-  const since = Date.now() - 1000 * 60 * 5;
-  const snap = await db.collection("pvpRequests")
-    .where("to", "==", currentUser)
-    .where("status", "==", "pending")
-    .get();
-
-  let best = null;
-  snap.docs.forEach(doc => {
-    const d = doc.data() || {};
-    if((d.createdAtMillis || 0) < since) return;
-    if(!best || (d.createdAtMillis || 0) > (best.data.createdAtMillis || 0)){
-      best = {id:doc.id, data:d};
-    }
-  });
-  return best;
-}
-
-async function markLatestPvpRequestStatus(fromName, status){
-  try{
-    if(!currentUser || !fromName) return;
-    const snap = await db.collection("pvpRequests")
-      .where("from", "==", fromName)
-      .where("to", "==", currentUser)
-      .where("status", "==", "pending")
-      .get();
-    const batch = db.batch();
-    snap.docs.forEach(doc => batch.update(doc.ref, {status, updatedAtMillis:Date.now()}));
-    if(!snap.empty) await batch.commit();
-  }catch(e){
-    console.error(e);
-  }
-}
-
-async function acceptLatestPvpRequest(){
-  const req = await getLatestIncomingPvpRequest();
-  if(!req) return print("수락할 대전 신청이 없습니다.");
-  return acceptPvp(req.data.from);
-}
-
-async function rejectLatestPvpRequest(){
-  const req = await getLatestIncomingPvpRequest();
-  if(!req) return print("거절할 대전 신청이 없습니다.");
-  return rejectPvp(req.data.from);
-}
-
-function showPvpPrepList(){
-  if(!pvpPrepIndexes || pvpPrepIndexes.length === 0) return print("대전 준비된 물고기가 없습니다.");
-  let s = "대전목록\n\n";
-  pvpPrepIndexes.forEach((bucketIndex,i)=>{
-    const f = bucket[bucketIndex];
-    if(f) s += (i+1) + ". " + lineFish(f) + "\n";
-  });
-  print(s.trim());
-}
-
-function unpreparePvpFish(n){
-  const num = Number(n);
-  if(!num || num < 1) return print("사용법 : 대전해제 1");
-  const idx = num - 1;
-  if(!pvpPrepIndexes || !pvpPrepIndexes[idx]) return print("해제할 대전 물고기가 없습니다.");
-  pvpPrepIndexes.splice(idx,1);
-  saveGame();
-  print("대전 준비가 해제되었습니다.");
-}
-
-
-async function cancelPvpRequest(){
-  if(!currentUser) return print("로그인 후 사용 가능합니다.");
-
-  try{
-    const snap = await db.collection("pvpRequests")
-      .where("from", "==", currentUser)
-      .where("status", "==", "pending")
-      .get();
-
-    if(snap.empty) return print("취소할 대전 신청이 없습니다.");
-
-    const batch = db.batch();
-    snap.docs.forEach(doc => batch.update(doc.ref, {
-      status:"cancelled",
-      cancelledAtMillis:Date.now(),
-      updatedAtMillis:Date.now()
-    }));
-    await batch.commit();
-
-    print("대전 신청을 취소했습니다.");
-  }catch(e){
-    console.error(e);
-    print("대전 취소 중 오류가 발생했습니다.");
-  }
-}
-
 function runCommand(){
 
   let cmd=input.value.trim();
@@ -4616,6 +4698,7 @@ function runCommand(){
   if(cmd.startsWith("대전준비 ")) return preparePvpFish(cmd.split(/\s+/)[1]);
   if(cmd.startsWith("대전해제 ")) return unpreparePvpFish(cmd.split(/\s+/)[1]);
   if(cmd === "대전목록") return showPvpPrepList();
+  if(cmd === "대전준비완료") return finishPvpReady();
   if(cmd === "대전수락") return acceptLatestPvpRequest();
   if(cmd === "대전거절") return rejectLatestPvpRequest();
   if(cmd === "대전취소") return cancelPvpRequest();
@@ -4658,10 +4741,10 @@ function runCommand(){
   else if(cmd==="훈련소3 강화") upgradeTraining(3);
   else if(cmd==="시세") showMarket();
   else if(cmd==="랭킹") showRanking();
-  else if(cmd.startsWith("대전수락 ")){ const p=cmd.split(" "); acceptPvp(p[1]); }
-  else if(cmd.startsWith("대전거절 ")){ const p=cmd.split(" "); rejectPvp(p[1]); }
-  else if(cmd.startsWith("대전해제 ")){ const p=cmd.split(" "); unpreparePvpFish(Number(p[1])); }
-  else if(cmd.startsWith("대전준비 ")){ const p=cmd.split(" "); preparePvpFish(Number(p[1])); }
+  else if(cmd==="대전수락") acceptLatestPvpRequest();
+  else if(cmd==="대전거절") rejectLatestPvpRequest();
+  else if(cmd.startsWith("대전해제 ")){ const p=cmd.split(" "); unpreparePvpFish(p[1]); }
+  else if(cmd.startsWith("대전준비 ")){ const p=cmd.split(" "); preparePvpFish(p[1]); }
   else if(cmd==="대전목록") showPvpPrepList();
   else if(cmd.startsWith("대전 ")){ const p=cmd.split(" "); requestPvp(p[1]); }
   else if(cmd.startsWith("메세지 ")) sendMessage(cmd.split(" ")[1]);
