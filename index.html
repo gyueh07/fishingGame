@@ -267,6 +267,26 @@ const UPDATE_NOTICES = [
       "회복 중인 물고기는 시간이 지날수록 체력이 서서히 회복됩니다.",
       "회복 중인 물고기도 현재 회복된 체력으로 전투에 참가할 수 있습니다."
     ]
+  },
+  {
+    id: "2026-06-20-boss-fail-hp-reset-1",
+    title: "보스전 실패 처리 수정",
+    lines: [
+      "보스전 실패 시 보스 체력이 최대 체력으로 초기화됩니다.",
+      "전투 실패 후에는 쿨타임 없이 바로 다시 도전할 수 있습니다.",
+      "보스 처치 성공 시에도 다음 도전은 보스 최대 체력으로 시작됩니다."
+    ]
+  },
+  {
+    id: "2026-06-20-boss-13-first-clear-1",
+    title: "13보스/최초 클리어 보상 업데이트",
+    lines: [
+      "보스가 8단계 요르문간드까지 적용되었습니다.",
+      "9단계 이후 보스는 삭제되었습니다.",
+      "보스 상금은 최초 클리어 시에만 지급됩니다.",
+      "재도전 처치 시에는 상금 없이 보스 재료만 획득합니다.",
+      "피닉스, 바하무트, 티아마트, 요르문간드의 전용 스킬 효과가 적용되었습니다."
+    ]
   }
 ];
 
@@ -1532,37 +1552,69 @@ const materialInfo = {
   "심연의 촉수":"크라켄에게서 얻을 수 있는 촉수 조각.",
   "히드라의 독니":"히드라에게서 얻을 수 있는 맹독이 서린 독니.",
   "리바이어던의 코어":"리바이어던에게서 얻을 수 있는 심해의 코어.",
-  "고대의 비늘":"베히모스에게서 얻을 수 있는 단단한 고대 비늘."
+  "고대의 비늘":"베히모스에게서 얻을 수 있는 단단한 고대 비늘.",
+  "불멸의 깃털":"피닉스에게서 얻을 수 있는 꺼지지 않는 불꽃의 깃털.",
+  "용왕의 심장":"바하무트에게서 얻을 수 있는 용왕의 심장.",
+  "혼돈의 파편":"티아마트에게서 얻을 수 있는 혼돈의 파편.",
+  "세계뱀의 비늘":"요르문간드에게서 얻을 수 있는 거대한 비늘."
 };
 
 const bossList = [
   {
     id:"kraken", name:"크라켄", grade:"영웅", color:"#d2a8ff",
     hp:50000, attack:2500, dodge:5, critRate:10, critDamage:180, skillRate:25,
-    reward:1250000000, drop:"심연의 촉수",
+    reward:100000000, drop:"심연의 촉수",
     skillName:"촉수 강타", skillDesc:"공격력 150% 피해",
     desc:"깊은 심해에 숨어있던 거대 크라켄.\n수많은 낚시꾼들을 바다 아래로 끌고 갔다."
   },
   {
     id:"hydra", name:"히드라", grade:"영웅", color:"#d2a8ff",
     hp:150000, attack:6000, dodge:7, critRate:12, critDamage:190, skillRate:25,
-    reward:5000000000, drop:"히드라의 독니",
+    reward:500000000, drop:"히드라의 독니",
     skillName:"독니 물어뜯기", skillDesc:"공격력 180% 피해",
-    desc:"바다 깊은 곳에서 여러 머리를 숨긴 채 먹잇감을 기다리는 괴수."
+    desc:"바다 깊은 곳에서 여러 머리를 숨긴 채 먹잇감을 기다리는 괴수.\n잘려도 다시 돋아나는 머리로 적을 압박한다."
   },
   {
-    id:"leviathan", name:"리바이어던", grade:"신화", color:"#ff4d4f",
+    id:"leviathan", name:"리바이어던", grade:"전설", color:"#ffa657",
     hp:500000, attack:12000, dodge:12, critRate:15, critDamage:220, skillRate:20,
-    reward:25000000000, drop:"리바이어던의 코어",
+    reward:2500000000, drop:"리바이어던의 코어",
     skillName:"대해일", skillDesc:"준비된 모든 물고기에게 공격력 100% 피해",
     desc:"전설 속에서만 존재한다고 여겨졌던 심해의 지배자.\n거대한 몸으로 바다를 가르며 지나갈 때마다\n수많은 생명체가 모습을 감춘다고 한다."
   },
   {
-    id:"behemoth", name:"베히모스", grade:"신화", color:"#ff4d4f",
+    id:"behemoth", name:"베히모스", grade:"전설", color:"#ffa657",
     hp:1500000, attack:25000, dodge:8, critRate:18, critDamage:240, skillRate:20,
-    reward:100000000000, drop:"고대의 비늘",
+    reward:10000000000, drop:"고대의 비늘",
     skillName:"대지 붕괴", skillDesc:"공격력 250% 피해",
-    desc:"심연 아래 잠들어 있던 거대한 고대 생명체."
+    desc:"대지를 뒤흔드는 태고의 거신.\n그 발걸음만으로 산맥이 무너진다고 전해진다."
+  },
+  {
+    id:"phoenix", name:"피닉스", grade:"신화", color:"#ff4d4f",
+    hp:5000000, attack:45000, dodge:10, critRate:20, critDamage:260, skillRate:40,
+    reward:50000000000, drop:"불멸의 깃털",
+    skillName:"재의 낙인 / 윤회의 불꽃", skillDesc:"재의 낙인 25% : 공격력 1배 + 화상 1중첩\n윤회의 불꽃 15% : 전체 공격 1.5배 + 화상 중첩 추가 피해\n일반 공격 60% : 공격력 1배",
+    desc:"불꽃 속에서 영원히 되살아나는 전설의 신조.\n죽음조차 그를 멈출 수 없다."
+  },
+  {
+    id:"bahamut", name:"바하무트", grade:"신화", color:"#ff4d4f",
+    hp:15000000, attack:80000, dodge:12, critRate:22, critDamage:280, skillRate:40,
+    reward:200000000000, drop:"용왕의 심장",
+    skillName:"메가 플레어 / 용왕의 포효", skillDesc:"메가 플레어 15% : 공격력 3배, 사용 후 다음 턴 행동 불가\n용왕의 포효 25% : 공격력 1.5배, 다음 턴 공격력 50% 증가\n일반 공격 60% : 공격력 1배",
+    desc:"태초의 바다를 지배하던 용왕.\n분노한 포효는 하늘과 바다를 갈라놓는다."
+  },
+  {
+    id:"tiamat", name:"티아마트", grade:"신화", color:"#ff4d4f",
+    hp:50000000, attack:150000, dodge:15, critRate:24, critDamage:300, skillRate:40,
+    reward:1000000000000, drop:"혼돈의 파편",
+    skillName:"창세의 바다 / 괴수 탄생", skillDesc:"창세의 바다 25% : 공격력 2배\n괴수 탄생 15% : 새끼 용 3마리 소환\n새끼 용 : HP 2,500,000 / 공격력 30,000 / 일반 공격만 사용\n일반 공격 60% : 공격력 1배",
+    desc:"혼돈의 바다에서 태어난 창조의 여신.\n수많은 괴수들의 근원이 된 존재이다."
+  },
+  {
+    id:"jormungandr", name:"요르문간드", grade:"초월", color:"#ffd700",
+    hp:65000000, attack:300000, dodge:18, critRate:26, critDamage:320, skillRate:40,
+    reward:3000000000000, drop:"세계뱀의 비늘",
+    skillName:"미드가르드 감기 / 종말의 독", skillDesc:"미드가르드 감기 25% : 공격력 2배, 세계의 고리 1단계 진행\n종말의 독 15% : 공격력 1.2배, 독 1중첩 부여\n일반 공격 60% : 공격력 1배\n독 : 턴 시작 시 최대 체력의 2% 피해, 최대 3중첩\n세계의 고리 : 3단계 완성 시 공격력 증가 한도가 50%에서 100%로 확장되고 즉시 더 강해짐",
+    desc:"세계를 감싸고 있는 종말의 거대 뱀.\n몸을 뒤틀 때마다 대륙이 흔들린다."
   }
 ];
 
@@ -2005,6 +2057,14 @@ function getBossStatus(boss){
 function addMaterial(name,count){
   bossProgress.materials[name] = (bossProgress.materials[name] || 0) + count;
 }
+function isBossFirstClear(boss){
+  return !(bossProgress.defeated && bossProgress.defeated[boss.id]);
+}
+
+function getBossClearReward(boss){
+  return isBossFirstClear(boss) ? (boss.reward || 0) : 0;
+}
+
 
 function buildBossBattleText(){
   const boss = getCurrentBoss();
@@ -2044,15 +2104,44 @@ function buildBossInfoText(){
   s += line() + "\n\n";
   s += "체력\n" + hpBar(hp, boss.hp) + "\n\n";
   s += "공격력\n" + boss.attack.toLocaleString() + "\n\n";
+  s += "상금\n" + formatMoney(boss.reward || 0) + "\n\n";
   s += "드랍\n" + boss.drop + "\n\n";
   s += line() + "\n\n";
-  s += "스킬\n\n";
-  s += boss.skillName + "\n" + boss.skillDesc + "\n\n";
-  s += "패시브\n\n";
-  if(boss.id === "kraken") s += "먹물 난사\n회피 시도 시 회피 실패 처리\n\n";
-  else if(boss.id === "hydra") s += "재생\n매 턴 최대 체력의 5% 회복\n\n";
-  else if(boss.id === "leviathan") s += "심연의 분노\n체력 50% 이하 시 공격력 30% 증가\n\n";
-  else if(boss.id === "behemoth") s += "고대의 육체\n받는 피해 20% 감소\n\n";
+
+  if(boss.id === "phoenix"){
+    s += "패시브 - 불사\n사망 시 체력 50%로 1회 부활\n\n";
+    s += "재의 낙인 (25%)\n공격력 1배\n화상 1중첩 부여\n\n";
+    s += "윤회의 불꽃 (15%)\n전체 공격\n공격력 1.5배\n화상 1중첩 대상 추가 피해\n화상 2중첩 대상 대폭 추가 피해\n\n";
+    s += "일반 공격 (60%)\n공격력 1배\n\n";
+  } else if(boss.id === "bahamut"){
+    s += "패시브 - 드래곤 스케일\n전투 중 가장 큰 피해 기록 저장\n기록보다 크거나 같은 피해를 받으면 50% 감소\n감소 적용 후 새 기록으로 갱신\n\n";
+    s += "메가 플레어 (15%)\n공격력 3배\n사용 후 다음 턴 행동 불가\n\n";
+    s += "용왕의 포효 (25%)\n공격력 1.5배\n다음 턴 공격력 50% 증가\n\n";
+    s += "일반 공격 (60%)\n공격력 1배\n\n";
+  } else if(boss.id === "tiamat"){
+    s += "패시브 - 태초의 바다\n매 턴 최대 체력의 2% 회복\n\n";
+    s += "창세의 바다 (25%)\n공격력 2배\n\n";
+    s += "괴수 탄생 (15%)\n새끼 용 3마리 소환\n\n";
+    s += "새끼 용\nHP 2,500,000\n공격력 30,000\n일반 공격만 사용\n\n";
+    s += "일반 공격 (60%)\n공격력 1배\n\n";
+  } else if(boss.id === "jormungandr"){
+    s += "패시브 - 세계를 감은 자\n매 턴 공격력 5% 증가\n기본 최대 50% 증가\n세계의 고리 완성 시 최대 100% 증가\n\n";
+    s += "미드가르드 감기 (25%)\n공격력 2배\n세계의 고리 1단계 진행\n\n";
+    s += "세계의 고리\n3단계 완성 시 공격력 증가 한도가 100%로 확장\n완성 즉시 공격력이 더 강해짐\n\n";
+    s += "종말의 독 (15%)\n공격력 1.2배\n독 1중첩 부여\n\n";
+    s += "독\n턴 시작 시 최대 체력의 2% 피해\n최대 3중첩\n\n";
+    s += "일반 공격 (60%)\n공격력 1배\n\n";
+  } else {
+    s += "스킬\n\n";
+    s += boss.skillName + "\n" + boss.skillDesc + "\n\n";
+    s += "패시브\n\n";
+    if(boss.id === "kraken") s += "먹물 난사\n회피 시도 시 회피 실패 처리\n\n";
+    else if(boss.id === "hydra") s += "재생\n매 턴 최대 체력의 5% 회복\n\n";
+    else if(boss.id === "leviathan") s += "심연의 분노\n체력 50% 이하 시 공격력 30% 증가\n\n";
+    else if(boss.id === "behemoth") s += "고대의 육체\n받는 피해 20% 감소\n\n";
+    else s += "없음\n\n";
+  }
+
   s += line();
   return s;
 }
@@ -2063,7 +2152,7 @@ function buildBossListText(){
   let s = "보스목록\n\n────┬────────────────────\n";
   bossList.forEach((boss,i)=>{
     const selected = getCurrentBoss().id === boss.id ? " [선택됨]" : "";
-    s += fullWidthNumber(i+1) + "│" + bossColor(boss.name + " [" + getBossStatus(boss) + "]" + selected, boss) + "\n";
+    s += fullWidthNumber(i+1) + "│" + bossColor("[" + boss.grade + "] " + boss.name + " [" + getBossStatus(boss) + "]" + selected, boss) + "\n";
     if(i !== bossList.length - 1) s += "────┼────────────────────\n";
   });
   s += "────┴────────────────────\n\n";
@@ -2176,29 +2265,41 @@ function getAlivePreparedFishes(){
     });
 }
 
-function bossSingleTargetAttack(boss, targets, battleLog, bossAttackMultiplier=1, skillName="공격", ignoreDodge=false){
-  const alive = targets.filter(f => ensureCombatStats(f).hp > 0 && ensureCombatStats(f).status !== "기절");
-  if(alive.length === 0) return;
+function getBossAttackMultiplier(boss){
+  let multiplier = 1;
 
-  const f = alive[Math.floor(Math.random() * alive.length)];
-  const c = ensureCombatStats(f);
-  let bossAttack = Math.floor(boss.attack * bossAttackMultiplier);
-  if(boss.id === "leviathan" && boss._enraged) bossAttack = Math.floor(bossAttack * 1.3);
-
-  const dodgeRoll = Math.random() * 100 < c.dodge;
-
-  if(dodgeRoll && !ignoreDodge){
-    battleLog.push(bossColor(boss.name, boss) + "의 " + skillName + "\n" + color(lineFish(f), f.grade) + " 회피");
-    return;
+  if(boss._enraged){
+    multiplier *= 1.3;
   }
 
-  const bossHit = calcDamage(bossAttack, boss.critRate, boss.critDamage);
-  c.hp = Math.max(0, c.hp - bossHit.damage);
+  if(boss._bahamutRoarBoost){
+    multiplier *= 1.5;
+    boss._bahamutRoarBoost = false;
+  }
 
-  let logText = bossColor(boss.name, boss) + "의 " + skillName + "\n";
-  if(dodgeRoll && ignoreDodge) logText += "회피 시도!\n먹물 때문에 회피에 실패했습니다.\n";
-  if(bossHit.crit) logText += "치명타!\n";
-  logText += bossHit.damage.toLocaleString() + " 피해\n\n";
+  if(boss.id === "jormungandr"){
+    const maxBoost = boss._ringCompleted ? 1.0 : 0.5;
+    const boost = Math.min(maxBoost, Number(boss._attackBoost || 0));
+    multiplier *= (1 + boost);
+  }
+
+  return multiplier;
+}
+
+function getBossAttackValue(boss, bossAttackMultiplier=1){
+  return Math.floor(boss.attack * bossAttackMultiplier * getBossAttackMultiplier(boss));
+}
+
+function getAliveTargets(targets){
+  return targets.filter(f => ensureCombatStats(f).hp > 0 && ensureCombatStats(f).status !== "기절");
+}
+
+function applyDamageToFish(f, damage, battleLog, prefix){
+  const c = ensureCombatStats(f);
+  c.hp = Math.max(0, c.hp - damage);
+
+  let logText = prefix;
+  logText += damage.toLocaleString() + " 피해\n\n";
   logText += color(lineFish(f), f.grade) + "\n" + hpBar(c.hp, c.maxHp);
   battleLog.push(logText);
 
@@ -2208,10 +2309,42 @@ function bossSingleTargetAttack(boss, targets, battleLog, bossAttackMultiplier=1
   }
 }
 
-function bossAllTargetAttack(boss, targets, battleLog){
+function bossSingleTargetAttack(boss, targets, battleLog, bossAttackMultiplier=1, skillName="공격", ignoreDodge=false, options={}){
+  const alive = getAliveTargets(targets);
+  if(alive.length === 0) return;
+
+  const f = alive[Math.floor(Math.random() * alive.length)];
+  const c = ensureCombatStats(f);
+  const bossAttack = getBossAttackValue(boss, bossAttackMultiplier);
+  const dodgeRoll = Math.random() * 100 < c.dodge;
+
+  if(dodgeRoll && !ignoreDodge){
+    battleLog.push(bossColor(boss.name, boss) + "의 " + skillName + "\n" + color(lineFish(f), f.grade) + " 회피");
+    return;
+  }
+
+  const bossHit = calcDamage(bossAttack, boss.critRate, boss.critDamage);
+
+  let prefix = bossColor(boss.name, boss) + "의 " + skillName + "\n";
+  if(dodgeRoll && ignoreDodge) prefix += "회피 시도!\n먹물 때문에 회피에 실패했습니다.\n";
+  if(bossHit.crit) prefix += "치명타!\n";
+
+  applyDamageToFish(f, bossHit.damage, battleLog, prefix);
+
+  if(ensureCombatStats(f).hp > 0 && options.burn){
+    c.burnStacks = Math.min(3, Number(c.burnStacks || 0) + 1);
+    battleLog.push(color(lineFish(f), f.grade) + "\n화상 " + c.burnStacks + "중첩");
+  }
+
+  if(ensureCombatStats(f).hp > 0 && options.poison){
+    c.poisonStacks = Math.min(3, Number(c.poisonStacks || 0) + 1);
+    battleLog.push(color(lineFish(f), f.grade) + "\n독 " + c.poisonStacks + "중첩");
+  }
+}
+
+function bossAllTargetAttack(boss, targets, battleLog, bossAttackMultiplier=1, skillName="전체 공격", options={}){
   const logs = [];
-  let bossAttack = boss.attack;
-  if(boss.id === "leviathan" && boss._enraged) bossAttack = Math.floor(bossAttack * 1.3);
+  const bossAttack = getBossAttackValue(boss, bossAttackMultiplier);
 
   targets.forEach(f => {
     const c = ensureCombatStats(f);
@@ -2224,11 +2357,20 @@ function bossAllTargetAttack(boss, targets, battleLog){
     }
 
     const hit = calcDamage(bossAttack, boss.critRate, boss.critDamage);
-    c.hp = Math.max(0, c.hp - hit.damage);
+    let damage = hit.damage;
+
+    if(options.burnBonus){
+      const burn = Number(c.burnStacks || 0);
+      if(burn >= 2) damage = Math.floor(damage * 2.0);
+      else if(burn >= 1) damage = Math.floor(damage * 1.5);
+    }
+
+    c.hp = Math.max(0, c.hp - damage);
 
     let entry = color(lineFish(f), f.grade) + "\n";
     if(hit.crit) entry += "치명타!\n";
-    entry += hit.damage.toLocaleString() + " 피해\n";
+    if(options.burnBonus && (c.burnStacks || 0) > 0) entry += "화상 추가 피해!\n";
+    entry += damage.toLocaleString() + " 피해\n";
     entry += hpBar(c.hp, c.maxHp);
 
     if(c.hp <= 0){
@@ -2239,20 +2381,69 @@ function bossAllTargetAttack(boss, targets, battleLog){
     logs.push(entry);
   });
 
-  if(logs.length > 0) battleLog.push(bossColor(boss.name, boss) + "의 대해일!\n\n" + logs.join("\n\n"));
+  if(logs.length > 0) battleLog.push(bossColor(boss.name, boss) + "의 " + skillName + "!\n\n" + logs.join("\n\n"));
 }
 
-function applyBossPassiveBeforeFishAttack(boss, damage){
+function applyBossPassiveBeforeFishAttack(boss, damage, battleLog=null){
   if(boss.id === "behemoth") return Math.floor(damage * 0.8);
+
+  if(boss.id === "bahamut"){
+    const record = Number(boss._damageRecord || 0);
+    if(damage >= record){
+      const reduced = Math.floor(damage * 0.5);
+      boss._damageRecord = reduced;
+      if(battleLog){
+        battleLog.push(bossColor(boss.name, boss) + "의 드래곤 스케일\n" + damage.toLocaleString() + " 피해를 " + reduced.toLocaleString() + " 피해로 감소\n피해 기록 : " + reduced.toLocaleString());
+      }
+      return reduced;
+    }
+  }
+
   return damage;
 }
 
+function applyPhoenixImmortalityIfNeeded(boss, bossHp, battleLog){
+  if(boss.id !== "phoenix") return bossHp;
+  if(bossHp > 0) return bossHp;
+  if(boss._revived) return bossHp;
+
+  boss._revived = true;
+  bossHp = Math.floor(boss.hp * 0.5);
+  battleLog.push(bossColor(boss.name, boss) + "의 불사\n체력 50%로 1회 부활했습니다.\n\n" + hpBar(bossHp, boss.hp));
+  return bossHp;
+}
+
+function applyBossStartTurnEffects(participants, battleLog){
+  participants.forEach(f => {
+    const c = ensureCombatStats(f);
+    if(c.hp <= 0 || c.status === "기절") return;
+
+    const poison = Math.min(3, Number(c.poisonStacks || 0));
+    if(poison <= 0) return;
+
+    const damage = Math.floor(c.maxHp * 0.02 * poison);
+    c.hp = Math.max(0, c.hp - damage);
+
+    let entry = color(lineFish(f), f.grade) + "\n독 " + poison + "중첩\n";
+    entry += damage.toLocaleString() + " 피해\n";
+    entry += hpBar(c.hp, c.maxHp);
+
+    if(c.hp <= 0){
+      stunFish(f);
+      entry += "\n체력이 0이 되어 회복 중입니다.";
+    }
+
+    battleLog.push(entry);
+  });
+}
+
 function applyBossEndTurnPassive(boss, bossHp, battleLog){
-  if(boss.id === "hydra" && bossHp > 0){
-    const heal = Math.floor(boss.hp * 0.05);
+  if((boss.id === "hydra" || boss.id === "tiamat") && bossHp > 0){
+    const rate = boss.id === "hydra" ? 0.05 : 0.02;
+    const heal = Math.floor(boss.hp * rate);
     const before = bossHp;
     bossHp = Math.min(boss.hp, bossHp + heal);
-    if(bossHp > before) battleLog.push(bossColor(boss.name, boss) + "가 재생했습니다.\n" + (bossHp - before).toLocaleString() + " 회복\n\n" + hpBar(bossHp, boss.hp));
+    if(bossHp > before) battleLog.push(bossColor(boss.name, boss) + "가 회복했습니다.\n" + (bossHp - before).toLocaleString() + " 회복\n\n" + hpBar(bossHp, boss.hp));
   }
 
   if(boss.id === "leviathan" && bossHp > 0 && bossHp <= boss.hp * 0.5 && !boss._enraged){
@@ -2261,6 +2452,123 @@ function applyBossEndTurnPassive(boss, bossHp, battleLog){
   }
 
   return bossHp;
+}
+
+function spawnBabyDragons(boss, battleLog){
+  if(!boss._summons) boss._summons = [];
+
+  for(let i=0;i<3;i++){
+    boss._summons.push({name:"새끼 용", hp:2500000, maxHp:2500000, attack:30000});
+  }
+
+  battleLog.push(bossColor(boss.name, boss) + "의 괴수 탄생\n새끼 용 3마리를 소환했습니다.");
+}
+
+function getAliveSummons(boss){
+  return (boss._summons || []).filter(x => x.hp > 0);
+}
+
+function fishAttackTargetText(target, boss){
+  if(target.type === "boss") return bossColor(boss.name, boss) + "\n" + hpBar(target.hp, boss.hp);
+  return target.name + "\n" + hpBar(target.hp, target.maxHp);
+}
+
+function babyDragonActions(boss, participants, battleLog){
+  const summons = getAliveSummons(boss);
+  if(summons.length === 0) return;
+
+  summons.forEach((dragon, i) => {
+    const alive = getAliveTargets(participants);
+    if(alive.length === 0) return;
+
+    const f = alive[Math.floor(Math.random() * alive.length)];
+    const c = ensureCombatStats(f);
+    const dodgeRoll = Math.random() * 100 < c.dodge;
+
+    if(dodgeRoll){
+      battleLog.push("새끼 용 " + (i+1) + "의 공격\n" + color(lineFish(f), f.grade) + " 회피");
+      return;
+    }
+
+    applyDamageToFish(f, dragon.attack, battleLog, "새끼 용 " + (i+1) + "의 공격\n");
+  });
+}
+
+function runBossAction(boss, participants, battleLog){
+  if(boss.id === "phoenix"){
+    const r = Math.random() * 100;
+    if(r < 25) return bossSingleTargetAttack(boss, participants, battleLog, 1, "재의 낙인", false, {burn:true});
+    if(r < 40) return bossAllTargetAttack(boss, participants, battleLog, 1.5, "윤회의 불꽃", {burnBonus:true});
+    return bossSingleTargetAttack(boss, participants, battleLog, 1, "일반 공격", false);
+  }
+
+  if(boss.id === "bahamut"){
+    if(boss._skipTurn){
+      boss._skipTurn = false;
+      battleLog.push(bossColor(boss.name, boss) + "은 메가 플레어의 반동으로 행동하지 못했습니다.");
+      return;
+    }
+
+    const r = Math.random() * 100;
+    if(r < 15){
+      bossSingleTargetAttack(boss, participants, battleLog, 3, "메가 플레어", false);
+      boss._skipTurn = true;
+      return;
+    }
+    if(r < 40){
+      bossSingleTargetAttack(boss, participants, battleLog, 1.5, "용왕의 포효", false);
+      boss._bahamutRoarBoost = true;
+      battleLog.push(bossColor(boss.name, boss) + "의 다음 턴 공격력이 50% 증가합니다.");
+      return;
+    }
+    return bossSingleTargetAttack(boss, participants, battleLog, 1, "일반 공격", false);
+  }
+
+  if(boss.id === "tiamat"){
+    const r = Math.random() * 100;
+    if(r < 25) return bossSingleTargetAttack(boss, participants, battleLog, 2, "창세의 바다", false);
+    if(r < 40) return spawnBabyDragons(boss, battleLog);
+    return bossSingleTargetAttack(boss, participants, battleLog, 1, "일반 공격", false);
+  }
+
+  if(boss.id === "jormungandr"){
+    const r = Math.random() * 100;
+    if(r < 25){
+      bossSingleTargetAttack(boss, participants, battleLog, 2, "미드가르드 감기", false);
+      boss._ring = Math.min(3, Number(boss._ring || 0) + 1);
+      if(boss._ring >= 3 && !boss._ringCompleted){
+        boss._ringCompleted = true;
+        boss._attackBoost = Math.max(Number(boss._attackBoost || 0), 0.5);
+        battleLog.push(bossColor(boss.name, boss) + "의 세계의 고리가 완성되었습니다.\n공격력 증가 한도가 100%로 확장되고 힘이 더 강해졌습니다.");
+      } else {
+        battleLog.push(bossColor(boss.name, boss) + "의 세계의 고리 " + boss._ring + " / 3");
+      }
+      return;
+    }
+    if(r < 40) return bossSingleTargetAttack(boss, participants, battleLog, 1.2, "종말의 독", false, {poison:true});
+    return bossSingleTargetAttack(boss, participants, battleLog, 1, "일반 공격", false);
+  }
+
+  const skillRoll = Math.random() * 100 < (boss.skillRate || 20);
+
+  if(skillRoll){
+    if(boss.id === "kraken") bossSingleTargetAttack(boss, participants, battleLog, 1.5, boss.skillName, false);
+    else if(boss.id === "hydra") bossSingleTargetAttack(boss, participants, battleLog, 1.8, boss.skillName, false);
+    else if(boss.id === "leviathan") bossAllTargetAttack(boss, participants, battleLog, 1, boss.skillName);
+    else if(boss.id === "behemoth") bossSingleTargetAttack(boss, participants, battleLog, 2.5, boss.skillName, false);
+    else bossSingleTargetAttack(boss, participants, battleLog, 1, boss.skillName || "공격", false);
+  } else {
+    if(boss.id === "kraken") bossSingleTargetAttack(boss, participants, battleLog, 1.2, "먹물 난사", true);
+    else bossSingleTargetAttack(boss, participants, battleLog, 1, "공격", false);
+  }
+}
+
+function cleanupBattleEffects(participants){
+  participants.forEach(f => {
+    const c = ensureCombatStats(f);
+    delete c.burnStacks;
+    delete c.poisonStacks;
+  });
 }
 
 function getPreparedRecoveryFishes(){
@@ -2291,7 +2599,19 @@ function runBossBattle(){
 
   pendingRecoveryBattleConfirm = false;
 
-  const boss = {...getCurrentBoss(), _enraged:false};
+  const boss = {
+    ...getCurrentBoss(),
+    _enraged:false,
+    _revived:false,
+    _damageRecord:0,
+    _skipTurn:false,
+    _bahamutRoarBoost:false,
+    _summons:[],
+    _attackBoost:0,
+    _ring:0,
+    _ringCompleted:false
+  };
+
   if(!isBossUnlocked(boss)) return print("아직 해금되지 않은 보스입니다.");
   if(isBossCooldownActive(boss.id)) return print("아직 보스전 쿨타임이 남아있습니다.\n\n남은 시간 : " + formatRemain(getBossCooldownLeft(boss.id)));
 
@@ -2305,20 +2625,54 @@ function runBossBattle(){
 
   if(participants.length === 0) return print("전투 가능한 물고기가 없습니다.");
 
+  cleanupBattleEffects(participants);
+
   battleLog.push("전투 시작\n\n" + participants.map(f => color(lineFish(f), f.grade) + "\n" + hpBar(ensureCombatStats(f).hp, ensureCombatStats(f).maxHp)).join("\n\n"));
 
   let turn = 1;
   while(bossHp > 0 && participants.some(f => ensureCombatStats(f).hp > 0 && ensureCombatStats(f).status !== "기절") && turn <= 200){
     battleLog.push("턴 " + turn);
 
+    if(boss.id === "jormungandr"){
+      const limit = boss._ringCompleted ? 1.0 : 0.5;
+      const before = Number(boss._attackBoost || 0);
+      boss._attackBoost = Math.min(limit, before + 0.05);
+      if(boss._attackBoost > before){
+        battleLog.push(bossColor(boss.name, boss) + "의 세계를 감은 자\n공격력 증가 : +" + Math.round(boss._attackBoost * 100) + "%");
+      }
+    }
+
+    applyBossStartTurnEffects(participants, battleLog);
+    if(!participants.some(f => ensureCombatStats(f).hp > 0 && ensureCombatStats(f).status !== "기절")) break;
+
     for(const f of participants){
       const c = ensureCombatStats(f);
       if(c.hp <= 0 || c.status === "기절") continue;
       if(bossHp <= 0) break;
 
+      const summons = getAliveSummons(boss);
+      const targetSummon = summons.length > 0 ? summons[0] : null;
+
+      if(targetSummon){
+        const hit = calcDamage(c.attack, c.critRate, c.critDamage);
+        targetSummon.hp = Math.max(0, targetSummon.hp - hit.damage);
+        totalDamage += hit.damage;
+
+        let entry = color(lineFish(f), f.grade) + " 공격\n";
+        if(hit.crit) entry += "치명타!\n";
+        entry += hit.damage.toLocaleString() + " 피해\n\n";
+        entry += targetSummon.name + "\n" + hpBar(targetSummon.hp, targetSummon.maxHp);
+        battleLog.push(entry);
+
+        if(targetSummon.hp <= 0){
+          battleLog.push(targetSummon.name + "을 쓰러뜨렸습니다.");
+        }
+        continue;
+      }
+
       if(Math.random() * 100 >= boss.dodge){
         const hit = calcDamage(c.attack, c.critRate, c.critDamage);
-        let damage = applyBossPassiveBeforeFishAttack(boss, hit.damage);
+        let damage = applyBossPassiveBeforeFishAttack(boss, hit.damage, battleLog);
         bossHp = Math.max(0, bossHp - damage);
         totalDamage += damage;
 
@@ -2328,6 +2682,8 @@ function runBossBattle(){
         entry += damage.toLocaleString() + " 피해\n\n";
         entry += bossColor(boss.name, boss) + "\n" + hpBar(bossHp, boss.hp);
         battleLog.push(entry);
+
+        bossHp = applyPhoenixImmortalityIfNeeded(boss, bossHp, battleLog);
       } else {
         battleLog.push(color(lineFish(f), f.grade) + " 공격\n" + bossColor(boss.name, boss) + " 회피");
       }
@@ -2336,39 +2692,41 @@ function runBossBattle(){
     if(bossHp <= 0) break;
 
     bossHp = applyBossEndTurnPassive(boss, bossHp, battleLog);
-    const skillRoll = Math.random() * 100 < (boss.skillRate || 20);
-
-    if(skillRoll){
-      if(boss.id === "kraken") bossSingleTargetAttack(boss, participants, battleLog, 1.5, "촉수 강타", false);
-      else if(boss.id === "hydra") bossSingleTargetAttack(boss, participants, battleLog, 1.8, "독니 물어뜯기", false);
-      else if(boss.id === "leviathan") bossAllTargetAttack(boss, participants, battleLog);
-      else if(boss.id === "behemoth") bossSingleTargetAttack(boss, participants, battleLog, 2.5, "대지 붕괴", false);
-      else bossSingleTargetAttack(boss, participants, battleLog, 1, "공격", false);
-    } else {
-      if(boss.id === "kraken") bossSingleTargetAttack(boss, participants, battleLog, 1.2, "먹물 난사", true);
-      else bossSingleTargetAttack(boss, participants, battleLog, 1, "공격", false);
-    }
+    runBossAction(boss, participants, battleLog);
+    babyDragonActions(boss, participants, battleLog);
 
     turn++;
   }
 
-  bossProgress.hp[boss.id] = bossHp;
-
   if(bossHp <= 0){
     result = "처치 성공";
-    rewardMoney = boss.reward;
+    const firstClear = isBossFirstClear(boss);
+    rewardMoney = firstClear ? boss.reward : 0;
     rewardDrop = boss.drop;
-    money += rewardMoney;
-    totalEarned += rewardMoney;
+
+    if(rewardMoney > 0){
+      money += rewardMoney;
+      totalEarned += rewardMoney;
+    }
+
     addMaterial(rewardDrop, 1);
     bossProgress.defeated[boss.id] = true;
     bossProgress.hp[boss.id] = boss.hp;
+
+    if(firstClear){
+      battleLog.push("최초 클리어 보상\n" + formatMoney(rewardMoney) + " 획득");
+    } else {
+      battleLog.push("재도전 클리어\n이미 최초 클리어 보상을 획득한 보스입니다.\n상금은 지급되지 않습니다.");
+    }
 
     const nextBoss = bossList.find(b => isBossUnlocked(b) && !bossProgress.defeated[b.id]);
     if(nextBoss){
       bossProgress.selectedBossId = nextBoss.id;
       if(!bossProgress.hp[nextBoss.id]) bossProgress.hp[nextBoss.id] = nextBoss.hp;
     }
+  } else {
+    bossProgress.hp[boss.id] = boss.hp;
+    battleLog.push(bossColor(boss.name, boss) + "의 체력이 최대 체력으로 회복되었습니다.\n다음 전투는 처음부터 다시 시작됩니다.");
   }
 
   participants.forEach(f => {
@@ -2379,6 +2737,7 @@ function runBossBattle(){
       delete c.stunUntil;
     }
   });
+  cleanupBattleEffects(participants);
 
   const resultText = buildBattleResultText(boss, participants, totalDamage, result, rewardMoney, rewardDrop, battleLog);
   const summary = buildBattleSummaryText(boss, result, rewardMoney, rewardDrop);
@@ -2398,7 +2757,11 @@ function buildBattleSummaryText(boss, result, rewardMoney, rewardDrop){
 
   if(result === "처치 성공"){
     s += "획득\n\n";
-    s += formatMoney(rewardMoney) + "\n";
+    if(rewardMoney > 0){
+      s += "최초 클리어 상금 : " + formatMoney(rewardMoney) + "\n";
+    } else {
+      s += "상금 : 이미 획득 완료\n";
+    }
     s += rewardDrop + " x1\n\n";
   }
 
@@ -2437,7 +2800,11 @@ function buildBattleResultText(boss, participants, totalDamage, result, rewardMo
   if(result === "처치 성공"){
     s += line() + "\n\n";
     s += "획득\n\n";
-    s += formatMoney(rewardMoney) + "\n";
+    if(rewardMoney > 0){
+      s += "최초 클리어 상금 : " + formatMoney(rewardMoney) + "\n";
+    } else {
+      s += "상금 : 이미 획득 완료\n";
+    }
     s += rewardDrop + " x1\n\n";
   }
 
