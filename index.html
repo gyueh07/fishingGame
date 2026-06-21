@@ -3328,6 +3328,12 @@ function getBucketIndexByDisplayNumber(n){
   return item ? item.originalIndex : -1;
 }
 
+function getDisplayNumberByBucketIndex(originalIndex){
+  const list = sortedBucketList();
+  const pos = list.findIndex(item => item.originalIndex === originalIndex);
+  return pos >= 0 ? pos + 1 : -1;
+}
+
 function buildBucketText(){
   if(bucket.length===0) return "양동이가 비어있습니다.";
   let s=(currentUser ? formatCurrentUserName() + " 님의 양동이" : "내 양동이") + "\n\n────┬────────────────────\n";
@@ -4113,22 +4119,22 @@ async function cancelPvpRequest(){
 async function preparePvpFish(n){
   const active = await getMyActivePvp();
   if(!active || active.status !== "accepted"){
-    return print("대전이 성립된 후에 준비할 수 있습니다.\n\n먼저 대전 닉네임 또는 대전수락 을 진행하세요.");
+    return print("대전이 성립된 후에 준비할 수 있습니다.\\n\\n먼저 대전 닉네임 또는 대전수락 을 진행하세요.");
   }
 
-  const bucketNo = Number(n);
-  if(!Number.isInteger(bucketNo) || bucketNo < 1){
+  const displayNo = Number(n);
+  if(!Number.isInteger(displayNo) || displayNo < 1){
     return print("사용법 : 대전준비 양동이번호");
   }
 
-  const idx = bucketNo - 1;
+  const idx = getBucketIndexByDisplayNumber(displayNo);
   const f = bucket[idx];
 
-  if(!f) return print("존재하지 않는 양동이 번호입니다.");
+  if(idx < 0 || !f) return print("존재하지 않는 양동이 번호입니다.");
   if(f.grade === "쓰레기") return print("쓰레기는 대전에 참가할 수 없습니다.");
 
   if(pvpPrepIndexes.includes(idx)){
-    return print("이미 대전 준비된 물고기입니다.\n\n양동이 " + bucketNo + "번\n" + color(lineFish(f), f.grade));
+    return print("이미 대전 준비된 물고기입니다.\\n\\n양동이 " + displayNo + "번\\n" + color(lineFish(f), f.grade));
   }
 
   if(pvpPrepIndexes.length >= 3){
@@ -4144,7 +4150,7 @@ async function preparePvpFish(n){
     updatedAtMillis:Date.now()
   }, {merge:true});
 
-  print("대전 준비 완료\n\n양동이 " + bucketNo + "번\n" + color(lineFish(f), f.grade));
+  print("대전 준비 완료\\n\\n양동이 " + displayNo + "번\\n" + color(lineFish(f), f.grade));
 }
 
 async function unpreparePvpFish(n){
@@ -4153,24 +4159,34 @@ async function unpreparePvpFish(n){
     return print("대전이 성립된 후에 해제할 수 있습니다.");
   }
 
-  const bucketNo = Number(n);
-  const idx = bucketNo - 1;
+  const displayNo = Number(n);
+  if(!Number.isInteger(displayNo) || displayNo < 1) return print("사용법 : 대전해제 양동이번호");
+
+  const idx = getBucketIndexByDisplayNumber(displayNo);
   const pos = pvpPrepIndexes.indexOf(idx);
 
-  if(pos === -1) return print("해당 양동이 번호는 대전 준비 목록에 없습니다.");
+  if(idx < 0 || pos === -1) return print("해당 양동이 번호는 대전 준비 목록에 없습니다.");
 
+  const f = bucket[idx];
   pvpPrepIndexes.splice(pos,1);
   saveGame();
-  print("대전 준비가 해제되었습니다.\n\n양동이 " + bucketNo + "번");
+
+  await getMyActivePvpRef().set({
+    prepIndexes:pvpPrepIndexes,
+    ready:false,
+    updatedAtMillis:Date.now()
+  }, {merge:true});
+
+  print("대전 준비가 해제되었습니다.\\n\\n양동이 " + displayNo + "번" + (f ? "\\n" + color(lineFish(f), f.grade) : ""));
 }
 
 async function showPvpPrepList(){
   const active = await getMyActivePvp();
   if(!active) return print("진행 중인 대전이 없습니다.");
 
-  let s = "대전목록\n\n";
-  s += "상대 : " + active.opponent + "\n";
-  s += "상태 : " + (active.status === "requested" ? "수락 대기중" : active.status === "accepted" ? "준비중" : active.status) + "\n\n";
+  let s = "대전목록\\n\\n";
+  s += "상대 : " + active.opponent + "\\n";
+  s += "상태 : " + (active.status === "requested" ? "수락 대기중" : active.status === "accepted" ? "준비중" : active.status) + "\\n\\n";
 
   if(active.status !== "accepted"){
     s += "상대가 대전수락을 하면 준비할 수 있습니다.";
@@ -4178,18 +4194,19 @@ async function showPvpPrepList(){
   }
 
   if(pvpPrepIndexes.length === 0){
-    s += "준비한 물고기가 없습니다.\n\n대전준비 양동이번호";
+    s += "준비한 물고기가 없습니다.\\n\\n대전준비 양동이번호";
     return print(s);
   }
 
-  s += "출전 물고기\n\n";
+  s += "출전 물고기\\n\\n";
   pvpPrepIndexes.forEach((bucketIndex,i)=>{
     const f = bucket[bucketIndex];
+    const displayNo = getDisplayNumberByBucketIndex(bucketIndex);
     if(f){
-      s += (i+1) + ". 양동이 " + (bucketIndex+1) + "번 " + color(lineFish(f), f.grade) + "\n";
+      s += (i+1) + ". 양동이 " + (displayNo > 0 ? displayNo : bucketIndex+1) + "번 " + color(lineFish(f), f.grade) + "\\n";
     }
   });
-  s += "\n대전준비완료 를 입력하면 준비 완료됩니다.";
+  s += "\\n대전준비완료 를 입력하면 준비 완료됩니다.";
   print(s.trim());
 }
 
