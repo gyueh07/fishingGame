@@ -4150,7 +4150,7 @@ async function preparePvpFish(n){
     updatedAtMillis:Date.now()
   }, {merge:true});
 
-  print("대전 준비 완료\\n\\n양동이 " + displayNo + "번\\n" + color(lineFish(f), f.grade));
+  print("대전 준비 완료\n\n" + color(lineFish(f), f.grade));
 }
 
 async function unpreparePvpFish(n){
@@ -4177,7 +4177,7 @@ async function unpreparePvpFish(n){
     updatedAtMillis:Date.now()
   }, {merge:true});
 
-  print("대전 준비가 해제되었습니다.\\n\\n양동이 " + displayNo + "번" + (f ? "\\n" + color(lineFish(f), f.grade) : ""));
+  print("대전 준비가 해제되었습니다.\n\n" + (f ? color(lineFish(f), f.grade) : ""));
 }
 
 async function showPvpPrepList(){
