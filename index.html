@@ -993,6 +993,8 @@ function startServerAlertListener(){
 
         if(data.type === "pvpCancelled"){
           if(data.to !== currentUser) return;
+          pvpPrepIndexes = [];
+          saveGame();
           const sender = formatUserName(data.from, data.fromTitle);
           print("⚔️ 대전 취소\n\n" + sender + " 님이 대전을 취소했습니다.");
           return;
@@ -1000,6 +1002,8 @@ function startServerAlertListener(){
 
         if(data.type === "pvpRejected"){
           if(data.to !== currentUser) return;
+          pvpPrepIndexes = [];
+          saveGame();
           const sender = formatUserName(data.from, data.fromTitle);
           print("⚔️ 대전 거절\n\n" + sender + " 님이 대전 신청을 거절했습니다.");
           return;
@@ -1007,6 +1011,8 @@ function startServerAlertListener(){
 
         if(data.type === "pvpResult"){
           if(data.to !== currentUser) return;
+          pvpPrepIndexes = [];
+          saveGame();
           printPvpResultPreview(data.summary || "대전 결과", data.fullLog || "상세 로그가 없습니다.");
           return;
         }
@@ -3761,11 +3767,18 @@ function cloneForPvp(f, levels){
 }
 
 function buildPvpTeamFromIndexes(indexes, sourceBucket, levels){
-  return indexes
-    .map(i => sourceBucket[i])
-    .filter(f => f && f.grade !== "쓰레기")
-    .slice(0,3)
-    .map(f => cloneForPvp(f, levels));
+  const team = [];
+
+  (indexes || []).forEach(rawIndex => {
+    const idx = Number(rawIndex);
+    const f = sourceBucket[idx];
+
+    if(f && f.grade !== "쓰레기"){
+      team.push(cloneForPvp(f, levels));
+    }
+  });
+
+  return team.slice(0,3);
 }
 
 function pvpDisplayName(name,title){
@@ -3807,45 +3820,73 @@ function simulatePvpBattle({leftName,leftTitle,leftTeam,rightName,rightTitle,rig
   let turn = 1;
   let leftDamage = 0;
   let rightDamage = 0;
+  const firstSide = Math.random() < 0.5 ? "left" : "right";
 
-  while(pvpAlive(left) && pvpAlive(right) && turn <= 300){
-    const lf = pvpAlive(left);
-    const rf = pvpAlive(right);
-    const lc = lf.combat;
-    const rc = rf.combat;
+  logText += "선공 : " + (firstSide === "left" ? pvpDisplayName(leftName,leftTitle) : pvpDisplayName(rightName,rightTitle)) + "\n\n";
+  logText += "━━━━━━━━━━━━━━\n\n";
 
-    logText += "턴 " + turn + "\n\n";
+  function attackOnce(attackerFish, defenderFish, attackerSide){
+    if(!attackerFish || !defenderFish) return "";
+    if(!attackerFish.combat || !defenderFish.combat) return "";
+    if(attackerFish.combat.hp <= 0 || defenderFish.combat.hp <= 0) return "";
 
-    if(Math.random() * 100 < Number(rc.evasion || 0)){
-      logText += pvpFishLabel(rf) + " 회피!\n\n";
-    }else{
-      let dmg = Math.max(1, Number(lc.attack || 1));
-      const crit = Math.random() * 100 < Number(lc.critRate || 0);
-      if(crit) dmg = Math.floor(dmg * Number(lc.critDamage || 150) / 100);
-      rc.hp = Math.max(0, Math.floor(rc.hp - dmg));
-      leftDamage += dmg;
-      logText += pvpFishLabel(lf) + " 공격!\n";
-      if(crit) logText += "치명타!\n";
-      logText += "피해량 : " + dmg.toLocaleString() + "\n\n";
-      logText += pvpFishLabel(rf) + "\n" + pvpHpBar(rc.hp, rc.maxHp) + "\n\n";
-      if(rc.hp <= 0) logText += pvpFishLabel(rf) + " 쓰러짐\n\n";
+    const ac = attackerFish.combat;
+    const dc = defenderFish.combat;
+    let s = "";
+
+    if(Math.random() * 100 < Number(dc.evasion || 0)){
+      s += pvpFishLabel(defenderFish) + " 회피!\n\n";
+      return s;
     }
 
-    if(!pvpAlive(right)) break;
+    let dmg = Math.max(1, Number(ac.attack || 1));
+    const crit = Math.random() * 100 < Number(ac.critRate || 0);
+    if(crit) dmg = Math.floor(dmg * Number(ac.critDamage || 150) / 100);
 
-    if(Math.random() * 100 < Number(lc.evasion || 0)){
-      logText += pvpFishLabel(lf) + " 회피!\n\n";
+    dc.hp = Math.max(0, Math.floor(dc.hp - dmg));
+
+    if(attackerSide === "left") leftDamage += dmg;
+    else rightDamage += dmg;
+
+    s += pvpFishLabel(attackerFish) + " 공격!\n";
+    if(crit) s += "치명타!\n";
+    s += "피해량 : " + dmg.toLocaleString() + "\n\n";
+    s += pvpFishLabel(defenderFish) + "\n" + pvpHpBar(dc.hp, dc.maxHp) + "\n\n";
+
+    if(dc.hp <= 0){
+      s += pvpFishLabel(defenderFish) + " 쓰러짐\n\n";
+    }
+
+    return s;
+  }
+
+  while(pvpAlive(left) && pvpAlive(right) && turn <= 300){
+    logText += "턴 " + turn + "\n\n";
+
+    if(firstSide === "left"){
+      let lf = pvpAlive(left);
+      let rf = pvpAlive(right);
+
+      logText += attackOnce(lf, rf, "left");
+
+      // 방금 쓰러진 물고기는 공격하지 못함
+      if(!pvpAlive(right)) break;
+
+      lf = pvpAlive(left);
+      rf = pvpAlive(right);
+      logText += attackOnce(rf, lf, "right");
     }else{
-      let dmg = Math.max(1, Number(rc.attack || 1));
-      const crit = Math.random() * 100 < Number(rc.critRate || 0);
-      if(crit) dmg = Math.floor(dmg * Number(rc.critDamage || 150) / 100);
-      lc.hp = Math.max(0, Math.floor(lc.hp - dmg));
-      rightDamage += dmg;
-      logText += pvpFishLabel(rf) + " 공격!\n";
-      if(crit) logText += "치명타!\n";
-      logText += "피해량 : " + dmg.toLocaleString() + "\n\n";
-      logText += pvpFishLabel(lf) + "\n" + pvpHpBar(lc.hp, lc.maxHp) + "\n\n";
-      if(lc.hp <= 0) logText += pvpFishLabel(lf) + " 쓰러짐\n\n";
+      let lf = pvpAlive(left);
+      let rf = pvpAlive(right);
+
+      logText += attackOnce(rf, lf, "right");
+
+      // 방금 쓰러진 물고기는 공격하지 못함
+      if(!pvpAlive(left)) break;
+
+      lf = pvpAlive(left);
+      rf = pvpAlive(right);
+      logText += attackOnce(lf, rf, "left");
     }
 
     logText += "━━━━━━━━━━━━━━\n\n";
@@ -3937,6 +3978,8 @@ async function requestPvp(nickname){
       createdAt:firebase.firestore.FieldValue.serverTimestamp()
     });
 
+    pvpPrepIndexes = [];
+    saveGame();
     print(nickname + " 님에게 대전 신청을 보냈습니다.\n\n상대가 대전수락 하면 대전준비를 할 수 있습니다.");
   }catch(e){
     console.error(e);
@@ -3988,6 +4031,8 @@ async function acceptLatestPvpRequest(){
       createdAt:firebase.firestore.FieldValue.serverTimestamp()
     });
 
+    pvpPrepIndexes = [];
+    saveGame();
     print("대전을 수락했습니다.\n\n이제 대전준비 번호 로 물고기를 고르고 대전준비완료 를 입력하세요.");
   }catch(e){
     console.error(e);
@@ -4072,6 +4117,10 @@ async function preparePvpFish(n){
   }
 
   const bucketNo = Number(n);
+  if(!Number.isInteger(bucketNo) || bucketNo < 1){
+    return print("사용법 : 대전준비 양동이번호");
+  }
+
   const idx = bucketNo - 1;
   const f = bucket[idx];
 
@@ -4079,7 +4128,7 @@ async function preparePvpFish(n){
   if(f.grade === "쓰레기") return print("쓰레기는 대전에 참가할 수 없습니다.");
 
   if(pvpPrepIndexes.includes(idx)){
-    return print("이미 대전 준비된 물고기입니다.");
+    return print("이미 대전 준비된 물고기입니다.\n\n양동이 " + bucketNo + "번\n" + color(lineFish(f), f.grade));
   }
 
   if(pvpPrepIndexes.length >= 3){
@@ -4088,6 +4137,12 @@ async function preparePvpFish(n){
 
   pvpPrepIndexes.push(idx);
   saveGame();
+
+  await getMyActivePvpRef().set({
+    prepIndexes:pvpPrepIndexes,
+    ready:false,
+    updatedAtMillis:Date.now()
+  }, {merge:true});
 
   print("대전 준비 완료\n\n양동이 " + bucketNo + "번\n" + color(lineFish(f), f.grade));
 }
@@ -4130,7 +4185,9 @@ async function showPvpPrepList(){
   s += "출전 물고기\n\n";
   pvpPrepIndexes.forEach((bucketIndex,i)=>{
     const f = bucket[bucketIndex];
-    if(f) s += (i+1) + ". 양동이 " + (bucketIndex+1) + "번 " + color(lineFish(f), f.grade) + "\n";
+    if(f){
+      s += (i+1) + ". 양동이 " + (bucketIndex+1) + "번 " + color(lineFish(f), f.grade) + "\n";
+    }
   });
   s += "\n대전준비완료 를 입력하면 준비 완료됩니다.";
   print(s.trim());
