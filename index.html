@@ -209,11 +209,11 @@ const UPDATE_NOTICES = [
     id: "2026-06-20-rod-material-cap-1",
     title: "낚싯대 확장 밸런스 업데이트",
     lines: [
-      "현재 버전의 강화 가능 레벨이 1200으로 제한되었습니다.",
+      "현재 버전의 강화 가능 레벨이 1400으로 확장되었습니다.",
       "1000레벨부터 보스 재료가 필요하도록 변경되었습니다.",
       "보스 재료는 50레벨마다 교체됩니다.",
       "필요 재료 수량은 25레벨마다 1개씩 증가합니다.",
-      "1200 이후 강화는 추후 업데이트에서 공개됩니다."
+      "1200~1400 강화 구간에 피닉스, 바하무트, 티아마트, 요르문간드 재료가 추가되었습니다."
     ]
   },
   {
@@ -1202,6 +1202,7 @@ const achievementList = [
 
   {name:"만렙", desc:"낚싯대 Lv.1000 달성", reward:0, check:()=> rodLevel >= 1000},
   {name:"초월 낚싯대", desc:"낚싯대 Lv.1200 달성", reward:0, check:()=> rodLevel >= 1200},
+  {name:"궁극 낚싯대", desc:"낚싯대 Lv.1400 달성", reward:0, check:()=> rodLevel >= 1400},
   {name:"행운아", desc:"영원 등급 1마리 수집", reward:7777777, check:()=> (gradeCounts["영원"]||0) >= 1},
   {name:"드래곤 헌터", desc:"용 계열 9종 도감 등록", reward:10000000000, check:()=> {
     const dragons = [
@@ -1326,6 +1327,7 @@ function getOwnedTitles(){
     "거장",
     "만렙",
     "초월 낚싯대",
+    "궁극 낚싯대",
     "행운아",
     "드래곤 헌터",
     "부자",
@@ -2891,7 +2893,7 @@ function getUpgradeSuccessRate(level){
 }
 
 function getCurrentPlayableMaxRod(){
-  return 1200;
+  return 1400;
 }
 
 function getBossMaterialRequirement(level){
@@ -2905,6 +2907,10 @@ function getBossMaterialRequirement(level){
   else if(level < 1100){ item = "히드라의 독니"; start = 1050; }
   else if(level < 1150){ item = "리바이어던의 코어"; start = 1100; }
   else if(level < 1200){ item = "고대의 비늘"; start = 1150; }
+  else if(level < 1250){ item = "불멸의 깃털"; start = 1200; }
+  else if(level < 1300){ item = "용왕의 심장"; start = 1250; }
+  else if(level < 1350){ item = "혼돈의 파편"; start = 1300; }
+  else if(level < 1400){ item = "세계뱀의 비늘"; start = 1350; }
   else return "LOCKED";
 
   const amount = Math.floor((level - start) / 25) + 1;
@@ -3506,7 +3512,7 @@ function buildGameInfoText(){
 현재 돈 : ${formatMoney(money)}
 총 수익 : ${formatMoney(totalEarned)}
 낚싯대 레벨 : ${rodLevel}/${MAX_ROD}
-현재 강화 가능 레벨 : 1200
+현재 강화 가능 레벨 : ${getCurrentPlayableMaxRod()}
 낚시 횟수 : ${totalFishingCount.toLocaleString()}회
 현재 칭호 : ${getCurrentTitle() || "없음"}
 업적 달성률 : ${completedAchievements.length}/${achievementList.length}
