@@ -3758,32 +3758,42 @@ function unpreparePvpFish(n){
 }
 
 async function requestPvp(nickname){
-  if(await hasActivePvpWithUser(nickname)){
-    return print("상대가 대전중인 상태입니다.");
-  }
+  if(!currentUser) return print("로그인 후 사용 가능합니다.");
 
   nickname = cleanNickname(nickname);
   if(!nickname) return print("사용법 : 대전 닉네임");
   if(nickname === currentUser) return print("자기 자신에게는 대전을 신청할 수 없습니다.");
 
-  if(pvpPrepIndexes.length === 0) return print("대전 준비 물고기가 없습니다.\n\n대전준비 번호 를 먼저 입력하세요.");
-
-  const online = await isUserOnline(nickname);
-  if(!online) return print("현재 접속 중인 유저가 아닙니다.");
-
-  const team = buildPvpTeamFromIndexes(pvpPrepIndexes, bucket, trainingLevels);
-  if(team.length === 0) return print("대전에 참가할 수 있는 물고기가 없습니다.");
-
   try{
+    const userSnap = await db.collection("users").doc(nickname).get();
+    if(!userSnap.exists) return print("존재하지 않는 닉네임입니다.");
+
+    const online = await isUserOnline(nickname);
+    if(!online) return print("현재 접속 중인 유저가 아닙니다.");
+
+    if(await hasActivePvpWithUser(nickname)){
+      return print("상대가 대전중인 상태입니다.");
+    }
+
+    if(pvpPrepIndexes.length === 0){
+      return print("대전 준비 물고기가 없습니다.\n\n대전준비 번호 를 먼저 입력하세요.");
+    }
+
+    const team = buildPvpTeamFromIndexes(pvpPrepIndexes, bucket, trainingLevels);
+    if(team.length === 0) return print("대전에 참가할 수 있는 물고기가 없습니다.");
+
     const id = getPvpDocId(currentUser, nickname);
+
     await db.collection("pvpRequests").doc(id).set({
       from: currentUser,
       fromTitle: getCurrentTitle(),
       to: nickname,
+      users: [currentUser, nickname],
       status: "pending",
       fromTeam: team,
       fromTraining: trainingLevels,
       createdAtMillis: Date.now(),
+      updatedAtMillis: Date.now(),
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     });
 
@@ -3796,7 +3806,7 @@ async function requestPvp(nickname){
       createdAt:firebase.firestore.FieldValue.serverTimestamp()
     });
 
-    print(nickname + " 님에게 대전 신청을 보냈습니다.\n\n상대가 대전수락 " + currentUser + " 을 입력하면 전투가 시작됩니다.");
+    print(nickname + " 님에게 대전 신청을 보냈습니다.");
   }catch(e){
     console.error(e);
     print("대전 신청 중 오류가 발생했습니다.");
@@ -4506,13 +4516,13 @@ async function markLatestPvpRequestStatus(fromName, status){
 async function acceptLatestPvpRequest(){
   const req = await getLatestIncomingPvpRequest();
   if(!req) return print("수락할 대전 신청이 없습니다.");
-  return acceptPvpRequest(req.data.from);
+  return acceptPvp(req.data.from);
 }
 
 async function rejectLatestPvpRequest(){
   const req = await getLatestIncomingPvpRequest();
   if(!req) return print("거절할 대전 신청이 없습니다.");
-  return rejectPvpRequest(req.data.from);
+  return rejectPvp(req.data.from);
 }
 
 function showPvpPrepList(){
@@ -4546,7 +4556,7 @@ function runCommand(){
 
   print("> "+cmd);
 
-  if(cmd.startsWith("대전 ") && cmd.split(/\s+/).length === 2) return sendPvpRequest(cmd.split(/\s+/)[1]);
+  if(cmd.startsWith("대전 ") && cmd.split(/\s+/).length === 2) return requestPvp(cmd.split(/\s+/)[1]);
   if(cmd.startsWith("대전준비 ")) return preparePvpFish(cmd.split(/\s+/)[1]);
   if(cmd.startsWith("대전해제 ")) return unpreparePvpFish(cmd.split(/\s+/)[1]);
   if(cmd === "대전목록") return showPvpPrepList();
