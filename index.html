@@ -161,13 +161,13 @@ const fishTraits = {
   "휘몰아치는 마음": {name:"폭풍의 중심", desc:"공격력이 가장 낮은 아군을 폭풍의 눈으로 만들어 단일 대상 공격으로부터 보호하고, 그 공격력 20%를 다른 아군에게 나눠줍니다."},
   "영롱한 다이아몬드": {name:"빛의 굴절", desc:"매턴 처음 받는 단일 대상 보스 공격의 총피해를 30% 줄이고 살아 있는 아군에게 분산합니다."},
   "얼어붙은 마음": {name:"절대영도", desc:"보스가 같은 특수 스킬을 다시 사용하면 취소하고 3턴 동안 봉인합니다."},
-  "빛나는 마음": {name:"생명의 빛", desc:"아군이 받은 실제 피해의 25%를 빛으로 저장하고, 아군이 쓰러질 때 저장된 빛을 사용해 죽음을 막습니다."},
+  "빛나는 마음": {name:"생명의 빛", desc:"아군이 받은 실제 피해의 25%를 빛으로 저장합니다. 저장된 빛이 대상 최대 체력의 30% 이상이면 그만큼 소모해 죽음을 막고 체력 30%를 회복합니다. 죽음을 막은 공격은 빛으로 저장되지 않습니다."},
   "불타는 마음": {name:"폭주", desc:"턴마다 공격력과 치명타 피해가 증가하고 최대 체력이 감소합니다. 7턴째 완전 연소 피해를 준 뒤 초기화됩니다."},
-  "무한한 시간": {name:"시간의 기준점", desc:"3턴 시작 상태를 저장합니다. 파티가 전멸하면 전투당 1회 저장 상태로 돌아가지만 보스 상태는 되돌아가지 않습니다."},
-  "잃어버린 첫 번째 편지 조각 ✉️": {name:"삭제된 서두", desc:"보스의 첫 번째 턴을 삭제합니다. 여러 마리를 편성해도 전투당 한 번만 발동합니다."},
-  "잃어버린 두 번째 편지 조각 ✉️": {name:"뒤바뀐 주어", desc:"자신을 대상으로 한 보스 특수 스킬을 전투당 1회 보스에게 되돌립니다. 같은 특수 스킬은 한 번만 반전됩니다."},
-  "잃어버린 세 번째 편지 조각 ✉️": {name:"마침표", desc:"보스 체력이 10% 이하가 되면 보스를 강화합니다. 아군이 3턴 동안 생존하면 남은 체력과 관계없이 처치합니다."},
-  "수상한 기운 👁️": {name:"관측된 운명", desc:"가장 최근에 사용된 보스 특수 스킬을 관측해 3턴 동안 다시 사용하지 못하게 합니다."},
+  "무한한 시간": {name:"시간의 기준점", desc:"자신의 체력이 0이 되면 전투당 1회 파티 전체를 5턴 전 상태로 되돌립니다. 보스의 체력과 상태는 되돌아가지 않습니다."},
+  "잃어버린 첫 번째 편지 조각 ✉️": {name:"삭제된 서두", desc:"보스가 처음 사용하려는 특수 스킬을 취소하고 해당 스킬을 이번 전투에서 영구 삭제합니다."},
+  "잃어버린 두 번째 편지 조각 ✉️": {name:"비어 있는 페이지", desc:"보스의 4번째 턴마다 일반 공격, 특수 스킬, 강화 행동을 모두 취소해 이번 턴에 행동하지 못하게 합니다."},
+  "잃어버린 세 번째 편지 조각 ✉️": {name:"완성되지 않은 마침표", desc:"보스 체력이 15% 이하가 되면 회복과 부활을 봉인하고 공격력을 30% 강화합니다. 아군의 명중은 문장 1개, 치명타는 2개를 기록하며 5개가 되면 보스를 처치합니다."},
+  "수상한 기운 👁️": {name:"뒤틀린 관측", desc:"보스의 특수 스킬을 3턴 동안 관측합니다. 같은 스킬을 다시 사용하면 효과를 뒤집어 아군을 회복하고 상태이상을 해제하며 보스를 약화합니다."},
   "기묘한 기운 🌀": {name:"수치 오류", desc:"받을 피해가 자신의 공격력보다 높을 때 20% 확률로 두 수치를 바꿉니다. 다음 공격은 원래 받을 피해가 되며 피해 제한은 없습니다."}
 };
 
@@ -200,9 +200,19 @@ let cloudSaveChain=Promise.resolve();
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
-const GAME_VERSION = "2026-06-22-trait-pvp-bugfix-v1";
+const GAME_VERSION = "2026-06-23-eternal-void-rework-v1";
 const UPDATE_NOTICE_TITLE = "📢 업데이트 안내";
 const UPDATE_NOTICES = [
+  {
+    id: "2026-06-23-eternal-void-rework-1",
+    title: "영원/공허 고유 특성 개편",
+    lines: [
+      "생명의 빛이 충분한 빛을 저장했을 때만 죽음을 막도록 조정되었습니다.",
+      "무한한 시간이 쓰러지면 파티가 5턴 전 상태로 되돌아가도록 변경되었습니다.",
+      "수상한 기운과 세 편지 조각의 고유 특성이 새롭게 개편되었습니다.",
+      "보스전과 PVP에 개편된 특성 판정과 로그가 함께 적용됩니다."
+    ]
+  },
   {
     id: "2026-06-22-pvp-traits-1",
     title: "PVP 다중 전투 업데이트",
@@ -3060,8 +3070,8 @@ function registerTraitStatus(f, battleLog){
 function initTraitBattle(participants,boss,battleLog){
   setBattleDisplayNumbers(participants);
   activeTraitBattle={participants,boss,battleLog,turn:0,history:[],traitDamage:0,lastBossTarget:null,
-    deletedIntro:false,rewriteUsed:false,observedSkill:"",observedUntil:0,reversedSkills:new Set(),lightPool:0,
-    periodStarted:false,periodTurns:0,timeCheckpoint:null,timeRewindUsed:false,diamondTurn:0};
+    deletedSkill:"",rewriteUsed:false,observedSkill:"",observedUntil:0,lightPool:0,
+    periodStarted:false,periodSentences:0,timeRewindPending:false,timeRewindUsed:false,diamondTurn:0};
   participants.forEach(f=>{
     const c=ensureCombatStats(f);
     c._traitBattle={originalMaxHp:c.maxHp,originalCritDamage:c.critDamage};
@@ -3072,13 +3082,7 @@ function startTraitTurn(turn,boss,battleLog){
   const ctx=activeTraitBattle; if(!ctx) return;
   ctx.turn=turn;
   ctx.history.push({turn,states:new Map(ctx.participants.map(f=>[f.id,snapshotFishTraitState(f)]))});
-  if(ctx.history.length>5) ctx.history.shift();
-
-  const timeFish=traitFish(ctx.participants,"무한한 시간");
-  if(turn===3 && timeFish){
-    ctx.timeCheckpoint=new Map(ctx.participants.map(f=>[f.id,snapshotFishTraitState(f)]));
-    battleLog.push(traitUseByFish(timeFish, "3턴의 파티 상태를 저장했습니다."));
-  }
+  if(ctx.history.length>7) ctx.history.shift();
 
   const moonReturnFish=traitFish(ctx.participants,"호수에 비친 달");
   if(turn%4===0 && moonReturnFish){
@@ -3179,11 +3183,32 @@ function getSingleTargetCandidates(targets){
 
 function beginBossSpecial(boss,skillName,battleLog){
   const ctx=activeTraitBattle;if(!ctx)return true;
+  const firstLetter=traitFish(ctx.participants,"잃어버린 첫 번째 편지 조각 ✉️");
   const wishFish=traitFish(ctx.participants,"호수에 비친 별");
   const observedFish=traitFish(ctx.participants,"수상한 기운 👁️");
   const frozenFish=traitFish(ctx.participants,"얼어붙은 마음");
+  if(ctx.deletedSkill===skillName){
+    battleLog.push(traitUseByFish(traitFish(ctx.participants,"잃어버린 첫 번째 편지 조각 ✉️",false), bossColor(boss.name,boss)+"의 "+subjectText(skillName)+" 이야기에서 삭제되어 사용할 수 없습니다."));
+    return false;
+  }
+  if(firstLetter&&!ctx.deletedSkill){
+    ctx.deletedSkill=skillName;
+    battleLog.push(traitUseByFish(firstLetter, bossColor(boss.name,boss)+"가 펼치려던 "+subjectText(skillName)+" 이야기에서 영구 삭제되었습니다."));
+    return false;
+  }
   if(ctx.sealNextBossAction){ctx.sealNextBossAction=false;battleLog.push(traitUseByFish(wishFish, "소원이 이루어져 "+bossColor(boss.name,boss)+"의 "+subjectText(skillName)+" 봉인되었습니다."));return false;}
-  if(ctx.observedSkill===skillName&&ctx.turn<=ctx.observedUntil){battleLog.push(traitUseByFish(observedFish, bossColor(boss.name,boss)+"의 "+subjectText(skillName)+" 관측되어 사용할 수 없습니다."));return false;}
+  if(observedFish&&ctx.observedSkill===skillName&&ctx.turn<=ctx.observedUntil){
+    const reversedLogs=[];
+    getAliveTargets(ctx.participants).forEach(ally=>{
+      const c=ensureCombatStats(ally),heal=Math.max(1,Math.floor(c.maxHp*0.15)),removed=clearOneFishStatus(ally);
+      c.hp=Math.min(c.maxHp,c.hp+heal);
+      reversedLogs.push(color(lineFish(ally),ally.grade)+(removed?" · "+removed+" 해제":"")+" · "+heal.toLocaleString()+" 회복");
+    });
+    boss._observedWeakUntil=ctx.turn+3;
+    ctx.observedSkill="";ctx.observedUntil=0;
+    battleLog.push(traitUseByFish(observedFish, bossColor(boss.name,boss)+"의 "+objectText(skillName)+" 뒤집었습니다.\n"+reversedLogs.join("\n")+"\n보스의 공격력이 3턴 동안 20% 감소합니다."));
+    return false;
+  }
   if(!ctx.frozenSkills)ctx.frozenSkills={};
   if(Number(ctx.frozenSkills[skillName]||0)>0&&Number(ctx.frozenSkills[skillName])>=ctx.turn){battleLog.push(traitUseByFish(frozenFish, subjectText(skillName)+" 얼어붙어 사용할 수 없습니다."));return false;}
   if(!ctx.seenBossSpecials)ctx.seenBossSpecials=new Set();
@@ -3200,13 +3225,7 @@ function runBossSpecial(boss,skillName,battleLog,fn){
   return true;
 }
 
-function tryReverseBossSpecial(boss,f,damage,skillName,battleLog){
-  const ctx=activeTraitBattle;if(!ctx||!f||f.name!=="잃어버린 두 번째 편지 조각 ✉️")return false;
-  const st=traitState(f);if(st.subjectReversed||ctx.reversedSkills.has(skillName))return false;
-  st.subjectReversed=true;ctx.reversedSkills.add(skillName);
-  dealTraitDamage(boss,damage,traitUseByFish(f, skillName+"의 대상이 보스로 바뀌었습니다."),battleLog);
-  return true;
-}
+function tryReverseBossSpecial(){ return false; }
 
 function traitModifyIncoming(f,damage,battleLog,meta={}){
   const ctx=activeTraitBattle,c=ensureCombatStats(f),st=traitState(f);
@@ -3225,10 +3244,12 @@ function traitModifyIncoming(f,damage,battleLog,meta={}){
   }else if(lethal&&f.name==="잿빛 밤하늘 드래곤"&&!st.ashUsed){
     st.ashUsed=true;st.ashTurns=3;st.ashRemnant=true;final=Math.max(0,c.hp-1);
     battleLog.push(traitUseByFish(f, color(lineFish(f),f.grade)+"\n3턴 동안 재의 잔영으로 남습니다."));
-  }else if(lethal&&ctx.lightPool>0){
-    const spend=Math.min(ctx.lightPool,Math.floor(c.maxHp*0.5));
-    ctx.lightPool-=spend; final=Math.max(0,c.hp-1); afterHeal=Math.max(1,spend);
-    battleLog.push(traitUseByFish(traitFish(ctx.participants,"빛나는 마음"), color(lineFish(f),f.grade)+"의 죽음을 막고 "+afterHeal.toLocaleString()+" 체력을 회복합니다."));
+  }else if(lethal&&traitFish(ctx.participants,"빛나는 마음")){
+    const required=Math.max(1,Math.floor(c.maxHp*0.3));
+    if(ctx.lightPool>=required){
+      ctx.lightPool-=required; final=Math.max(0,c.hp-1); afterHeal=required;meta.skipLightGain=true;
+      battleLog.push(traitUseByFish(traitFish(ctx.participants,"빛나는 마음"), color(lineFish(f),f.grade)+"의 죽음을 막고 "+afterHeal.toLocaleString()+" 체력을 회복합니다."));
+    }
   }
   return {damage:final,afterHeal};
 }
@@ -3237,7 +3258,8 @@ function traitAfterDamage(f,beforeHp,actualDamage,battleLog,meta={},afterHeal=0)
   const ctx=activeTraitBattle;if(!ctx)return;
   const c=ensureCombatStats(f),st=traitState(f);
   if(afterHeal>0)c.hp=Math.min(c.maxHp,c.hp+afterHeal);
-  if(actualDamage>0&&traitFish(ctx.participants,"빛나는 마음"))ctx.lightPool+=Math.floor(actualDamage*0.25);
+  if(actualDamage>0&&!meta.skipLightGain&&traitFish(ctx.participants,"빛나는 마음"))ctx.lightPool+=Math.floor(actualDamage*0.25);
+  if(c.hp<=0&&f.name==="무한한 시간"&&!ctx.timeRewindUsed)ctx.timeRewindPending=true;
   if(meta.fromBoss&&actualDamage>0){
     if(ctx.lastBossTarget===f.id&&f.name==="흑룡"){
       const reflected=Math.floor(actualDamage*0.3);ctx.boss._currentHp=Math.max(0,Number(ctx.boss._currentHp)-reflected);ctx.traitDamage+=reflected;st.scaleEmpowered=true;
@@ -3271,6 +3293,7 @@ function dealTraitDamage(boss,raw,label,battleLog){
   const damage=applyBossPassiveBeforeFishAttack(boss,Math.max(1,Math.floor(raw)),battleLog);
   boss._currentHp=Math.max(0,Number(boss._currentHp)-damage);ctx.traitDamage+=damage;
   battleLog.push(label+"\n"+damage.toLocaleString()+" 피해\n\n"+bossColor(boss.name,boss)+"\n"+hpBar(boss._currentHp,boss.hp));
+  startPeriodTraitIfNeeded(boss,battleLog);
   return damage;
 }
 
@@ -3281,6 +3304,14 @@ function advanceWish(kind,battleLog){
   st.wishCount=Number(st.wishCount||0)+1;
   const need=kind==="crit"?3:kind==="dodge"?2:1;
   if(st.wishCount>=need){st.wishCompletedTurn=ctx.turn;ctx.sealNextBossAction=true;battleLog.push(traitUseByFish(f, "소원 성취\n보스의 다음 특수 행동을 봉인합니다."));}
+}
+
+function startPeriodTraitIfNeeded(boss,battleLog){
+  const ctx=activeTraitBattle;if(!ctx||ctx.periodStarted||Number(boss._currentHp)<=0||Number(boss._currentHp)>boss.hp*0.15)return false;
+  const periodFish=traitFish(ctx.participants,"잃어버린 세 번째 편지 조각 ✉️");if(!periodFish)return false;
+  ctx.periodStarted=true;ctx.periodSentences=0;boss._periodEnraged=true;boss._healingSealed=true;
+  battleLog.push(traitUseByFish(periodFish, "보스의 마지막 문장이 시작되었습니다.\n회복과 부활이 봉인됩니다.\n문장 0 / 5\n보스의 공격력이 30% 증가합니다."));
+  return true;
 }
 
 function afterFishAttackTrait(f,boss,outcome,baseAttack,battleLog){
@@ -3296,6 +3327,16 @@ function afterFishAttackTrait(f,boss,outcome,baseAttack,battleLog){
     }
   }
   if(outcome==="miss")return;
+  startPeriodTraitIfNeeded(boss,battleLog);
+  if(ctx.periodStarted&&Number(boss._currentHp)>0){
+    ctx.periodSentences=Math.min(5,Number(ctx.periodSentences||0)+(outcome==="crit"?2:1));
+    battleLog.push(traitUseByFish(traitFish(ctx.participants,"잃어버린 세 번째 편지 조각 ✉️",false), "문장 "+ctx.periodSentences+" / 5"));
+    if(ctx.periodSentences>=5){
+      boss._currentHp=0;
+      battleLog.push("마지막 문장에 마침표가 찍혔습니다.\n보스의 이야기가 끝났습니다.");
+      return;
+    }
+  }
   if(f.name==="푸른 눈의 백염룡"){
     boss._whiteFlameStacks=Number(boss._whiteFlameStacks||0)+1;
     if(boss._whiteFlameStacks>=3){boss._whiteFlameStacks=0;dealTraitDamage(boss,getEffectiveFishAttack(f,boss)*1.5,traitUseByFish(f, "백염이 3중첩이 되어 폭발했습니다."),battleLog);}
@@ -3307,6 +3348,7 @@ function afterFishAttackTrait(f,boss,outcome,baseAttack,battleLog){
   }
   if(f.name==="바다를 삼킨 태양"&&st.sunStage===5)dealTraitDamage(boss,getEffectiveFishAttack(f,boss)*2,traitUseByFish(f, "태양 주기가 태양 폭발 단계에 도달했습니다."),battleLog);
   if(f.name==="불타는 마음"&&st.rageStage===7)dealTraitDamage(boss,getEffectiveFishAttack(f,boss)*2.5,traitUseByFish(f, "폭주가 7단계에 도달해 완전 연소가 일어났습니다."),battleLog);
+  startPeriodTraitIfNeeded(boss,battleLog);
 }
 
 function endFishTraitTurn(boss,battleLog){
@@ -3322,17 +3364,21 @@ function endFishTraitTurn(boss,battleLog){
 }
 
 function tryTimeRewindAfterWipe(battleLog){
-  const ctx=activeTraitBattle;if(!ctx||ctx.timeRewindUsed||!ctx.timeCheckpoint)return false;
-  if(ctx.participants.some(f=>ensureCombatStats(f).hp>0))return false;
-  ctx.timeRewindUsed=true;ctx.participants.forEach(f=>restoreFishTraitState(f,ctx.timeCheckpoint.get(f.id)));
-  battleLog.push(traitUseByFish(traitFish(ctx.participants,"무한한 시간"), "파티가 3턴의 상태로 돌아왔습니다. 보스의 상태와 체력은 유지됩니다."));return true;
+  const ctx=activeTraitBattle;if(!ctx||ctx.timeRewindUsed||!ctx.history.length)return false;
+  const timeFish=traitFish(ctx.participants,"무한한 시간",false);if(!timeFish)return false;
+  if(!ctx.timeRewindPending&&ensureCombatStats(timeFish).hp>0)return false;
+  const target=ctx.history.find(x=>x.turn===ctx.turn-5)||ctx.history[0];
+  if(!target)return false;
+  ctx.timeRewindUsed=true;ctx.timeRewindPending=false;
+  ctx.participants.forEach(f=>restoreFishTraitState(f,target.states.get(f.id)));
+  const rewound=Math.max(0,ctx.turn-target.turn);
+  battleLog.push(traitUseByFish(timeFish, "무한한 시간의 죽음과 함께 시간이 되감겼습니다.\n파티가 "+rewound+"턴 전 상태로 돌아왔습니다.\n보스의 상태와 체력은 유지됩니다."));return true;
 }
 
 function finishTraitTurn(boss,battleLog){
   const ctx=activeTraitBattle;if(!ctx)return;
   if(ctx.participants.some(f=>{const c=ensureCombatStats(f);return c.hp>0&&c.hp/c.maxHp<=0.15;}))advanceWish("low",battleLog);
-  if(!ctx.periodStarted&&traitFish(ctx.participants,"잃어버린 세 번째 편지 조각 ✉️")&&Number(boss._currentHp)<=boss.hp*0.1&&Number(boss._currentHp)>0){ctx.periodStarted=true;ctx.periodTurns=3;boss._enraged=true;battleLog.push(traitUseByFish(traitFish(ctx.participants,"잃어버린 세 번째 편지 조각 ✉️"), "3턴 동안 살아남으면 보스를 처치합니다. 보스가 강화되었습니다."));}
-  else if(ctx.periodStarted&&Number(boss._currentHp)>0){ctx.periodTurns--;if(ctx.periodTurns<=0){boss._currentHp=0;battleLog.push("마침표가 완성되어 보스의 이야기가 끝났습니다.");}else battleLog.push("마침표 완성까지 "+ctx.periodTurns+"턴");}
+  startPeriodTraitIfNeeded(boss,battleLog);
 }
 
 function getBossAttackMultiplier(boss){
@@ -3340,6 +3386,12 @@ function getBossAttackMultiplier(boss){
 
   if(boss._enraged){
     multiplier *= 1.3;
+  }
+  if(boss._periodEnraged){
+    multiplier *= 1.3;
+  }
+  if(activeTraitBattle&&Number(boss._observedWeakUntil||0)>=activeTraitBattle.turn){
+    multiplier *= 0.8;
   }
 
   if(boss.id === "jormungandr"){
@@ -3673,6 +3725,7 @@ function prepareSurtrTurn(boss, participants, battleLog){
 function applyPhoenixImmortalityIfNeeded(boss, bossHp, battleLog){
   if(boss.id !== "phoenix") return bossHp;
   if(bossHp > 0) return bossHp;
+  if(boss._healingSealed){battleLog.push(bossColor(boss.name,boss)+"의 부활이 마침표에 의해 봉인되었습니다.");return bossHp;}
   if(boss._revived) return bossHp;
 
   boss._revived = true;
@@ -3695,7 +3748,7 @@ function applyBossStartTurnEffects(participants, battleLog){
 }
 
 function applyBossEndTurnPassive(boss, bossHp, battleLog){
-  if((boss.id === "hydra" || boss.id === "tiamat") && bossHp > 0){
+  if((boss.id === "hydra" || boss.id === "tiamat") && bossHp > 0 && !boss._healingSealed){
     const rate = boss.id === "hydra" ? 0.05 : 0.02;
     const heal = Math.floor(boss.hp * rate);
     const before = bossHp;
@@ -4213,10 +4266,11 @@ function runBossBattle(){
     }
 
     applyBossStartTurnEffects(participants, battleLog);
+    tryTimeRewindAfterWipe(battleLog);
     if(!participants.some(f => ensureCombatStats(f).hp > 0 && ensureCombatStats(f).status !== "기절")) break;
 
-    const deletingFirstBossTurn=turn===1&&activeTraitBattle&&!activeTraitBattle.deletedIntro&&traitFish(participants,"잃어버린 첫 번째 편지 조각 ✉️");
-    if(!deletingFirstBossTurn) prepareSurtrTurn(boss, participants, battleLog);
+    const blankPageFish=turn%4===0?traitFish(participants,"잃어버린 두 번째 편지 조각 ✉️"):null;
+    if(!blankPageFish) prepareSurtrTurn(boss, participants, battleLog);
     if(!participants.some(f => ensureCombatStats(f).hp > 0 && ensureCombatStats(f).status !== "기절")) break;
 
     battleLog.push('<span style="color:#58a6ff;font-weight:700">내 턴</span>');
@@ -4351,10 +4405,8 @@ function runBossBattle(){
     bossHp = applyBossEndTurnPassive(boss, bossHp, battleLog);
     boss._currentHp = bossHp;
     battleLog.push('<span style="color:#ff7b72;font-weight:700">보스 턴</span>');
-    const deletedIntroFish = activeTraitBattle ? traitFish(participants,"잃어버린 첫 번째 편지 조각 ✉️") : null;
-    if(activeTraitBattle && !activeTraitBattle.deletedIntro && deletedIntroFish){
-      activeTraitBattle.deletedIntro=true;
-      battleLog.push(traitUseByFish(deletedIntroFish, "보스의 첫 번째 턴이 삭제되었습니다."));
+    if(blankPageFish){
+      battleLog.push(traitUseByFish(blankPageFish, "보스의 이번 페이지에는 아무 내용도 적혀 있지 않습니다.\n보스가 이번 턴에 행동하지 못합니다."));
     }else{
       runBossAction(boss, participants, battleLog);
       babyDragonActions(boss, participants, battleLog);
@@ -5457,8 +5509,8 @@ function simulatePvpBattle({leftName,leftTitle,leftTeam,rightName,rightTitle,rig
   const allPvpFishes = left.concat(right);
   setBattleDisplayNumbers(allPvpFishes);
   const state = {
-    left:{team:left,damage:0,lightPool:0,rewriteUsed:false,deletedIntroUsed:false,sealNext:false,checkpoint:null,timeUsed:false,period:false,periodLeft:0,observedId:"",observedUntil:0,observedUsed:false,history:[],lastPair:""},
-    right:{team:right,damage:0,lightPool:0,rewriteUsed:false,deletedIntroUsed:false,sealNext:false,checkpoint:null,timeUsed:false,period:false,periodLeft:0,observedId:"",observedUntil:0,observedUsed:false,history:[],lastPair:""}
+    left:{team:left,damage:0,lightPool:0,rewriteUsed:false,deletedAttackerId:"",deletedAttackerUntil:0,deletedAttackerUsed:false,sealNext:false,timePending:false,timeUsed:false,period:false,periodSentences:0,observedId:"",observedUntil:0,history:[],lastPair:""},
+    right:{team:right,damage:0,lightPool:0,rewriteUsed:false,deletedAttackerId:"",deletedAttackerUntil:0,deletedAttackerUsed:false,sealNext:false,timePending:false,timeUsed:false,period:false,periodSentences:0,observedId:"",observedUntil:0,history:[],lastPair:""}
   };
 
   allPvpFishes.forEach((f,i)=>{
@@ -5565,32 +5617,26 @@ function simulatePvpBattle({leftName,leftTitle,leftTeam,rightName,rightTitle,rig
     }else if(dmg>=c.hp&&target.name==="잿빛 밤하늘 드래곤"&&!st.ashUsed){
       st.ashUsed=true; st.ashRemnant=true; st.ashTurns=3; dmg=Math.max(0,c.hp-1);
       extraLog+=traitUseByFish(target, pvpFishLabel(target)+"\n3턴 동안 재의 잔영으로 남습니다.")+"\n\n";
-    }else if(dmg>=c.hp&&state[defSide].lightPool>0){
-      const heal=Math.min(state[defSide].lightPool,Math.floor(c.maxHp*0.5));
-      state[defSide].lightPool-=heal; dmg=Math.max(0,c.hp-1); st.afterHeal=heal;
-      extraLog+=traitUseByFish(livingSide(defSide).find(f=>f.name==="빛나는 마음"), pvpFishLabel(target)+"의 죽음을 막고 "+heal.toLocaleString()+" 회복합니다.")+"\n\n";
+    }else if(dmg>=c.hp&&hasFish(defSide,"빛나는 마음")){
+      const required=Math.max(1,Math.floor(c.maxHp*0.3));
+      if(state[defSide].lightPool>=required){
+        state[defSide].lightPool-=required; dmg=Math.max(0,c.hp-1);st.afterHeal=required;st.skipLightGain=true;
+        extraLog+=traitUseByFish(livingSide(defSide).find(f=>f.name==="빛나는 마음"), pvpFishLabel(target)+"의 죽음을 막고 "+required.toLocaleString()+" 회복합니다.")+"\n\n";
+      }
     }
     return {dmg,extraLog};
   }
   function applyPvpDamage(defSide,target,raw,attacker,atkSide,reason){
     if(!target||!target.combat||target.combat.hp<=0)return "";
-    if(attacker&&target.name==="잃어버린 두 번째 편지 조각 ✉️"&&!pvpState(target).subjectReversed){
-      pvpState(target).subjectReversed=true;
-      const reflected=Math.max(1,Math.floor(raw));
-      const before=attacker.combat.hp;
-      attacker.combat.hp=Math.max(0,attacker.combat.hp-reflected);
-      state[defSide].damage+=Math.min(before,reflected);
-      let s=traitUseByFish(target, "공격의 대상이 "+pvpFishLabel(attacker)+"에게 바뀌었습니다.\n"+reflected.toLocaleString()+" 피해")+"\n\n";
-      if(attacker.combat.hp<=0)s+=pvpFishLabel(attacker)+" 쓰러짐\n\n";
-      return s;
-    }
     const before=target.combat.hp;
     const inc=pvpIncoming(defSide,target,raw,attacker,atkSide);
     target.combat.hp=Math.max(0,target.combat.hp-inc.dmg);
     if(pvpState(target).afterHeal){target.combat.hp=Math.min(target.combat.maxHp,target.combat.hp+pvpState(target).afterHeal);delete pvpState(target).afterHeal;}
     const actual=Math.min(before,inc.dmg);
     if(actual>0)state[atkSide].damage+=actual;
-    if(actual>0&&hasFish(defSide,"빛나는 마음"))state[defSide].lightPool+=Math.floor(actual*0.25);
+    if(actual>0&&!pvpState(target).skipLightGain&&hasFish(defSide,"빛나는 마음"))state[defSide].lightPool+=Math.floor(actual*0.25);
+    delete pvpState(target).skipLightGain;
+    if(target.name==="무한한 시간"&&target.combat.hp<=0&&!state[defSide].timeUsed)state[defSide].timePending=true;
     let s=inc.extraLog+(reason||"피해")+"\n"+inc.dmg.toLocaleString()+" 피해\n\n"+pvpFishLabel(target)+"\n"+pvpHpBar(target.combat.hp,target.combat.maxHp)+"\n\n";
     if(attacker&&actual>0){
       const st=pvpState(target);
@@ -5620,6 +5666,7 @@ function simulatePvpBattle({leftName,leftTitle,leftTeam,rightName,rightTitle,rig
     if(f.name==="해신룡"&&st.tideHigh)mult*=st.tideStored?1.7:1.4;
     if(f.name==="불타는 마음"){mult*=1+Number(st.rageStage||1)*0.12;critDmg+=Number(st.rageStage||1)*20;}
     if(f.name==="바다를 삼킨 태양")mult*=[1.1,1.2,1.35,1.5,1.8][Math.max(0,Number(st.sunStage||1)-1)];
+    if(Number(st.observedWeakUntil||0)>=turn)mult*=0.8;
     const eye=getStormEye(side); if(eye&&eye!==f){extra+=Math.floor(Number(eye.combat.attack||0)*0.2);preLog+=traitUseByFish(livingSide(side).find(x=>x.name==="휘몰아치는 마음"), pvpFishLabel(eye)+"가 폭풍의 중심이 되어 이번 공격에 힘을 보탰습니다.")+"\n\n";}
     if(st.numericStored){atk=st.numericStored;mult=1;extra=0;replaced=true;delete st.numericStored;}
     return {atk,critDmg,mult,extra,replaced,preLog};
@@ -5640,6 +5687,14 @@ function simulatePvpBattle({leftName,leftTitle,leftTeam,rightName,rightTitle,rig
       const st=pvpState(wish);
       if(st.wish===outcome){st.wishCount++;const need=outcome==="crit"?3:outcome==="dodge"?2:1;if(st.wishCount>=need){state[enemySide].sealNext=true;st.wish="";st.wishCount=0;logParts.push(traitUseByFish(wish, "소원 성취\n상대의 다음 공격 1회를 봉인합니다.")+"\n\n");}}
     }
+    if(state[side].period&&(outcome==="hit"||outcome==="crit")&&pvpAlive(teamOf(enemySide))){
+      state[side].periodSentences=Math.min(5,Number(state[side].periodSentences||0)+(outcome==="crit"?2:1));
+      logParts.push(traitUseByFish(teamOf(side).find(f=>f.name==="잃어버린 세 번째 편지 조각 ✉️"), "문장 "+state[side].periodSentences+" / 5")+"\n\n");
+      if(state[side].periodSentences>=5){
+        teamOf(enemySide).forEach(f=>f.combat.hp=0);
+        logParts.push("마지막 문장에 마침표가 찍혔습니다.\n"+sideTitle(enemySide)+subjectParticle(sideTitle(enemySide))+" 전투에서 사라졌습니다.\n\n");
+      }
+    }
   }
   function afterHit(side,f,enemySide,target,logParts){
     if(f.name==="푸른 눈의 백염룡"&&target&&target.combat.hp>0){
@@ -5659,11 +5714,7 @@ function simulatePvpBattle({leftName,leftTitle,leftTeam,rightName,rightTitle,rig
   function startPvpTurn(side){
     const stSide=state[side];
     const turnLogs=[];
-    stSide.history.push({turn,states:snapshotSide(side)}); if(stSide.history.length>5)stSide.history.shift();
-    if(turn===3&&hasFish(side,"무한한 시간")){
-      stSide.checkpoint=snapshotSide(side);
-      turnLogs.push(traitUseByFish(livingSide(side).find(f=>f.name==="무한한 시간"), "3턴의 파티 상태를 저장했습니다.")+"\n\n");
-    }
+    stSide.history.push({turn,states:snapshotSide(side)}); if(stSide.history.length>7)stSide.history.shift();
     const wish=livingSide(side).find(f=>f.name==="호수에 비친 별");
     if(wish&&!pvpState(wish).wish){
       const st=pvpState(wish),kinds=["crit","dodge","low"];
@@ -5704,16 +5755,28 @@ function simulatePvpBattle({leftName,leftTitle,leftTeam,rightName,rightTitle,rig
   function sideAttack(side){
     const enemySide=otherSide(side);
     const sideLog=[];
-    if(hasFish(enemySide,"잃어버린 첫 번째 편지 조각 ✉️")&&!state[enemySide].deletedIntroUsed){
-      state[enemySide].deletedIntroUsed=true;
-      return traitUseByFish(livingSide(enemySide).find(f=>f.name==="잃어버린 첫 번째 편지 조각 ✉️"), sideTitle(side)+"의 첫 공격 턴이 삭제되었습니다.")+"\n\n";
+    if(turn%4===0&&hasFish(enemySide,"잃어버린 두 번째 편지 조각 ✉️")){
+      return traitUseByFish(livingSide(enemySide).find(f=>f.name==="잃어버린 두 번째 편지 조각 ✉️"), sideTitle(side)+"의 이번 페이지에는 아무 내용도 적혀 있지 않습니다.\n이번 턴에 행동하지 못합니다.")+"\n\n";
     }
     sideLog.push('<span style="font-weight:700">' + sideTitle(side) + '의 턴</span>\n\n');
     const attackers=livingSide(side).slice();
     for(const attacker of attackers){
       if(!attacker.combat||attacker.combat.hp<=0||pvpState(attacker).ashRemnant&&pvpState(attacker).ashTurns<=0)continue;
+      const firstLetter=livingSide(enemySide).find(f=>f.name==="잃어버린 첫 번째 편지 조각 ✉️");
+      if(state[enemySide].deletedAttackerId===attacker.id&&turn<=state[enemySide].deletedAttackerUntil){
+        sideLog.push(traitUseByFish(teamOf(enemySide).find(f=>f.name==="잃어버린 첫 번째 편지 조각 ✉️"), pvpFishLabel(attacker)+"의 공격이 이야기에서 삭제되어 사용할 수 없습니다.")+"\n\n");continue;
+      }
+      if(firstLetter&&!state[enemySide].deletedAttackerUsed){
+        state[enemySide].deletedAttackerUsed=true;state[enemySide].deletedAttackerId=attacker.id;state[enemySide].deletedAttackerUntil=turn+3;
+        sideLog.push(traitUseByFish(firstLetter, pvpFishLabel(attacker)+"의 공격이 이야기에서 삭제되어 3턴 동안 사용할 수 없습니다.")+"\n\n");continue;
+      }
       if(state[side].sealNext){state[side].sealNext=false;sideLog.push(traitUseByFish(livingSide(enemySide).find(f=>f.name==="호수에 비친 별"), pvpFishLabel(attacker)+"의 공격이 봉인되었습니다.")+"\n\n");continue;}
-      if(state[otherSide(side)].observedId===attacker.id&&turn<=state[otherSide(side)].observedUntil){sideLog.push(traitUseByFish(livingSide(enemySide).find(f=>f.name==="수상한 기운 👁️"), pvpFishLabel(attacker)+"의 공격이 관측되어 실패했습니다.")+"\n\n");continue;}
+      if(state[enemySide].observedId===attacker.id&&turn<=state[enemySide].observedUntil&&hasFish(enemySide,"수상한 기운 👁️")){
+        const observer=livingSide(enemySide).find(f=>f.name==="수상한 기운 👁️"),healLogs=[];
+        livingSide(enemySide).forEach(ally=>{const heal=Math.max(1,Math.floor(ally.combat.maxHp*0.15)),removed=clearOnePvpStatus(ally);ally.combat.hp=Math.min(ally.combat.maxHp,ally.combat.hp+heal);healLogs.push(pvpFishLabel(ally)+(removed?" · "+removed+" 해제":"")+" · "+heal.toLocaleString()+" 회복");});
+        pvpState(attacker).observedWeakUntil=turn+3;state[enemySide].observedId="";state[enemySide].observedUntil=0;
+        sideLog.push(traitUseByFish(observer, pvpFishLabel(attacker)+"의 공격 효과가 뒤집혔습니다.\n"+healLogs.join("\n")+"\n"+pvpFishLabel(attacker)+"의 공격력이 3턴 동안 20% 감소합니다.")+"\n\n");continue;
+      }
       const target=chooseTarget(enemySide); if(!target)break;
       const pair=attacker.id+":"+target.id;
       if(hasFish(enemySide,"얼어붙은 마음")&&state[enemySide].lastPair===pair){state[enemySide].lastPair="";sideLog.push(traitUseByFish(livingSide(enemySide).find(f=>f.name==="얼어붙은 마음"), "같은 공격 흐름이 얼어붙어 "+pvpFishLabel(attacker)+"의 공격이 취소되었습니다.")+"\n\n");continue;}
@@ -5763,11 +5826,18 @@ function simulatePvpBattle({leftName,leftTitle,leftTeam,rightName,rightTitle,rig
       });
       if(lowLogs.length)logText+=lowLogs.join("");
       const enemy=otherSide(side);
-      if(!state[side].period&&hasFish(side,"잃어버린 세 번째 편지 조각 ✉️")&&teamHpRate(enemy)<=0.1&&pvpAlive(teamOf(enemy))){state[side].period=true;state[side].periodLeft=3;logText+=traitUseByFish(livingSide(side).find(f=>f.name==="잃어버린 세 번째 편지 조각 ✉️"), sideTitle(side)+subjectParticle(sideTitle(side))+" 3턴 뒤 승리를 확정합니다. 상대 공격이 강화됩니다.")+"\n\n";}
-      else if(state[side].period&&pvpAlive(teamOf(enemy))){state[side].periodLeft--;if(state[side].periodLeft<=0){teamOf(enemy).forEach(f=>f.combat.hp=0);logText+="마침표가 완성되어 "+sideTitle(side)+subjectParticle(sideTitle(side))+" 전투를 끝냈습니다.\n\n";}}
+      if(!state[side].period&&hasFish(side,"잃어버린 세 번째 편지 조각 ✉️")&&teamHpRate(enemy)<=0.15&&pvpAlive(teamOf(enemy))){
+        state[side].period=true;state[side].periodSentences=0;
+        logText+=traitUseByFish(livingSide(side).find(f=>f.name==="잃어버린 세 번째 편지 조각 ✉️"), sideTitle(enemy)+"의 마지막 문장이 시작되었습니다.\n문장 0 / 5\n상대의 공격력이 30% 증가합니다.")+"\n\n";
+      }
     });
     ["left","right"].forEach(side=>{
-      if(!pvpAlive(teamOf(side))&&state[side].checkpoint&&!state[side].timeUsed){state[side].timeUsed=true;restoreSide(side,state[side].checkpoint);logText+=traitUseByFish(teamOf(side).find(f=>f.name==="무한한 시간"), sideTitle(side)+"의 파티가 3턴 상태로 돌아왔습니다.")+"\n\n";}
+      const timeFish=teamOf(side).find(f=>f.name==="무한한 시간");
+      if(timeFish&&timeFish.combat.hp<=0&&!state[side].timeUsed)state[side].timePending=true;
+      if(state[side].timePending&&!state[side].timeUsed&&state[side].history.length){
+        const target=state[side].history.find(x=>x.turn===turn-5)||state[side].history[0];
+        if(target&&timeFish){state[side].timeUsed=true;state[side].timePending=false;restoreSide(side,target.states);const rewound=Math.max(0,turn-target.turn);logText+=traitUseByFish(timeFish, "무한한 시간의 죽음과 함께 시간이 되감겼습니다.\n파티가 "+rewound+"턴 전 상태로 돌아왔습니다.")+"\n\n";}
+      }
     });
   }
 
