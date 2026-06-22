@@ -122,7 +122,7 @@ button:hover { background:#30363d; }
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
 
 <script>
-const fishByGrade = {"쓰레기": ["휴지 조각", "플라스틱 통", "안경닦이", "생선 뼈", "빈 병", "빈 깡통", "비닐봉투", "바나나 껍질", "낡은 신발", "나무 조각"], "일반": ["흰동가리", "황어", "해삼", "해마", "피라미", "틸라피아", "클리오네", "큰입배스", "전갱이", "잉어", "은어", "올챙이", "오징어", "연어", "쏠배감펭", "블루탱", "보름달물 해파리", "바다포도", "미역", "미꾸라지", "문어", "멸치", "메기", "말미잘", "리본장어", "따개비", "동사리", "농어", "네온테트라", "넙치", "납줄개", "나비고기", "가자미"], "희귀": ["흰다리새우", "해로동혈", "피라니아", "투구게", "초롱아귀", "천사어", "참게", "짱뚱어", "진주조개", "지중해 홍합", "전복", "자라", "열목어", "연필성게", "엔드리케리", "앵무조개", "쏠베감펭", "성게", "빨판상어", "비단잉어", "붕장어", "북쪽보리새우", "복어", "보리새우", "베타", "반딧불 오징어", "바닷가재", "무명갈전갱이", "멍게", "돌돔", "도미", "던지니 스크랩", "닭새우", "닥터피쉬", "다금바리", "늑대거북", "난주", "낙지", "꽃게", "꽁치", "꺽저기", "금붕어", "굴", "구피", "곰치", "곤들매기", "갯가재", "개복치", "강꼬치고기", "가오리", "가시나비고기", "가리비", "가는돌고기"], "영웅": ["흡혈오징어", "피라루쿠", "청새치", "철갑상어", "우무문어", "왕게", "아로와나", "산갈치", "블랙타이거새우", "만새기", "대게", "다랑어", "나폴레옹피시", "그린란드 상어", "귀상어", "가아", "가시배새우", "가물치"], "전설": ["혹등고래", "톱상어", "키다리게", "자이언트 이소포드", "일본연어", "실러캔스", "상어", "벨루가", "배럴아이", "바다돼지", "메갈로돈", "마귀상어", "도라도", "대왕거거", "금송어", "고래상어", "갈치"], "신화": ["핏빛 초승달 드래곤", "잿빛 밤하늘 드래곤", "금빛 보름달 드래곤", "푸른 눈의 백염룡", "이무기", "청룡", "흑룡", "황룡", "해신룡"], "초월": ["호수에 비친 은하수", "호수에 비친 별", "호수에 비친 달", "바다를 삼킨 태양"], "영원": ["휘몰아치는 마음", "영롱한 다이아몬드", "얼어붙은 마음", "빛나는 마음", "불타는 마음", "무한한 시간"], "공허": ["잃어버린 첫 번째 편지 조각 ✉️", "잃어버린 두 번째 편지 조각 ✉️", "잃어버린 세 번째 편지 조각 ✉️"]};
+const fishByGrade = {"쓰레기": ["휴지 조각", "플라스틱 통", "안경닦이", "생선 뼈", "빈 병", "빈 깡통", "비닐봉투", "바나나 껍질", "낡은 신발", "나무 조각"], "일반": ["흰동가리", "황어", "해삼", "해마", "피라미", "틸라피아", "클리오네", "큰입배스", "전갱이", "잉어", "은어", "올챙이", "오징어", "연어", "쏠배감펭", "블루탱", "보름달물 해파리", "바다포도", "미역", "미꾸라지", "문어", "멸치", "메기", "말미잘", "리본장어", "따개비", "동사리", "농어", "네온테트라", "넙치", "납줄개", "나비고기", "가자미"], "희귀": ["흰다리새우", "해로동혈", "피라니아", "투구게", "초롱아귀", "천사어", "참게", "짱뚱어", "진주조개", "지중해 홍합", "전복", "자라", "열목어", "연필성게", "엔드리케리", "앵무조개", "쏠베감펭", "성게", "빨판상어", "비단잉어", "붕장어", "북쪽보리새우", "복어", "보리새우", "베타", "반딧불 오징어", "바닷가재", "무명갈전갱이", "멍게", "돌돔", "도미", "던지니 스크랩", "닭새우", "닥터피쉬", "다금바리", "늑대거북", "난주", "낙지", "꽃게", "꽁치", "꺽저기", "금붕어", "굴", "구피", "곰치", "곤들매기", "갯가재", "개복치", "강꼬치고기", "가오리", "가시나비고기", "가리비", "가는돌고기"], "영웅": ["흡혈오징어", "피라루쿠", "청새치", "철갑상어", "우무문어", "왕게", "아로와나", "산갈치", "블랙타이거새우", "만새기", "대게", "다랑어", "나폴레옹피시", "그린란드 상어", "귀상어", "가아", "가시배새우", "가물치"], "전설": ["혹등고래", "톱상어", "키다리게", "자이언트 이소포드", "일본연어", "실러캔스", "상어", "벨루가", "배럴아이", "바다돼지", "메갈로돈", "마귀상어", "도라도", "대왕거거", "금송어", "고래상어", "갈치"], "신화": ["핏빛 초승달 드래곤", "잿빛 밤하늘 드래곤", "금빛 보름달 드래곤", "푸른 눈의 백염룡", "이무기", "청룡", "흑룡", "황룡", "해신룡"], "초월": ["호수에 비친 은하수", "호수에 비친 별", "호수에 비친 달", "바다를 삼킨 태양"], "영원": ["휘몰아치는 마음", "영롱한 다이아몬드", "얼어붙은 마음", "빛나는 마음", "불타는 마음", "무한한 시간"], "공허": ["잃어버린 첫 번째 편지 조각 ✉️", "잃어버린 두 번째 편지 조각 ✉️", "잃어버린 세 번째 편지 조각 ✉️", "수상한 기운 👁️", "기묘한 기운 🌀"]};
 const sizeData = {"휴지 조각": [1, 40], "플라스틱 통": [1, 40], "안경닦이": [1, 40], "생선 뼈": [1, 40], "빈 병": [1, 40], "빈 깡통": [1, 40], "비닐봉투": [1, 40], "바나나 껍질": [1, 40], "낡은 신발": [1, 40], "나무 조각": [1, 40], "흰동가리": [7, 13], "황어": [20, 60], "해삼": [10, 40], "해마": [2, 20], "피라미": [5, 15], "틸라피아": [15, 45], "클리오네": [1, 3], "큰입배스": [25, 70], "전갱이": [20, 45], "잉어": [25, 100], "은어": [10, 30], "올챙이": [1, 6], "오징어": [20, 60], "연어": [50, 100], "쏠배감펭": [15, 45], "블루탱": [12, 30], "보름달물 해파리": [10, 40], "바다포도": [1, 10], "미역": [20, 150], "미꾸라지": [8, 25], "문어": [30, 150], "멸치": [5, 15], "메기": [20, 120], "말미잘": [3, 30], "리본장어": [60, 130], "따개비": [1, 5], "동사리": [5, 15], "농어": [30, 100], "네온테트라": [2, 5], "넙치": [30, 90], "납줄개": [5, 12], "나비고기": [10, 25], "가자미": [20, 60], "흰다리새우": [8, 23], "해로동혈": [10, 120], "피라니아": [15, 40], "투구게": [25, 60], "초롱아귀": [20, 100], "천사어": [10, 120], "참게": [10, 120], "짱뚱어": [10, 120], "진주조개": [6, 30], "지중해 홍합": [10, 120], "전복": [7, 25], "자라": [20, 45], "열목어": [10, 120], "연필성게": [10, 120], "엔드리케리": [10, 120], "앵무조개": [15, 30], "쏠베감펭": [10, 120], "성게": [3, 15], "빨판상어": [30, 110], "비단잉어": [30, 100], "붕장어": [40, 120], "북쪽보리새우": [10, 120], "복어": [15, 50], "보리새우": [10, 120], "베타": [4, 8], "반딧불 오징어": [4, 8], "바닷가재": [20, 70], "무명갈전갱이": [10, 120], "멍게": [5, 20], "돌돔": [30, 80], "도미": [30, 90], "던지니 스크랩": [10, 120], "닭새우": [10, 120], "닥터피쉬": [10, 120], "다금바리": [40, 120], "늑대거북": [25, 80], "난주": [10, 120], "낙지": [20, 80], "꽃게": [10, 25], "꽁치": [10, 120], "꺽저기": [10, 120], "금붕어": [5, 30], "굴": [10, 120], "구피": [10, 120], "곰치": [80, 250], "곤들매기": [10, 120], "갯가재": [10, 120], "개복치": [150, 330], "강꼬치고기": [10, 120], "가오리": [50, 250], "가시나비고기": [10, 120], "가리비": [5, 20], "가는돌고기": [10, 120], "흡혈오징어": [15, 30], "피라루쿠": [150, 450], "청새치": [200, 500], "철갑상어": [100, 600], "우무문어": [30, 100], "왕게": [80, 180], "아로와나": [50, 120], "산갈치": [300, 1000], "블랙타이거새우": [20, 40], "만새기": [80, 200], "대게": [50, 150], "다랑어": [80, 300], "나폴레옹피시": [100, 230], "그린란드 상어": [300, 700], "귀상어": [200, 600], "가아": [80, 300], "가시배새우": [10, 25], "가물치": [50, 150], "혹등고래": [1200, 1600], "톱상어": [200, 700], "키다리게": [200, 380], "자이언트 이소포드": [20, 50], "일본연어": [60, 120], "실러캔스": [120, 220], "상어": [150, 600], "벨루가": [300, 550], "배럴아이": [10, 20], "바다돼지": [5, 15], "메갈로돈": [1200, 3000], "마귀상어": [250, 600], "도라도": [50, 180], "대왕거거": [80, 140], "금송어": [30, 100], "고래상어": [600, 1800], "갈치": [100, 250], "핏빛 초승달 드래곤": [300, 500], "잿빛 밤하늘 드래곤": [300, 500], "금빛 보름달 드래곤": [300, 500], "푸른 눈의 백염룡": [300, 500], "이무기": [400, 900], "청룡": [500, 1000], "흑룡": [500, 1000], "황룡": [500, 1000], "해신룡": [600, 1200], "호수에 비친 은하수": null, "호수에 비친 별": null, "호수에 비친 달": null, "바다를 삼킨 태양": null, "휘몰아치는 마음": null, "영롱한 다이아몬드": null, "얼어붙은 마음": null, "빛나는 마음": null, "불타는 마음": null, "무한한 시간": null, "잃어버린 첫 번째 편지 조각 ✉️": null, "잃어버린 두 번째 편지 조각 ✉️": null, "잃어버린 세 번째 편지 조각 ✉️": null};
 
 const MAX_ROD = 1500;
@@ -1996,7 +1996,12 @@ const materialInfo = {
   "혼돈의 파편":"티아마트에게서 얻을 수 있는 혼돈의 파편.",
   "세계뱀의 비늘":"요르문간드에게서 얻을 수 있는 거대한 비늘.",
   "글레이프니르의 파편":"펜리르를 묶고 있던 마법 족쇄의 파편.",
-  "무스펠의 불꽃":"수르트의 불꽃검에서 떨어져 나온 꺼지지 않는 불꽃."
+  "무스펠의 불꽃":"수르트의 불꽃검에서 떨어져 나온 꺼지지 않는 불꽃.",
+  "명계의 송곳니":"명계의 문을 지키는 케르베로스의 송곳니.",
+  "세계수의 썩은 뿌리":"니드호그가 갉아 먹어 부패한 세계수의 뿌리.",
+  "다마반드의 사슬":"아지다하카를 다마반드 산에 묶어 둔 신성한 사슬.",
+  "폭풍의 심장":"대지와 하늘을 뒤엎는 타이폰의 폭풍이 응축된 핵.",
+  "파멸의 근원":"선한 창조를 부정하는 앙그라 마이뉴의 절대악이 응축된 근원."
 };
 
 const bossList = [
@@ -2069,6 +2074,41 @@ const bossList = [
     reward:30000000000000, drop:"무스펠의 불꽃",
     skillName:"프레이르와의 결투 / 무스펠의 진군", skillDesc:"프레이르와의 결투 20% / 무스펠의 진군 15%",
     desc:"불꽃의 땅 무스펠을 지키는 거인.\n라그나로크가 시작되면 불꽃의 검을 들고 무스펠의 군세를 이끌어 비프로스트를 건넌다.\n프레이르를 쓰러뜨린 뒤 아홉 세계를 불길로 뒤덮는다."
+  },
+  {
+    id:"cerberus", name:"케르베로스", grade:"영원", color:"#00f5d4",
+    hp:350000000, attack:500000, dodge:20, critRate:30, critDamage:350, skillRate:35,
+    reward:100000000000000, drop:"명계의 송곳니",
+    skillName:"세 머리의 판결 / 망자의 무게", skillDesc:"세 머리의 판결 20% / 망자의 무게 15%",
+    desc:"명계의 문을 지키며 죽은 자가 지상으로 달아나지 못하게 막는 세 머리의 파수견.\n머리를 잃을수록 공격의 수는 줄지만, 도망치려는 망자에게는 더욱 무거운 벌을 내린다."
+  },
+  {
+    id:"nidhogg", name:"니드호그", grade:"영원", color:"#00f5d4",
+    hp:700000000, attack:700000, dodge:21, critRate:31, critDamage:360, skillRate:35,
+    reward:300000000000000, drop:"세계수의 썩은 뿌리",
+    skillName:"뿌리의 연결 / 라타토스크의 이간질", skillDesc:"뿌리의 연결 20% / 라타토스크의 이간질 15%",
+    desc:"세계수 위그드라실의 뿌리를 끊임없이 갉아 먹고 나스트론드의 시체를 삼키는 용.\n뿌리를 타고 생명들을 연결한 뒤 서로의 고통과 공격을 뒤틀어 버린다."
+  },
+  {
+    id:"azhi_dahaka", name:"아지다하카", grade:"영원", color:"#00f5d4",
+    hp:1300000000, attack:950000, dodge:22, critRate:32, critDamage:370, skillRate:40,
+    reward:1000000000000000, drop:"다마반드의 사슬",
+    skillName:"세 머리의 선택 / 재앙 집중", skillDesc:"세 머리의 선택 25% / 재앙 집중 15%",
+    desc:"앙그라 마이뉴가 만들어 낸 세 머리와 여섯 눈의 사룡.\n패배한 뒤에도 죽지 않은 채 다마반드 산에 봉인되어 세상의 종말에 풀려날 때를 기다린다."
+  },
+  {
+    id:"typhon", name:"타이폰", grade:"영원", color:"#00f5d4",
+    hp:2500000000, attack:1300000, dodge:23, critRate:34, critDamage:390, skillRate:35,
+    reward:3000000000000000, drop:"폭풍의 심장",
+    skillName:"폭풍의 반향 / 대지와 하늘의 추락", skillDesc:"폭풍의 반향 20% / 대지와 하늘의 추락 15%",
+    desc:"가이아와 타르타로스 사이에서 태어나 신들을 달아나게 하고 제우스마저 궁지로 몰아넣은 폭풍의 괴물.\n거대한 날개와 뱀의 몸으로 대지와 하늘의 질서를 무너뜨린다."
+  },
+  {
+    id:"angra_mainyu", name:"앙그라 마이뉴", grade:"영원", color:"#00f5d4",
+    hp:4500000000, attack:1800000, dodge:25, critRate:36, critDamage:420, skillRate:35,
+    reward:10000000000000000, drop:"파멸의 근원",
+    skillName:"존재 말살 / 창조의 붕괴", skillDesc:"존재 말살 20% / 창조의 붕괴 15%",
+    desc:"선한 창조에 맞서는 절대적인 파괴의 정신.\n질병과 죽음, 거짓을 퍼뜨려 만들어진 모든 존재를 부정하고 세계를 영원한 어둠으로 되돌리려 한다."
   }
 ];
 
@@ -2608,6 +2648,27 @@ function buildBossInfoText(boss = getCurrentBoss()){
     s += "패시브 - 불꽃의 검\n불꽃의 검 내구도 30,000,000\n받는 피해를 수르트와 불꽃의 검이 절반씩 나눠 받음\n검 파괴 후 받는 피해 30% 증가\n파괴된 검은 재점화되지 않음\n\n";
     s += "프레이르와의 결투 (20%)\n해당 턴은 공격력이 가장 높은 물고기와 수르트만 행동\n서로 동시에 1회 공격\n물고기는 공격력 1배, 수르트는 공격력 1.8배\n양쪽 모두 회피 불가, 치명타 발동 가능\n\n";
     s += "무스펠의 진군 (15%)\n발동한 턴에는 수르트가 공격하지 않음\n다음 턴 시작 시 모든 물고기에게 공격력 0.8배\n해당 전체 공격이 그 턴의 수르트 행동을 대신함\n\n";
+    } else if(boss.id === "cerberus"){
+    s += "패시브 - 세 개의 머리\n체력 66%와 33%에서 머리를 하나씩 잃음\n남은 머리 수만큼 세 머리의 판결 공격 횟수 적용\n\n";
+    s += "세 머리의 판결 (20%)\n공격력·최대 체력·치명타율이 가장 높은 물고기를 각 머리가 선택\n머리 하나당 공격력 0.6배\n한 물고기가 여러 조건을 만족하면 연속 공격을 받을 수 있음\n\n";
+    s += "망자의 무게 (15%)\n현재 체력이 가장 낮은 물고기를 공격\n잃은 체력에 비례해 공격력 1.2~2.2배\n\n";
+    } else if(boss.id === "nidhogg"){
+    s += "패시브 - 세계수 침식\n4턴마다 모든 물고기의 최대 체력 5% 감소\n최대 5회, 전투 종료 후 복구\n\n";
+    s += "뿌리의 연결 (20%)\n처음에는 무작위 2마리를 2턴간 연결\n다시 발동하면 최대 3마리까지 추가하고 지속 시간 초기화\n한 마리가 받은 실제 피해의 50%를 나머지가 나눠 받음\n연결 피해는 다시 전파되지 않음\n\n";
+    s += "라타토스크의 이간질 (15%)\n공격력이 가장 높은 물고기의 다음 공격을 현재 체력이 가장 높은 아군에게 유도\n자신의 공격력과 치명타율을 사용하며 대상은 회피 가능\n\n";
+    } else if(boss.id === "azhi_dahaka"){
+    s += "패시브 - 세 가지 재앙\n쇠약: 공격력 15% 감소\n공포: 회피율 50% 감소\n불신: 치명타율 15% 감소\n한 물고기에 세 재앙이 모이면 최대 체력 20% 피해 후 재앙 제거\n\n";
+    s += "세 머리의 선택 (25%)\n공격력이 가장 높은 대상에게 쇠약\n회피율이 가장 높은 대상에게 공포\n치명타율이 가장 높은 대상에게 불신\n각 대상에게 공격력 0.65배\n\n";
+    s += "재앙 집중 (15%)\n재앙이 가장 많은 대상에게 다른 물고기의 재앙을 하나씩 이동\n세 재앙이 완성되면 즉시 폭발\n옮길 재앙이 없으면 공격력 1.6배\n\n";
+    } else if(boss.id === "typhon"){
+    s += "패시브 - 폭풍의 지배자\n매 턴 역풍·난기류·폭풍의 눈 중 하나가 발생\n역풍: 물고기 공격력 20% 감소, 타이폰 공격력 10% 증가\n난기류: 물고기 회피율 10% 감소, 타이폰 회피율 10% 증가\n폭풍의 눈: 물고기 회피 불가, 타이폰 치명타율 15%·치명타 피해 50% 증가\n\n";
+    s += "폭풍의 반향 (20%)\n지난 턴 가장 큰 피해를 준 물고기에게 그 피해의 30%를 회피 불가로 반환\n대상 최대 체력의 25%가 상한\n기록이 없으면 공격력 1.3배\n\n";
+    s += "대지와 하늘의 추락 (15%)\n공격력이 가장 높은 물고기와 최대 체력이 가장 높은 물고기의 체력 비율을 더 낮은 쪽으로 통일\n회복은 발생하지 않음\n두 조건의 대상이 같으면 공격력 1.7배\n\n";
+    } else if(boss.id === "angra_mainyu"){
+    s += "패시브 - 절대악\n모든 물고기는 체력과 별개인 존재 3으로 시작\n존재가 0이 되면 체력과 관계없이 즉시 회복 중 상태\n체력 75%·50%·25% 진입 시 무작위 물고기의 존재 1 감소\n\n";
+    s += "존재 말살 (20%)\n공격력이 가장 높은 물고기에게 공격력 1.8배와 존재 1 감소\n공격을 회피해도 존재는 감소\n공격 피해로 쓰러지면 존재 감소는 다른 무작위 물고기에게 이동\n\n";
+    s += "창조의 붕괴 (15%)\n모든 물고기에게 최대 체력 15%의 회피 불가 피해\n체력이 40% 이하가 된 물고기는 존재 1 감소\n이 체력 피해만으로는 쓰러지지 않음\n\n";
+    s += "패시브 - 영겁의 밤\n체력 25% 이하에서 공격력 30% 증가, 회피율 0%\n존재 말살 공격력 2.2배, 창조의 붕괴 피해 20%로 강화\n\n";
     } else {
     s += "스킬\n\n";
     s += boss.skillName + (boss.skillRate ? " (" + boss.skillRate + "%)" : "") + "\n" + boss.skillDesc + "\n\n";
@@ -2770,6 +2831,9 @@ function getBossAttackMultiplier(boss){
     multiplier *= 0.75;
   }
 
+  if(boss.id === "typhon" && boss._typhonWeather === "headwind") multiplier *= 1.1;
+  if(boss.id === "angra_mainyu" && boss._eternalNight) multiplier *= 1.3;
+
   return multiplier;
 }
 
@@ -2792,11 +2856,36 @@ function getStrongestAliveFish(targets){
 
 function getEffectiveBossDodge(boss){
   if(boss.id === "fenrir" && Number(boss._gleipnirKnots || 0) > 0) return 0;
+  if(boss.id === "angra_mainyu" && boss._eternalNight) return 0;
+  if(boss.id === "typhon" && boss._typhonWeather === "turbulence") return Number(boss.dodge || 0) + 10;
   return Number(boss.dodge || 0);
+}
+
+function getEffectiveFishAttack(f, boss){
+  const c = ensureCombatStats(f);
+  let value = Number(c.attack || 0);
+  if(c.azhiCurses && c.azhiCurses.weakness) value *= 0.85;
+  if(boss.id === "typhon" && boss._typhonWeather === "headwind") value *= 0.8;
+  return Math.max(0, Math.floor(value));
+}
+
+function getEffectiveFishDodge(f, boss){
+  const c = ensureCombatStats(f);
+  let value = Number(c.dodge || 0);
+  if(c.azhiCurses && c.azhiCurses.fear) value *= 0.5;
+  if(boss.id === "typhon" && boss._typhonWeather === "turbulence") value -= 10;
+  if(boss.id === "typhon" && boss._typhonWeather === "eye") value = 0;
+  return Math.max(0, value);
+}
+
+function getEffectiveFishCritRate(f){
+  const c = ensureCombatStats(f);
+  return Math.max(0, Number(c.critRate || 0) - (c.azhiCurses && c.azhiCurses.distrust ? 15 : 0));
 }
 
 function applyDamageToFish(f, damage, battleLog, prefix){
   const c = ensureCombatStats(f);
+  const beforeHp = c.hp;
   c.hp = Math.max(0, c.hp - damage);
 
   let logText = prefix;
@@ -2808,6 +2897,24 @@ function applyDamageToFish(f, damage, battleLog, prefix){
     stunFish(f);
     battleLog.push(color(lineFish(f), f.grade) + "\n체력이 0이 되어 회복 중입니다.");
   }
+
+  const actualDamage = Math.min(beforeHp, damage);
+  const peers = Array.isArray(c.rootLinkedPeers) ? c.rootLinkedPeers.filter(x => x !== f && ensureCombatStats(x).hp > 0) : [];
+  if(actualDamage > 0 && peers.length > 0 && !c._receivingRootShare){
+    const shareEach = Math.floor(actualDamage * 0.5 / peers.length);
+    peers.forEach(peer => {
+      const pc = ensureCombatStats(peer);
+      pc._receivingRootShare = true;
+      pc.hp = Math.max(0, pc.hp - shareEach);
+      battleLog.push("뿌리의 연결\n" + color(lineFish(peer), peer.grade) + "에게 " + shareEach.toLocaleString() + " 피해 분배\n\n" + hpBar(pc.hp, pc.maxHp));
+      if(pc.hp <= 0){
+        stunFish(peer);
+        delete pc.rootLinkedPeers;
+        battleLog.push(color(lineFish(peer), peer.grade) + "\n연결 피해로 체력이 0이 되어 회복 중입니다.");
+      }
+      delete pc._receivingRootShare;
+    });
+  }
 }
 
 function bossSingleTargetAttack(boss, targets, battleLog, bossAttackMultiplier=1, skillName="공격", ignoreDodge=false, options={}){
@@ -2817,7 +2924,7 @@ function bossSingleTargetAttack(boss, targets, battleLog, bossAttackMultiplier=1
   const f = alive[Math.floor(Math.random() * alive.length)];
   const c = ensureCombatStats(f);
   const bossAttack = getBossAttackValue(boss, bossAttackMultiplier);
-  const dodgeRoll = Math.random() * 100 < c.dodge;
+  const dodgeRoll = Math.random() * 100 < getEffectiveFishDodge(f, boss);
 
   if(dodgeRoll && !ignoreDodge){
     battleLog.push(bossColor(boss.name, boss) + "의 " + skillName + "\n" + color(lineFish(f), f.grade) + " 회피");
@@ -2848,7 +2955,7 @@ function bossAttackSpecificTarget(boss, f, battleLog, bossAttackMultiplier=1, sk
   const c = ensureCombatStats(f);
   if(c.hp <= 0 || c.status === "기절" || c.devouredByFenrir) return false;
 
-  const dodgeRoll = Math.random() * 100 < c.dodge;
+  const dodgeRoll = Math.random() * 100 < getEffectiveFishDodge(f, boss);
   if(dodgeRoll && !ignoreDodge){
     battleLog.push(bossColor(boss.name, boss) + "의 " + skillName + "\n" + color(lineFish(f), f.grade) + " 회피");
     return false;
@@ -2869,7 +2976,7 @@ function bossAllTargetAttack(boss, targets, battleLog, bossAttackMultiplier=1, s
     const c = ensureCombatStats(f);
     if(c.hp <= 0 || c.status === "기절") return;
 
-    const dodgeRoll = Math.random() * 100 < c.dodge;
+    const dodgeRoll = Math.random() * 100 < getEffectiveFishDodge(f, boss);
     if(dodgeRoll){
       logs.push(color(lineFish(f), f.grade) + "\n회피");
       return;
@@ -3130,7 +3237,199 @@ function runFenrirDevour(boss, participants, battleLog){
   battleLog.push(bossColor(boss.name, boss) + "의 신을 삼키는 자\n" + color(lineFish(target), target.grade) + "를 삼켰습니다.\n다음 턴에 남은 물고기가 치명타 피해를 주면 구출할 수 있습니다.");
 }
 
+function getFishByHighest(participants, getter){
+  return getAliveTargets(participants).sort((a,b) => getter(b) - getter(a))[0] || null;
+}
+
+function runCerberusJudgment(boss, participants, battleLog){
+  const hpRate = Number(boss._currentHp || boss.hp) / boss.hp;
+  const heads = hpRate > 0.66 ? 3 : (hpRate > 0.33 ? 2 : 1);
+  const targets = [
+    getFishByHighest(participants, f => ensureCombatStats(f).attack),
+    getFishByHighest(participants, f => ensureCombatStats(f).maxHp),
+    getFishByHighest(participants, f => ensureCombatStats(f).critRate)
+  ];
+  battleLog.push(bossColor(boss.name, boss) + "의 세 머리의 판결\n남은 머리 : " + heads);
+  for(let i=0;i<heads;i++) bossAttackSpecificTarget(boss, targets[i], battleLog, 0.6, "세 머리의 판결", false);
+}
+
+function runCerberusDeadWeight(boss, participants, battleLog){
+  const target = getAliveTargets(participants).sort((a,b) => ensureCombatStats(a).hp - ensureCombatStats(b).hp)[0];
+  if(!target) return;
+  const c = ensureCombatStats(target);
+  const lostRate = 1 - c.hp / c.maxHp;
+  bossAttackSpecificTarget(boss, target, battleLog, 1.2 + lostRate, "망자의 무게", false);
+}
+
+function refreshRootLinks(boss, participants, battleLog){
+  let links = (boss._rootLinks || []).filter(f => ensureCombatStats(f).hp > 0);
+  const available = getAliveTargets(participants).filter(f => !links.includes(f));
+  if(links.length === 0){
+    while(links.length < 2 && available.length){
+      links.push(available.splice(Math.floor(Math.random()*available.length),1)[0]);
+    }
+  } else if(links.length < 3 && available.length){
+    links.push(available.splice(Math.floor(Math.random()*available.length),1)[0]);
+  }
+  boss._rootLinks = links;
+  boss._rootLinkTurns = 3;
+  links.forEach(f => ensureCombatStats(f).rootLinkedPeers = links);
+  battleLog.push(bossColor(boss.name, boss) + "의 뿌리의 연결\n" + links.map(f => color(lineFish(f), f.grade)).join("\n") + "\n연결 지속 : 2턴");
+}
+
+function runRatatoskr(boss, participants, battleLog){
+  const attacker = getStrongestAliveFish(participants);
+  if(!attacker) return;
+  ensureCombatStats(attacker).ratatoskrRedirect = true;
+  battleLog.push(bossColor(boss.name, boss) + "의 라타토스크의 이간질\n" + color(lineFish(attacker), attacker.grade) + "의 다음 공격이 아군을 향합니다.");
+}
+
+function getCurseCount(f){
+  return Object.values(ensureCombatStats(f).azhiCurses || {}).filter(Boolean).length;
+}
+
+function triggerThreeCalamities(f, battleLog){
+  const c = ensureCombatStats(f);
+  if(getCurseCount(f) < 3) return;
+  const damage = Math.floor(c.maxHp * 0.2);
+  c.hp = Math.max(0, c.hp - damage);
+  c.azhiCurses = {};
+  battleLog.push("세 가지 재앙 폭발\n" + color(lineFish(f), f.grade) + "에게 최대 체력의 20% 피해\n\n" + hpBar(c.hp, c.maxHp));
+  if(c.hp <= 0) stunFish(f);
+}
+
+function applyAzhiCurse(boss, f, curse, label, participants, battleLog){
+  if(!f || ensureCombatStats(f).hp <= 0) return;
+  const c = ensureCombatStats(f);
+  if(!c.azhiCurses) c.azhiCurses = {};
+  c.azhiCurses[curse] = true;
+  bossAttackSpecificTarget(boss, f, battleLog, 0.65, "세 머리의 선택 - " + label, false);
+  triggerThreeCalamities(f, battleLog);
+}
+
+function runAzhiChoice(boss, participants, battleLog){
+  applyAzhiCurse(boss, getFishByHighest(participants,f=>ensureCombatStats(f).attack), "weakness", "쇠약", participants, battleLog);
+  applyAzhiCurse(boss, getFishByHighest(participants,f=>ensureCombatStats(f).dodge), "fear", "공포", participants, battleLog);
+  applyAzhiCurse(boss, getFishByHighest(participants,f=>ensureCombatStats(f).critRate), "distrust", "불신", participants, battleLog);
+}
+
+function runAzhiConcentration(boss, participants, battleLog){
+  const alive = getAliveTargets(participants);
+  const target = alive.sort((a,b)=>getCurseCount(b)-getCurseCount(a))[0];
+  if(!target) return;
+  const tc = ensureCombatStats(target);
+  if(!tc.azhiCurses) tc.azhiCurses = {};
+  let moved = 0;
+  alive.filter(f=>f!==target).forEach(f=>{
+    const c = ensureCombatStats(f);
+    const key = Object.keys(c.azhiCurses || {}).find(k => c.azhiCurses[k] && !tc.azhiCurses[k]);
+    if(key){ delete c.azhiCurses[key]; tc.azhiCurses[key] = true; moved++; }
+  });
+  if(moved === 0) return bossAttackSpecificTarget(boss, target, battleLog, 1.6, "재앙 집중", false);
+  battleLog.push(bossColor(boss.name, boss) + "의 재앙 집중\n" + moved + "개의 재앙이 " + color(lineFish(target), target.grade) + "에게 이동했습니다.");
+  triggerThreeCalamities(target, battleLog);
+}
+
+function prepareTyphonWeather(boss, battleLog){
+  if(boss.id !== "typhon") return;
+  const weather = ["headwind","turbulence","eye"][Math.floor(Math.random()*3)];
+  boss._typhonWeather = weather;
+  boss.critRate = boss._baseCritRate;
+  boss.critDamage = boss._baseCritDamage;
+  let text = "역풍 - 물고기 공격력 -20%, 타이폰 공격력 +10%";
+  if(weather === "turbulence") text = "난기류 - 물고기 회피율 -10%, 타이폰 회피율 +10%";
+  if(weather === "eye"){
+    boss.critRate += 15;
+    boss.critDamage += 50;
+    text = "폭풍의 눈 - 물고기 회피 불가, 타이폰 치명타 강화";
+  }
+  battleLog.push(bossColor(boss.name, boss) + "의 폭풍의 지배자\n" + text);
+}
+
+function runTyphonEcho(boss, participants, battleLog){
+  const f = boss._lastTopDamageFish;
+  if(!f || ensureCombatStats(f).hp <= 0 || !boss._lastTopDamage){
+    return bossSingleTargetAttack(boss, participants, battleLog, 1.3, "폭풍의 반향", false);
+  }
+  const c = ensureCombatStats(f);
+  const damage = Math.min(Math.floor(boss._lastTopDamage * 0.3), Math.floor(c.maxHp * 0.25));
+  applyDamageToFish(f, damage, battleLog, bossColor(boss.name, boss) + "의 폭풍의 반향\n회피 불가\n");
+}
+
+function runTyphonFall(boss, participants, battleLog){
+  const a = getFishByHighest(participants,f=>ensureCombatStats(f).attack);
+  const h = getFishByHighest(participants,f=>ensureCombatStats(f).maxHp);
+  if(!a || !h) return;
+  if(a === h) return bossAttackSpecificTarget(boss, a, battleLog, 1.7, "대지와 하늘의 추락", false);
+  const ac=ensureCombatStats(a), hc=ensureCombatStats(h);
+  const lower=Math.min(ac.hp/ac.maxHp,hc.hp/hc.maxHp);
+  ac.hp=Math.max(1,Math.floor(ac.maxHp*lower)); hc.hp=Math.max(1,Math.floor(hc.maxHp*lower));
+  battleLog.push(bossColor(boss.name,boss)+"의 대지와 하늘의 추락\n두 대상의 체력 비율이 "+Math.floor(lower*100)+"%로 추락했습니다.\n\n"+color(lineFish(a),a.grade)+"\n"+hpBar(ac.hp,ac.maxHp)+"\n\n"+color(lineFish(h),h.grade)+"\n"+hpBar(hc.hp,hc.maxHp));
+}
+
+function reduceExistence(boss, f, amount, battleLog, reason){
+  if(!f || ensureCombatStats(f).hp <= 0) return;
+  const c=ensureCombatStats(f);
+  c.existence=Math.max(0,Number(c.existence===undefined?3:c.existence)-amount);
+  battleLog.push(reason+"\n"+color(lineFish(f),f.grade)+"\n존재 : "+c.existence+" / 3");
+  if(c.existence<=0){ stunFish(f); battleLog.push(color(lineFish(f),f.grade)+"\n존재가 말살되어 회복 중입니다."); }
+}
+
+function runExistenceAnnihilation(boss, participants, battleLog){
+  const target=getStrongestAliveFish(participants); if(!target) return;
+  const before=ensureCombatStats(target).hp;
+  bossAttackSpecificTarget(boss,target,battleLog,boss._eternalNight?2.2:1.8,"존재 말살",false);
+  if(ensureCombatStats(target).hp<=0 && before>0){
+    const other=getAliveTargets(participants).filter(f=>f!==target); if(other.length) reduceExistence(boss,other[Math.floor(Math.random()*other.length)],1,battleLog,"존재 말살 전이");
+  } else reduceExistence(boss,target,1,battleLog,"존재 말살");
+}
+
+function runCreationCollapse(boss, participants, battleLog){
+  const rate=boss._eternalNight?0.2:0.15;
+  getAliveTargets(participants).forEach(f=>{
+    const c=ensureCombatStats(f), damage=Math.floor(c.maxHp*rate);
+    c.hp=Math.max(1,c.hp-damage);
+    battleLog.push(bossColor(boss.name,boss)+"의 창조의 붕괴\n"+color(lineFish(f),f.grade)+"\n"+damage.toLocaleString()+" 피해\n\n"+hpBar(c.hp,c.maxHp));
+    if(c.hp/c.maxHp<=0.4) reduceExistence(boss,f,1,battleLog,"창조의 붕괴");
+  });
+}
+
 function runBossAction(boss, participants, battleLog){
+  if(boss.id === "cerberus"){
+    const r=Math.random()*100;
+    if(r<20) return runCerberusJudgment(boss,participants,battleLog);
+    if(r<35) return runCerberusDeadWeight(boss,participants,battleLog);
+    return bossSingleTargetAttack(boss,participants,battleLog,1,"공격",false);
+  }
+
+  if(boss.id === "nidhogg"){
+    const r=Math.random()*100;
+    if(r<20) return refreshRootLinks(boss,participants,battleLog);
+    if(r<35) return runRatatoskr(boss,participants,battleLog);
+    return bossSingleTargetAttack(boss,participants,battleLog,1,"공격",false);
+  }
+
+  if(boss.id === "azhi_dahaka"){
+    const r=Math.random()*100;
+    if(r<25) return runAzhiChoice(boss,participants,battleLog);
+    if(r<40) return runAzhiConcentration(boss,participants,battleLog);
+    return bossSingleTargetAttack(boss,participants,battleLog,1,"공격",false);
+  }
+
+  if(boss.id === "typhon"){
+    const r=Math.random()*100;
+    if(r<20) return runTyphonEcho(boss,participants,battleLog);
+    if(r<35) return runTyphonFall(boss,participants,battleLog);
+    return bossSingleTargetAttack(boss,participants,battleLog,1,"공격",false);
+  }
+
+  if(boss.id === "angra_mainyu"){
+    const r=Math.random()*100;
+    if(r<20) return runExistenceAnnihilation(boss,participants,battleLog);
+    if(r<35) return runCreationCollapse(boss,participants,battleLog);
+    return bossSingleTargetAttack(boss,participants,battleLog,1,"공격",false);
+  }
+
   if(boss.id === "fenrir"){
     const r = Math.random() * 100;
     if(r < 20) return runFenrirTyrHand(boss, participants, battleLog);
@@ -3219,6 +3518,15 @@ function cleanupBattleEffects(participants){
     delete c.burnStacks;
     delete c.poisonStacks;
     delete c.devouredByFenrir;
+    delete c.rootLinkedPeers;
+    delete c.ratatoskrRedirect;
+    delete c.azhiCurses;
+    delete c.existence;
+    if(c._preErosionMaxHp){
+      c.maxHp = c._preErosionMaxHp;
+      if(c.hp > 0) c.hp = c.maxHp;
+      delete c._preErosionMaxHp;
+    }
   });
 }
 
@@ -3271,7 +3579,19 @@ function runBossBattle(){
     _lastDamageToSword:0,
     _muspelPending:false,
     _surtrTurnAction:"normal",
-    _surtrDuelTarget:null
+    _surtrDuelTarget:null,
+    _rootLinks:[],
+    _rootLinkTurns:0,
+    _erosionStacks:0,
+    _baseCritRate:selectedBoss.critRate,
+    _baseCritDamage:selectedBoss.critDamage,
+    _typhonWeather:null,
+    _lastTopDamageFish:null,
+    _lastTopDamage:0,
+    _thisTurnTopDamageFish:null,
+    _thisTurnTopDamage:0,
+    _existenceWaves:{75:false,50:false,25:false},
+    _eternalNight:false
   };
 
   if(!isBossUnlocked(boss)) return print("아직 해금되지 않은 보스입니다.");
@@ -3289,6 +3609,8 @@ function runBossBattle(){
 
   cleanupBattleEffects(participants);
 
+  if(boss.id === "angra_mainyu") participants.forEach(f => ensureCombatStats(f).existence = 3);
+
   battleLog.push("전투 시작\n\n" + participants.map(f => color(lineFish(f), f.grade) + "\n" + hpBar(ensureCombatStats(f).hp, ensureCombatStats(f).maxHp)).join("\n\n"));
 
   let turn = 1;
@@ -3297,8 +3619,33 @@ function runBossBattle(){
     boss._fishDisabledNextTurn = false;
     boss._knotsBrokenThisTurn = 0;
     if(boss._devouredFish) boss._devourCritThisTurn = false;
+    boss._thisTurnTopDamage = 0;
+    boss._thisTurnTopDamageFish = null;
 
     battleLog.push("턴 " + turn);
+
+    if(boss.id === "nidhogg"){
+      if(boss._rootLinkTurns > 0){
+        boss._rootLinkTurns--;
+        if(boss._rootLinkTurns <= 0){
+          (boss._rootLinks || []).forEach(f => delete ensureCombatStats(f).rootLinkedPeers);
+          boss._rootLinks = [];
+          battleLog.push(bossColor(boss.name,boss) + "의 뿌리 연결이 풀렸습니다.");
+        }
+      }
+      if(turn % 4 === 0 && boss._erosionStacks < 5){
+        boss._erosionStacks++;
+        participants.forEach(f => {
+          const c=ensureCombatStats(f);
+          if(!c._preErosionMaxHp) c._preErosionMaxHp=c.maxHp;
+          const newMax=Math.max(1,Math.floor(c._preErosionMaxHp*(1-boss._erosionStacks*0.05)));
+          c.maxHp=newMax; c.hp=Math.min(c.hp,newMax);
+        });
+        battleLog.push(bossColor(boss.name,boss)+"의 세계수 침식\n최대 체력 -"+(boss._erosionStacks*5)+"%");
+      }
+    }
+
+    prepareTyphonWeather(boss,battleLog);
 
     if(boss._fishDisabledThisTurn){
       battleLog.push(bossColor(boss.name, boss) + "의 메가 플레어 여파\n참가 물고기 전체가 이번 턴 행동할 수 없습니다.");
@@ -3339,11 +3686,27 @@ function runBossBattle(){
         continue;
       }
 
+      if(c.ratatoskrRedirect){
+        delete c.ratatoskrRedirect;
+        const allies=getAliveTargets(participants).filter(x=>x!==f).sort((a,b)=>ensureCombatStats(b).hp-ensureCombatStats(a).hp);
+        const ally=allies[0];
+        if(ally){
+          const ac=ensureCombatStats(ally);
+          if(Math.random()*100 < getEffectiveFishDodge(ally,boss)){
+            battleLog.push("라타토스크의 이간질\n"+color(lineFish(f),f.grade)+"의 공격을 "+color(lineFish(ally),ally.grade)+"이 회피했습니다.");
+          } else {
+            const redirected=calcDamage(getEffectiveFishAttack(f,boss),getEffectiveFishCritRate(f),c.critDamage);
+            applyDamageToFish(ally,redirected.damage,battleLog,"라타토스크의 이간질\n"+color(lineFish(f),f.grade)+"의 아군 공격\n"+(redirected.crit?"치명타!\n":""));
+          }
+          continue;
+        }
+      }
+
       const summons = getAliveSummons(boss);
       const targetSummon = summons.length > 0 ? summons[0] : null;
 
       if(targetSummon){
-        const hit = calcDamage(c.attack, c.critRate, c.critDamage);
+        const hit = calcDamage(getEffectiveFishAttack(f,boss), getEffectiveFishCritRate(f), c.critDamage);
         targetSummon.hp = Math.max(0, targetSummon.hp - hit.damage);
         totalDamage += hit.damage;
 
@@ -3361,10 +3724,16 @@ function runBossBattle(){
 
       const duelAttack = boss.id === "surtr" && boss._surtrTurnAction === "duel" && f === boss._surtrDuelTarget;
       if(duelAttack || Math.random() * 100 >= getEffectiveBossDodge(boss)){
-        const hit = calcDamage(c.attack, c.critRate, c.critDamage);
+        const hit = calcDamage(getEffectiveFishAttack(f,boss), getEffectiveFishCritRate(f), c.critDamage);
         let damage = applyBossPassiveBeforeFishAttack(boss, hit.damage, battleLog);
         bossHp = Math.max(0, bossHp - damage);
+        boss._currentHp = bossHp;
         totalDamage += damage + Number(boss._lastDamageToSword || 0);
+
+        if(boss.id === "typhon" && damage > boss._thisTurnTopDamage){
+          boss._thisTurnTopDamage=damage;
+          boss._thisTurnTopDamageFish=f;
+        }
 
         let entry = color(lineFish(f), f.grade) + " 공격\n";
         if(hit.crit) entry += "치명타!\n";
@@ -3374,6 +3743,20 @@ function runBossBattle(){
         battleLog.push(entry);
 
         handleFenrirCriticalHit(boss, hit, battleLog);
+
+        if(boss.id === "angra_mainyu"){
+          [75,50,25].forEach(threshold=>{
+            if(!boss._existenceWaves[threshold] && bossHp <= boss.hp*threshold/100){
+              boss._existenceWaves[threshold]=true;
+              const alive=getAliveTargets(participants);
+              if(alive.length) reduceExistence(boss,alive[Math.floor(Math.random()*alive.length)],1,battleLog,"파멸의 파동 (체력 "+threshold+"%)");
+            }
+          });
+          if(bossHp <= boss.hp*0.25 && !boss._eternalNight){
+            boss._eternalNight=true;
+            battleLog.push(bossColor(boss.name,boss)+"의 영겁의 밤\n공격력 30% 증가, 회피율 0%\n존재 말살과 창조의 붕괴가 강화됩니다.");
+          }
+        }
 
         bossHp = applyPhoenixImmortalityIfNeeded(boss, bossHp, battleLog);
 
@@ -3390,8 +3773,14 @@ function runBossBattle(){
     if(bossHp <= 0) break;
 
     bossHp = applyBossEndTurnPassive(boss, bossHp, battleLog);
+    boss._currentHp = bossHp;
     runBossAction(boss, participants, battleLog);
     babyDragonActions(boss, participants, battleLog);
+
+    if(boss.id === "typhon"){
+      boss._lastTopDamage=boss._thisTurnTopDamage;
+      boss._lastTopDamageFish=boss._thisTurnTopDamageFish;
+    }
 
     turn++;
   }
