@@ -128,7 +128,7 @@ const sizeData = {"휴지 조각": [1, 40], "플라스틱 통": [1, 40], "안경
 sizeData["수상한 기운 👁️"] = null;
 sizeData["기묘한 기운 🌀"] = null;
 
-const MAX_ROD = 1500;
+const MAX_ROD = 1750;
 
 const grades = [
   {name:"쓰레기", color:"#8b949e", basePrice:1, chance:8},
@@ -139,7 +139,7 @@ const grades = [
   {name:"신화", color:"#ff4d4f", basePrice:75000000, chance:0.7},
   {name:"초월", color:"#ffd700", basePrice:1000000000, chance:0.12},
   {name:"영원", color:"#00f5d4", basePrice:100000000000, chance:0},
-  {name:"공허", color:"#5C0011", basePrice:3500000000000, chance:0}
+  {name:"공허", color:"#5C0011", basePrice:10000000000000, chance:0}
 ];
 
 const gradePower = {"쓰레기":0,"일반":1,"희귀":2,"영웅":3,"전설":4,"신화":5,"초월":6,"영원":7,"공허":8};
@@ -200,9 +200,20 @@ let cloudSaveChain=Promise.resolve();
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
-const GAME_VERSION = "2026-06-23-eternal-void-rework-v1";
+const GAME_VERSION = "2026-06-23-economy-balance-v1";
 const UPDATE_NOTICE_TITLE = "📢 업데이트 안내";
 const UPDATE_NOTICES = [
+  {
+    id: "2026-06-23-training-rod-1750-1",
+    title: "훈련소/낚싯대 확장",
+    lines: [
+      "훈련소 최대 레벨이 15단계로 확장되고 해금 조건 없이 골드로 강화할 수 있습니다.",
+      "낚싯대 최대 레벨이 1750으로 확장되고 영원 보스 재료 구간이 추가되었습니다.",
+      "낚싯대는 1000레벨부터 강화 성공률이 100%로 적용됩니다.",
+      "1000~1750레벨의 등급별 낚시 확률이 일차함수로 변화합니다.",
+      "공허 등급의 기본 판매가가 영원 등급의 100배로 상향되고 영원 보스 상금이 조정되었습니다."
+    ]
+  },
   {
     id: "2026-06-23-eternal-void-rework-1",
     title: "영원/공허 고유 특성 개편",
@@ -538,9 +549,9 @@ function normalizeTrainingLevels(value){
   const base = {attack:0,hp:0,critDamage:0};
   if(!value || typeof value !== "object") return base;
   return {
-    attack: Math.min(MAX_RESEARCH || 10, Math.max(0, Number(value.attack || 0))),
-    hp: Math.min(MAX_RESEARCH || 10, Math.max(0, Number(value.hp || 0))),
-    critDamage: Math.min(MAX_RESEARCH || 10, Math.max(0, Number(value.critDamage || 0)))
+    attack: Math.min(15, Math.max(0, Number(value.attack || 0))),
+    hp: Math.min(15, Math.max(0, Number(value.hp || 0))),
+    critDamage: Math.min(15, Math.max(0, Number(value.critDamage || 0)))
   };
 }
 
@@ -1988,7 +1999,12 @@ function upgradeResearch(which){
   print(name + " 강화 완료\n\nLv." + level + " → Lv." + researchLevels[key] + "\n효과 : " + effect + "\n사용 금액 : " + formatMoney(cost));
 }
 
-const MAX_TRAINING = 10;
+const MAX_TRAINING = 15;
+const trainingCostTable = [
+  100000000, 300000000, 1000000000, 3000000000, 10000000000,
+  30000000000, 100000000000, 300000000000, 1000000000000, 3000000000000,
+  5000000000000, 10000000000000, 25000000000000, 50000000000000, 100000000000000
+];
 
 function getTrainingLevel(key){
   trainingLevels = normalizeTrainingLevels(trainingLevels);
@@ -1996,7 +2012,8 @@ function getTrainingLevel(key){
 }
 
 function getTrainingCost(level){
-  return getResearchCost(level);
+  if(level >= MAX_TRAINING) return null;
+  return trainingCostTable[level];
 }
 
 function getTrainingAttackBonus(){
@@ -2026,7 +2043,7 @@ function buildTrainingText(){
 
   let s = "훈련소\n\n";
   s += "별 시스템과 별개로 모든 전투 물고기에 적용됩니다.\n";
-  s += "골드만 사용하며 비용은 연구소와 동일합니다.\n\n";
+  s += "해금 조건 없이 골드만 사용합니다.\n\n";
   s += "────┬────────────────────\n";
   s += buildTrainingLine(1, "공격 훈련", attackLevel, "공격력 +" + getTrainingAttackBonus() + "%") + "\n";
   s += "────┼────────────────────\n";
@@ -2227,35 +2244,35 @@ const bossList = [
   {
     id:"cerberus", name:"케르베로스", grade:"영원", color:"#00f5d4",
     hp:350000000, attack:500000, dodge:20, critRate:30, critDamage:350, skillRate:35,
-    reward:100000000000000, drop:"명계의 송곳니",
+    reward:50000000000000, drop:"명계의 송곳니",
     skillName:"세 머리의 판결 / 망자의 무게", skillDesc:"세 머리의 판결 20% / 망자의 무게 15%",
     desc:"명계의 문을 지키며 죽은 자가 지상으로 달아나지 못하게 막는 세 머리의 파수견.\n머리를 잃을수록 공격의 수는 줄지만, 도망치려는 망자에게는 더욱 무거운 벌을 내린다."
   },
   {
     id:"nidhogg", name:"니드호그", grade:"영원", color:"#00f5d4",
     hp:700000000, attack:700000, dodge:21, critRate:31, critDamage:360, skillRate:35,
-    reward:300000000000000, drop:"세계수의 썩은 뿌리",
+    reward:80000000000000, drop:"세계수의 썩은 뿌리",
     skillName:"뿌리의 연결 / 라타토스크의 이간질", skillDesc:"뿌리의 연결 20% / 라타토스크의 이간질 15%",
     desc:"세계수 위그드라실의 뿌리를 끊임없이 갉아 먹고 나스트론드의 시체를 삼키는 용.\n뿌리를 타고 생명들을 연결한 뒤 서로의 고통과 공격을 뒤틀어 버린다."
   },
   {
     id:"azhi_dahaka", name:"아지다하카", grade:"영원", color:"#00f5d4",
     hp:1300000000, attack:950000, dodge:22, critRate:32, critDamage:370, skillRate:40,
-    reward:1000000000000000, drop:"다마반드의 사슬",
+    reward:120000000000000, drop:"다마반드의 사슬",
     skillName:"세 머리의 선택 / 재앙 집중", skillDesc:"세 머리의 선택 25% / 재앙 집중 15%",
     desc:"앙그라 마이뉴가 만들어 낸 세 머리와 여섯 눈의 사룡.\n패배한 뒤에도 죽지 않은 채 다마반드 산에 봉인되어 세상의 종말에 풀려날 때를 기다린다."
   },
   {
     id:"typhon", name:"타이폰", grade:"영원", color:"#00f5d4",
     hp:2500000000, attack:1300000, dodge:23, critRate:34, critDamage:390, skillRate:35,
-    reward:3000000000000000, drop:"폭풍의 심장",
+    reward:200000000000000, drop:"폭풍의 심장",
     skillName:"폭풍의 반향 / 대지와 하늘의 추락", skillDesc:"폭풍의 반향 20% / 대지와 하늘의 추락 15%",
     desc:"가이아와 타르타로스 사이에서 태어나 신들을 달아나게 하고 제우스마저 궁지로 몰아넣은 폭풍의 괴물.\n거대한 날개와 뱀의 몸으로 대지와 하늘의 질서를 무너뜨린다."
   },
   {
     id:"angra_mainyu", name:"앙그라 마이뉴", grade:"영원", color:"#00f5d4",
     hp:4500000000, attack:1800000, dodge:25, critRate:36, critDamage:420, skillRate:35,
-    reward:10000000000000000, drop:"파멸의 근원",
+    reward:300000000000000, drop:"파멸의 근원",
     skillName:"존재 말살 / 창조의 붕괴", skillDesc:"존재 말살 20% / 창조의 붕괴 15%",
     desc:"선한 창조에 맞서는 절대적인 파괴의 정신.\n질병과 죽음, 거짓을 퍼뜨려 만들어진 모든 존재를 부정하고 세계를 영원한 어둠으로 되돌리려 한다."
   }
@@ -4584,9 +4601,11 @@ function getUpgradeCost(level){
   const points = [
     [1, 1000],[100, 7500],[200, 30000],[300, 150000],[400, 750000],
     [500, 3500000],[600, 15000000],[700, 75000000],[800, 300000000],
-    [900, 1500000000],[950, 4000000000],[1000, 7500000000],
-    [1100, 15000000000],[1200, 30000000000],[1300, 75000000000],
-    [1400, 150000000000],[1500, 300000000000]
+    [900, 1500000000],[950, 4000000000],[1000, 50000000000],
+    [1100, 100000000000],[1200, 200000000000],[1300, 400000000000],
+    [1400, 700000000000],[1500, 1000000000000],[1550, 1500000000000],
+    [1600, 2000000000000],[1650, 3000000000000],[1700, 4000000000000],
+    [1750, 5000000000000]
   ];
 
   if(level <= 1) return points[0][1];
@@ -4611,12 +4630,11 @@ function getUpgradeSuccessRate(level){
     const t = (level - 1) / (999 - 1);
     return 100 - (90 * t);
   }
-  const t = (level - 1000) / (1500 - 1000);
-  return Math.max(20, 100 - (80 * t));
+  return 100;
 }
 
 function getCurrentPlayableMaxRod(){
-  return 1500;
+  return MAX_ROD;
 }
 
 function getBossMaterialRequirement(level){
@@ -4636,6 +4654,11 @@ function getBossMaterialRequirement(level){
   else if(level < 1400){ item = "세계뱀의 비늘"; start = 1350; }
   else if(level < 1450){ item = "글레이프니르의 파편"; start = 1400; }
   else if(level < 1500){ item = "무스펠의 불꽃"; start = 1450; }
+  else if(level < 1550){ item = "명계의 송곳니"; start = 1500; }
+  else if(level < 1600){ item = "세계수의 썩은 뿌리"; start = 1550; }
+  else if(level < 1650){ item = "다마반드의 사슬"; start = 1600; }
+  else if(level < 1700){ item = "폭풍의 심장"; start = 1650; }
+  else if(level < 1750){ item = "파멸의 근원"; start = 1700; }
   else return "LOCKED";
 
   const amount = Math.floor((level - start) / 25) + 1;
@@ -4665,7 +4688,7 @@ function consumeRequiredBossMaterials(level){
 }
 
 function getLockedUpgradeMessage(){
-  return "낚싯대가 최대 강화 레벨인 1500레벨에 도달했습니다.";
+  return "낚싯대가 최대 강화 레벨인 " + MAX_ROD + "레벨에 도달했습니다.";
 }
 
 function tryUpgradeSuccess(level){
@@ -4689,8 +4712,8 @@ function getRawGradeChances(){
   }
 
   const base = {"쓰레기":0.40,"일반":9.68,"희귀":19.35,"영웅":28.23,"전설":24.19,"신화":11.29,"초월":5.65,"영원":1.21,"공허":0};
-  const target = {"쓰레기":0,"일반":4,"희귀":14,"영웅":21,"전설":25,"신화":22,"초월":10,"영원":3,"공허":1};
-  const t = Math.min(1, (rodLevel - 1000) / 500);
+  const target = {"쓰레기":0,"일반":3,"희귀":12,"영웅":20,"전설":25,"신화":23,"초월":11,"영원":4.5,"공허":1.5};
+  const t = Math.min(1, (rodLevel - 1000) / (1750 - 1000));
   return Object.keys(target).map(name => ({name, chance: base[name] + (target[name] - base[name]) * t}));
 }
 
