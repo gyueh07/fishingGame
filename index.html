@@ -1255,12 +1255,8 @@ function displayFishName(name){
 
 function lineFish(f){
   const name = displayFishName(f.name);
-  let side = "";
-  if(f && f._battleSide === "ally") side = '<span style="color:#58a6ff;font-weight:700">[아군]</span> ';
-  else if(f && f._battleSide === "left") side = '<span style="color:#58a6ff;font-weight:700">[파랑팀]</span> ';
-  else if(f && f._battleSide === "right") side = '<span style="color:#ff7b72;font-weight:700">[빨강팀]</span> ';
-  if(f.size === null) return side + `[${f.grade}] ${name}`;
-  return side + `[${f.grade}] ${name}(${formatSize(f.size)}cm)`;
+  if(f.size === null) return `[${f.grade}] ${name}`;
+  return `[${f.grade}] ${name}(${formatSize(f.size)}cm)`;
 }
 
 function color(text,grade){
@@ -2121,8 +2117,7 @@ function line(){
 }
 
 function bossColor(text,boss){
-  const side = boss && boss._battleSide === "boss" ? '<span style="color:#ff7b72;font-weight:700">[보스]</span> ' : '';
-  return side + `<span style="color:${boss.color || '#e6edf3'}">${text}</span>`;
+  return `<span style="color:${boss.color || '#e6edf3'}">${text}</span>`;
 }
 
 function hpBar(current,max,size=10){
@@ -3565,7 +3560,6 @@ function runBossBattle(){
 
   const boss = {
     ...getCurrentBoss(),
-    _battleSide:"boss",
     _enraged:false,
     _revived:false,
     _damageRecord:0,
@@ -3614,7 +3608,6 @@ function runBossBattle(){
   if(participants.length === 0) return print("전투 가능한 물고기가 없습니다.");
 
   cleanupBattleEffects(participants);
-  participants.forEach(f => f._battleSide = "ally");
 
   if(boss.id === "angra_mainyu") participants.forEach(f => ensureCombatStats(f).existence = 3);
 
@@ -3672,6 +3665,8 @@ function runBossBattle(){
 
     prepareSurtrTurn(boss, participants, battleLog);
     if(!participants.some(f => ensureCombatStats(f).hp > 0 && ensureCombatStats(f).status !== "기절")) break;
+
+    battleLog.push('<span style="color:#58a6ff;font-weight:700">내 턴</span>');
 
     for(const f of participants){
       const c = ensureCombatStats(f);
@@ -3781,6 +3776,7 @@ function runBossBattle(){
 
     bossHp = applyBossEndTurnPassive(boss, bossHp, battleLog);
     boss._currentHp = bossHp;
+    battleLog.push('<span style="color:#ff7b72;font-weight:700">보스 턴</span>');
     runBossAction(boss, participants, battleLog);
     babyDragonActions(boss, participants, battleLog);
 
@@ -3835,7 +3831,6 @@ function runBossBattle(){
 
   const resultText = buildBattleResultText(boss, participants, totalDamage, result, rewardMoney, rewardDrop, battleLog);
   const summary = buildBattleSummaryText(boss, result, rewardMoney, rewardDrop);
-  participants.forEach(f => delete f._battleSide);
 
   if(result === "처치 성공"){
     setBossCooldown(boss.id);
@@ -4706,14 +4701,11 @@ function simulatePvpBattle({leftName,leftTitle,leftTeam,rightName,rightTitle,rig
   const left = (leftTeam || []).map(f => JSON.parse(JSON.stringify(f))).slice(0,3);
   const right = (rightTeam || []).map(f => JSON.parse(JSON.stringify(f))).slice(0,3);
 
-  left.forEach(f => f._battleSide = "left");
-  right.forEach(f => f._battleSide = "right");
-
   let logText = "";
   logText += "1대1 대전 시작\n\n";
-  logText += '<span style="color:#58a6ff;font-weight:700">[파랑팀]</span> ' + pvpDisplayName(leftName,leftTitle) + "\n" + pvpTeamLine(left) + "\n\n";
+  logText += pvpDisplayName(leftName,leftTitle) + "\n" + pvpTeamLine(left) + "\n\n";
   logText += "VS\n\n";
-  logText += '<span style="color:#ff7b72;font-weight:700">[빨강팀]</span> ' + pvpDisplayName(rightName,rightTitle) + "\n" + pvpTeamLine(right) + "\n\n";
+  logText += pvpDisplayName(rightName,rightTitle) + "\n" + pvpTeamLine(right) + "\n\n";
   logText += "━━━━━━━━━━━━━━\n\n";
 
   let turn = 1;
@@ -4731,7 +4723,8 @@ function simulatePvpBattle({leftName,leftTitle,leftTeam,rightName,rightTitle,rig
 
     const ac = attackerFish.combat;
     const dc = defenderFish.combat;
-    let s = "";
+    const attackerName = attackerSide === "left" ? pvpDisplayName(leftName,leftTitle) : pvpDisplayName(rightName,rightTitle);
+    let s = '<span style="font-weight:700">' + attackerName + '의 턴</span>\n\n';
 
     if(Math.random() * 100 < Number(dc.evasion || 0)){
       s += pvpFishLabel(defenderFish) + " 회피!\n\n";
