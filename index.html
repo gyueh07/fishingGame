@@ -93,9 +93,9 @@ button:hover { background:#30363d; }
 
 <div class="box cmd">
 <b>주요 명령어</b><br>
-<span>명령어</span><span>낚시</span><span>양동이</span><span>양동이 닉네임</span><span>도감</span><span>물고기도감</span><span>코어도감</span><span>내정보</span><span>정보 1</span><span>보스전</span><span>보스정보</span><span>보스목록</span><span>보스선택 1</span><span>인벤토리</span><span>준비 1</span><span>준비해제 1</span><span>전투</span><span>전투 확인</span><span>나가기</span><span>시세</span><span>랭킹</span>
+<span>명령어</span><span>낚시</span><span>양동이</span><span>양동이 닉네임</span><span>도감</span><span>물고기도감</span><span>코어도감</span><span>내정보</span><span>정보 1</span><span>보스전</span><span>보스정보</span><span>보스정보 1</span><span>보스목록</span><span>보스선택 1</span><span>인벤토리</span><span>준비 1</span><span>준비해제 1</span><span>전투</span><span>전투 확인</span><span>나가기</span><span>시세</span><span>랭킹</span>
 <span>지갑</span><span>지갑 닉네임</span><span>메세지 닉네임</span><span>연구소</span><span>연구소1 강화</span><span>연구소2 강화</span><span>훈련소</span><span>훈련소1 강화</span><span>훈련소2 강화</span><span>훈련소3 강화</span><span>대전 닉네임</span><span>대전수락</span><span>대전거절</span><span>대전준비 1</span><span>대전해제 1</span><span>대전목록</span><span>대전준비완료</span><span>대전취소</span><span>업적</span><span>칭호</span><span>칭호 장착 번호</span><span>칭호 장착해제</span><span>회원가입</span><span>로그인</span><span>로그아웃</span><span>탈퇴</span><span>강화</span><span>일괄강화</span>
-<span>정렬 오름차순</span><span>정렬 내림차순</span><span>송금 닉네임 금액</span><span>전송 닉네임 번호</span>
+<span>정렬 등급</span><span>정렬 공격력</span><span>정렬 체력</span><span>송금 닉네임 금액</span><span>전송 닉네임 번호</span>
 <span>잠금 1</span><span>잠금해제 1</span>
 <span>판매 1</span><span>일괄판매</span>
 </div>
@@ -157,6 +157,10 @@ let bossPrepIndexes=[];
 let pendingRecoveryBattleConfirm=false;
 let pvpPrepIndexes=[];
 let onlinePresenceTimer=null;
+let fishingTimer=null;
+let fishingSessionId=0;
+let cloudRevision=0;
+let cloudSaveChain=Promise.resolve();
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
@@ -316,6 +320,17 @@ const UPDATE_NOTICES = [
       "대전에서는 기절, 회복, 보상, 재료 획득이 적용되지 않습니다.",
       "훈련소 효과는 대전에도 적용됩니다."
     ]
+  },
+  {
+    id: "2026-06-22-fenrir-surtr-1",
+    title: "펜리르/수르트 및 1500레벨 확장",
+    lines: [
+      "9단계 보스 펜리르와 10단계 보스 수르트가 추가되었습니다.",
+      "낚싯대 강화 가능 레벨이 1500까지 확장되었습니다.",
+      "1400~1450 구간에는 글레이프니르의 파편이 필요합니다.",
+      "1450~1500 구간에는 무스펠의 불꽃이 필요합니다.",
+      "영원/공허 전투 능력치 상향과 겹치지 않는 공격력·체력 별 구간이 적용됩니다."
+    ]
   }
 ];
 
@@ -339,13 +354,53 @@ let serverAlertStartTime = Date.now();
 let isOnlineActionRunning = false;
 
 function cleanNickname(name){
-  return String(name || "").trim().replace(/\s+/g, "_").slice(0, 16);
+  const cleaned = String(name || "").trim().replace(/\s+/g, "_").slice(0, 16);
+  return /^[A-Za-z0-9_\-가-힣]{1,16}$/.test(cleaned) ? cleaned : "";
 }
 
 async function hashPassword(password){
   const msg = new TextEncoder().encode(password);
   const hashBuffer = await crypto.subtle.digest("SHA-256", msg);
   return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+function createSessionToken(){
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function startUserSession(nickname){
+  const token = createSessionToken();
+  sessionStorage.setItem("textFishingSessionToken", token);
+  sessionStorage.setItem("textFishingSessionUser", nickname);
+  return hashPassword("session:" + token);
+}
+
+function clearUserSession(){
+  sessionStorage.removeItem("textFishingSessionToken");
+  sessionStorage.removeItem("textFishingSessionUser");
+}
+
+async function getCurrentSessionHash(){
+  const token = sessionStorage.getItem("textFishingSessionToken");
+  const user = sessionStorage.getItem("textFishingSessionUser");
+  if(!token || !currentUser || user !== currentUser) return "";
+  return hashPassword("session:" + token);
+}
+
+async function hasValidSession(userData){
+  const sessionHash = await getCurrentSessionHash();
+  return !!sessionHash && !!userData && userData.sessionTokenHash === sessionHash;
+}
+
+function cancelActiveFishing(){
+  fishingSessionId++;
+  if(fishingTimer !== null){
+    clearTimeout(fishingTimer);
+    fishingTimer = null;
+  }
+  isFishing = false;
 }
 
 function getGameState(){
@@ -464,6 +519,9 @@ async function checkGameVersion(){
 }
 
 function resetGameData(){
+  cancelActiveFishing();
+  clearTimeout(cloudSaveTimer);
+  cloudSaveTimer = null;
   money = 0;
   totalEarned = 0;
   rodLevel = 1;
@@ -487,7 +545,8 @@ function resetGameData(){
   isBossMenu = false;
   bossPrepIndexes = [];
   pvpPrepIndexes = [];
-  bucketSortOrder = "내림차순";
+  cloudRevision = 0;
+  bucketSortOrder = "등급";
   localStorage.setItem("textFishingBucketSortOrder", bucketSortOrder);
   localStorage.setItem("textFishingSpeciesSizeSave", JSON.stringify(getGameState()));
 }
@@ -498,19 +557,59 @@ function syncCloudSoon(){
   cloudSaveTimer = setTimeout(saveCloudData, 700);
 }
 
-async function saveCloudData(){
+function saveCloudData(){
+  cloudSaveChain = cloudSaveChain.then(saveCloudDataNow, saveCloudDataNow);
+  return cloudSaveChain;
+}
+
+async function saveCloudDataNow(){
   if(!currentUser) return;
+  const userAtStart = currentUser;
+  const sessionHash = await getCurrentSessionHash();
+  if(!sessionHash) return;
+
   try{
-    await db.collection("users").doc(currentUser).set({
-      nickname: currentUser,
-      money: Math.floor(money),
-      rodLevel,
-      title: getCurrentTitle(),
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-      gameState: getGameState()
-    }, {merge:true});
+    const ref = db.collection("users").doc(userAtStart);
+    const expectedRevision = cloudRevision;
+
+    await db.runTransaction(async tx => {
+      const snap = await tx.get(ref);
+      if(!snap.exists) throw new Error("ACCOUNT_NOT_FOUND");
+
+      const data = snap.data() || {};
+      if(data.sessionTokenHash !== sessionHash) throw new Error("SESSION_INVALID");
+
+      const serverRevision = Number(data.cloudRevision || 0);
+      if(serverRevision !== expectedRevision) throw new Error("STALE_STATE");
+
+      tx.set(ref, {
+        nickname: userAtStart,
+        money: Math.floor(money),
+        rodLevel,
+        title: getCurrentTitle(),
+        cloudRevision: serverRevision + 1,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        gameState: getGameState()
+      }, {merge:true});
+    });
+
+    if(currentUser === userAtStart) cloudRevision = expectedRevision + 1;
   }catch(e){
     console.error(e);
+    if(e.message === "STALE_STATE"){
+      await refreshMyCloudData();
+      print("다른 탭이나 기기에서 더 최신 데이터가 확인되어 현재 화면을 새로 불러왔습니다.");
+    }else if(e.message === "SESSION_INVALID"){
+      cancelActiveFishing();
+      stopServerAlertListener();
+      stopOnlinePresence();
+      currentUser = null;
+      localStorage.removeItem("textFishingCurrentUser");
+      clearUserSession();
+      resetGameData();
+      updateWallet();
+      print("다른 곳에서 다시 로그인하여 현재 세션이 종료되었습니다. 다시 로그인해주세요.");
+    }
   }
 }
 
@@ -522,7 +621,9 @@ async function refreshMyCloudData(){
     if(!snap.exists) return false;
 
     const data = snap.data();
+    if(!(await hasValidSession(data))) throw new Error("SESSION_INVALID");
     applyGameState(data.gameState);
+    cloudRevision = Number(data.cloudRevision || 0);
     migrateCombatStatsToCurrentVersion();
     localStorage.setItem("textFishingSpeciesSizeSave", JSON.stringify(getGameState()));
     updateWallet();
@@ -530,6 +631,17 @@ async function refreshMyCloudData(){
     return true;
   }catch(e){
     console.error(e);
+    if(e.message === "SESSION_INVALID"){
+      cancelActiveFishing();
+      stopServerAlertListener();
+      stopOnlinePresence();
+      currentUser = null;
+      localStorage.removeItem("textFishingCurrentUser");
+      clearUserSession();
+      resetGameData();
+      updateWallet();
+      print("로그인 세션이 만료되었습니다. 다시 로그인해주세요.");
+    }
     return false;
   }
 }
@@ -539,35 +651,47 @@ async function removeRealtimeNotification(matchText){
 
   try{
     const ref = db.collection("users").doc(currentUser);
+    const sessionHash = await getCurrentSessionHash();
+    let committedRevision = null;
+    let committedState = null;
 
     await db.runTransaction(async (tx)=>{
+      committedRevision = null;
+      committedState = null;
       const snap = await tx.get(ref);
       if(!snap.exists) return;
 
       const data = snap.data();
+      if(data.sessionTokenHash !== sessionHash) throw new Error("SESSION_INVALID");
       const state = data.gameState || {};
       const list = Array.isArray(state.notifications) ? state.notifications : [];
 
       const filtered = list.filter(msg => !String(msg).includes(matchText));
       if(filtered.length === list.length) return;
 
+      committedState = {...state, notifications: filtered};
       tx.set(ref, {
-        gameState: {
-          ...state,
-          notifications: filtered
-        },
+        cloudRevision: Number(data.cloudRevision || 0) + 1,
+        gameState: committedState,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       }, {merge:true});
+      committedRevision = Number(data.cloudRevision || 0) + 1;
     });
 
-    notifications = (notifications || []).filter(msg => !String(msg).includes(matchText));
-    saveGame();
+    if(committedRevision !== null) cloudRevision = committedRevision;
+    if(committedState){
+      applyGameState(committedState);
+      migrateCombatStatsToCurrentVersion();
+      localStorage.setItem("textFishingSpeciesSizeSave", JSON.stringify(getGameState()));
+      updateWallet();
+    }
   }catch(e){
     console.error(e);
   }
 }
 
 async function registerUser(){
+  if(currentUser) return print("먼저 로그아웃한 뒤 새 계정을 만들어주세요.");
   if(!(await checkGameVersion())) return;
   const nickname = cleanNickname(prompt("닉네임을 입력하세요."));
   if(!nickname) return print("회원가입이 취소되었습니다.");
@@ -584,22 +708,29 @@ async function registerUser(){
     }
 
     const passwordHash = await hashPassword(password);
+    const sessionTokenHash = await startUserSession(nickname);
 
     resetGameData();
 
+    await db.runTransaction(async tx => {
+      const latest = await tx.get(ref);
+      if(latest.exists) throw new Error("NICKNAME_TAKEN");
+      tx.set(ref, {
+        nickname,
+        passwordHash,
+        sessionTokenHash,
+        cloudRevision: 0,
+        money: 0,
+        rodLevel: 1,
+        title: "",
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        gameState: getGameState()
+      });
+    });
+
     currentUser = nickname;
     localStorage.setItem("textFishingCurrentUser", currentUser);
-
-    await ref.set({
-      nickname,
-      passwordHash,
-      money: 0,
-      rodLevel: 1,
-      title: "",
-      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-      gameState: getGameState()
-    });
 
     updateWallet();
     startServerAlertListener();
@@ -607,11 +738,14 @@ async function registerUser(){
     print(nickname + " 님 회원가입 완료.\n새 계정은 0원부터 시작합니다.");
   }catch(e){
     console.error(e);
-    print("회원가입 중 오류가 발생했습니다.");
+    clearUserSession();
+    if(e.message === "NICKNAME_TAKEN") print("이미 사용 중인 닉네임입니다.");
+    else print("회원가입 중 오류가 발생했습니다.");
   }
 }
 
 async function loginUser(){
+  if(currentUser) return print("다른 계정으로 로그인하려면 먼저 로그아웃해주세요.");
   if(!(await checkGameVersion())) return;
   const nickname = cleanNickname(prompt("닉네임을 입력하세요."));
   if(!nickname) return print("로그인이 취소되었습니다.");
@@ -634,10 +768,19 @@ async function loginUser(){
       return print("비밀번호가 틀렸습니다.");
     }
 
+    const sessionTokenHash = await startUserSession(nickname);
+    const nextRevision = Number(data.cloudRevision || 0) + 1;
+    await ref.set({
+      sessionTokenHash,
+      cloudRevision: nextRevision,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, {merge:true});
+
     currentUser = nickname;
     localStorage.setItem("textFishingCurrentUser", currentUser);
 
     applyGameState(data.gameState);
+    cloudRevision = nextRevision;
     migrateCombatStatsToCurrentVersion();
     updateWallet();
 
@@ -677,6 +820,7 @@ async function loginUser(){
     }
   }catch(e){
     console.error(e);
+    clearUserSession();
     print("로그인 중 오류가 발생했습니다.");
   }
 }
@@ -688,6 +832,7 @@ function logoutUser(){
   stopOnlinePresence();
   currentUser = null;
   localStorage.removeItem("textFishingCurrentUser");
+  clearUserSession();
   resetGameData();
   updateWallet();
   print(old + " 님 로그아웃 완료.\n\n다른 계정을 사용하려면 로그인 또는 회원가입을 해주세요.");
@@ -710,6 +855,8 @@ async function deleteAccount(){
     if(!snap.exists){
       currentUser = null;
       localStorage.removeItem("textFishingCurrentUser");
+      clearUserSession();
+      resetGameData();
       updateWallet();
       return print("이미 삭제된 계정입니다.");
     }
@@ -727,6 +874,7 @@ async function deleteAccount(){
     stopOnlinePresence();
     currentUser = null;
     localStorage.removeItem("textFishingCurrentUser");
+    clearUserSession();
     resetGameData();
     updateWallet();
 
@@ -786,19 +934,17 @@ async function showUpdateNoticeIfNeeded(){
   const summary = "새로운 업데이트가 " + unread.length + "개 있습니다.";
   const modalContent = buildUpdateNoticeText(unread);
 
-  log.innerHTML += title + "\n\n" + summary + "\n\n" +
-    `<button class="openBtn" id="${id}">업데이트 전체보기</button>` + "\n\n";
-  log.scrollTop = log.scrollHeight;
+  appendLogHtml(title + "\n\n" + summary + "\n\n");
+  const updateButton = document.createElement("button");
+  updateButton.className = "openBtn";
+  updateButton.id = id;
+  updateButton.textContent = "업데이트 전체보기";
+  updateButton.addEventListener("click", async () => {
+    openModal(title, modalContent);
+    await markUpdateNoticesRead(unread);
+  });
+  log.append(updateButton, document.createTextNode("\n\n"));
   updateWallet();
-
-  setTimeout(() => {
-    const btn = document.getElementById(id);
-    if(btn) btn.onclick = async () => {
-      openModal(title, modalContent);
-      await markUpdateNoticesRead(unread);
-      // 업데이트는 전체보기를 누르면 읽음 처리됩니다.
-    };
-  }, 0);
 }
 
 function buildNotificationText(list){
@@ -874,22 +1020,21 @@ async function showRanking(){
     const id1 = "btn_" + Math.random().toString(36).slice(2);
     const id2 = "btn_" + Math.random().toString(36).slice(2);
 
-    const summary =
-      "랭킹\n\n" +
-      "등록된 유저 : " + Math.max(moneyList.length, levelList.length) + "명\n\n" +
-      `<button class="openBtn" id="${id1}">지갑 랭킹 전체보기</button>\n` +
-      `<button class="openBtn" id="${id2}">레벨 랭킹 전체보기</button>`;
+    const summary = "랭킹\n\n" +
+      "등록된 유저 : " + Math.max(moneyList.length, levelList.length) + "명\n\n";
 
-    log.innerHTML += summary + "\n\n";
-    log.scrollTop = log.scrollHeight;
+    appendLogHtml(summary);
+    const b1 = document.createElement("button");
+    const b2 = document.createElement("button");
+    b1.className = b2.className = "openBtn";
+    b1.id = id1;
+    b2.id = id2;
+    b1.textContent = "지갑 랭킹 전체보기";
+    b2.textContent = "레벨 랭킹 전체보기";
+    b1.addEventListener("click", () => openModal("지갑 랭킹", moneyFull));
+    b2.addEventListener("click", () => openModal("레벨 랭킹", levelFull));
+    log.append(b1, document.createTextNode("\n"), b2, document.createTextNode("\n\n"));
     updateWallet();
-
-    setTimeout(() => {
-      const b1 = document.getElementById(id1);
-      const b2 = document.getElementById(id2);
-      if(b1) b1.onclick = () => openModal("지갑 랭킹", moneyFull);
-      if(b2) b2.onclick = () => openModal("레벨 랭킹", levelFull);
-    }, 0);
   }catch(e){
     console.error(e);
     print("랭킹을 불러오는 중 오류가 발생했습니다.\nFirestore 규칙 또는 네트워크 상태를 확인해주세요.");
@@ -1109,15 +1254,46 @@ function color(text,grade){
   const g=grades.find(x=>x.name===grade);
   return `<span style="color:${g?g.color:'#e6edf3'}">${text}</span>`;
 }
-function print(t){
-  log.innerHTML += t+"\n\n";
+function escapeHtml(text){
+  return String(text ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+function sanitizeGameHtml(value){
+  const template = document.createElement("template");
+  template.innerHTML = String(value ?? "");
+  const allowedTags = new Set(["SPAN", "B", "BR"]);
+
+  [...template.content.querySelectorAll("*")].reverse().forEach(el => {
+    if(!allowedTags.has(el.tagName)){
+      el.replaceWith(document.createTextNode(el.textContent || ""));
+      return;
+    }
+
+    [...el.attributes].forEach(attr => {
+      const isSafeColor = el.tagName === "SPAN" && attr.name === "style" &&
+        /^color:\s*#[0-9a-fA-F]{3,8}\s*;?$/.test(attr.value);
+      if(!isSafeColor) el.removeAttribute(attr.name);
+    });
+  });
+
+  return template.innerHTML;
+}
+function appendLogHtml(value){
+  log.insertAdjacentHTML("beforeend", sanitizeGameHtml(value));
   log.scrollTop=log.scrollHeight;
+}
+function print(t){
+  appendLogHtml(String(t ?? "")+"\n\n");
   updateWallet();
 }
 
 function openModal(title, content){
   document.getElementById("modalTitle").textContent = title;
-  document.getElementById("modalBody").innerHTML = content;
+  document.getElementById("modalBody").innerHTML = sanitizeGameHtml(content);
   document.getElementById("modalOverlay").style.display = "block";
 }
 function closeModal(){
@@ -1125,36 +1301,36 @@ function closeModal(){
 }
 function printPreview(title, summary, buttonText, modalContent){
   const id = "btn_" + Math.random().toString(36).slice(2);
-  log.innerHTML += title + "\n\n" + summary + "\n\n" +
-    `<button class="openBtn" id="${id}">${buttonText}</button>` + "\n\n";
-  log.scrollTop = log.scrollHeight;
+  appendLogHtml(title + "\n\n" + summary + "\n\n");
+  const btn = document.createElement("button");
+  btn.className = "openBtn";
+  btn.id = id;
+  btn.textContent = buttonText;
+  btn.addEventListener("click", () => openModal(title, modalContent));
+  log.append(btn, document.createTextNode("\n\n"));
   updateWallet();
-  setTimeout(() => {
-    const btn = document.getElementById(id);
-    if(btn) btn.onclick = () => openModal(title, modalContent);
-  }, 0);
 }
 function printWalletPreview(title, buttonText, modalContent){
   const id = "btn_" + Math.random().toString(36).slice(2);
-  log.innerHTML += title + "\n\n" +
-    `<button class="openBtn" id="${id}">${buttonText}</button>` + "\n\n";
-  log.scrollTop = log.scrollHeight;
+  appendLogHtml(title + "\n\n");
+  const btn = document.createElement("button");
+  btn.className = "openBtn";
+  btn.id = id;
+  btn.textContent = buttonText;
+  btn.addEventListener("click", () => openModal(title, modalContent));
+  log.append(btn, document.createTextNode("\n\n"));
   updateWallet();
-  setTimeout(() => {
-    const btn = document.getElementById(id);
-    if(btn) btn.onclick = () => openModal(title, modalContent);
-  }, 0);
 }
 function printSimplePreview(title, summary, buttonText, modalContent){
   const id = "btn_" + Math.random().toString(36).slice(2);
-  log.innerHTML += title + "\n\n" + summary + "\n\n" +
-    `<button class="openBtn" id="${id}">${buttonText}</button>` + "\n\n";
-  log.scrollTop = log.scrollHeight;
+  appendLogHtml(title + "\n\n" + summary + "\n\n");
+  const btn = document.createElement("button");
+  btn.className = "openBtn";
+  btn.id = id;
+  btn.textContent = buttonText;
+  btn.addEventListener("click", () => openModal(title, modalContent));
+  log.append(btn, document.createTextNode("\n\n"));
   updateWallet();
-  setTimeout(() => {
-    const btn = document.getElementById(id);
-    if(btn) btn.onclick = () => openModal(title, modalContent);
-  }, 0);
 }
 
 function formatDateTime(ms){
@@ -1789,16 +1965,16 @@ function applyTrainingBonusesToCombat(c){
 
 
 
-const COMBAT_VERSION = 12;
+const COMBAT_VERSION = 14;
 
 const combatAttackRanges = {
   "일반":[30,150], "희귀":[100,500], "영웅":[500,2000], "전설":[2000,8000],
-  "신화":[8000,20000], "초월":[20000,50000], "영원":[50000,100000], "공허":[100000,250000]
+  "신화":[8000,20000], "초월":[20000,50000], "영원":[150000,300000], "공허":[400000,800000]
 };
 
 const combatHpRanges = {
   "일반":[150,900], "희귀":[500,3000], "영웅":[2500,12000], "전설":[10000,80000],
-  "신화":[40000,180000], "초월":[120000,500000], "영원":[300000,1000000], "공허":[800000,2500000]
+  "신화":[40000,180000], "초월":[120000,500000], "영원":[600000,1500000], "공허":[2000000,5000000]
 };
 
 const materialInfo = {
@@ -1809,7 +1985,9 @@ const materialInfo = {
   "불멸의 깃털":"피닉스에게서 얻을 수 있는 꺼지지 않는 불꽃의 깃털.",
   "용왕의 심장":"바하무트에게서 얻을 수 있는 용왕의 심장.",
   "혼돈의 파편":"티아마트에게서 얻을 수 있는 혼돈의 파편.",
-  "세계뱀의 비늘":"요르문간드에게서 얻을 수 있는 거대한 비늘."
+  "세계뱀의 비늘":"요르문간드에게서 얻을 수 있는 거대한 비늘.",
+  "글레이프니르의 파편":"펜리르를 묶고 있던 마법 족쇄의 파편.",
+  "무스펠의 불꽃":"수르트의 불꽃검에서 떨어져 나온 꺼지지 않는 불꽃."
 };
 
 const bossList = [
@@ -1868,6 +2046,20 @@ const bossList = [
     reward:3000000000000, drop:"세계뱀의 비늘",
     skillName:"미드가르드 감기 / 종말의 독", skillDesc:"미드가르드 감기 25% : 공격력 2배, 세계의 고리 1단계 진행\n종말의 독 15% : 공격력 1.2배, 독 1중첩 부여\n일반 공격 60% : 공격력 1배\n독 : 턴 시작 시 최대 체력의 2% 피해, 최대 3중첩\n세계의 고리 : 3단계 완성 시 공격력 증가 한도가 50%에서 100%로 확장되고 즉시 더 강해짐",
     desc:"세계를 감싸고 있는 종말의 거대 뱀.\n몸을 뒤틀 때마다 대륙이 흔들린다."
+  },
+  {
+    id:"fenrir", name:"펜리르", grade:"초월", color:"#ffd700",
+    hp:90000000, attack:220000, dodge:18, critRate:28, critDamage:330, skillRate:35,
+    reward:10000000000000, drop:"글레이프니르의 파편",
+    skillName:"티르의 오른손 / 신을 삼키는 자", skillDesc:"티르의 오른손 20% / 신을 삼키는 자 15%",
+    desc:"신들조차 그 성장을 두려워해 마법의 족쇄 글레이프니르로 묶어둔 거대한 늑대.\n속박되는 순간 티르의 손을 물어뜯었으며, 라그나로크가 오면 족쇄를 끊고 오딘의 운명을 끝낸다."
+  },
+  {
+    id:"surtr", name:"수르트", grade:"초월", color:"#ffd700",
+    hp:180000000, attack:350000, dodge:20, critRate:30, critDamage:350, skillRate:35,
+    reward:30000000000000, drop:"무스펠의 불꽃",
+    skillName:"프레이르와의 결투 / 무스펠의 진군", skillDesc:"프레이르와의 결투 20% / 무스펠의 진군 15%",
+    desc:"불꽃의 땅 무스펠을 지키는 거인.\n라그나로크가 시작되면 불꽃의 검을 들고 무스펠의 군세를 이끌어 비프로스트를 건넌다.\n프레이르를 쓰러뜨린 뒤 아홉 세계를 불길로 뒤덮는다."
   }
 ];
 
@@ -1949,15 +2141,17 @@ function starText(tier){
 }
 
 function rollByStarRange(min,max,tier,ratio=0.5){
-  const multiplier = tier === 3 ? 20 : tier === 2 ? 7 : tier === 1 ? 3 : 1;
-  const scaledMin = min * multiplier;
-  const scaledMax = max * multiplier;
-
   if(tier === 0){
     return weightedRandomBySize(min, max, ratio);
   }
 
-  return randomInt(Math.floor(scaledMin), Math.floor(scaledMax));
+  // 별 단계의 범위가 절대 겹치지 않도록 이전 단계 최대값 다음부터 시작한다.
+  const previousMultiplier = tier === 3 ? 7 : tier === 2 ? 3 : 1;
+  const currentMultiplier = tier === 3 ? 20 : tier === 2 ? 7 : 3;
+  const scaledMin = Math.floor(max * previousMultiplier) + 1;
+  const scaledMax = Math.floor(max * currentMultiplier);
+
+  return randomInt(scaledMin, scaledMax);
 }
 function rollCritRateByStar(tier){
   if(tier === 3) return Math.round((40 + Math.random() * 10) * 10) / 10;
@@ -1988,7 +2182,7 @@ function rerollCritStats(f){
 }
 
 
-function makeCombatStats(f){
+function makeCombatStats(f, fixedStars=null){
   if(!f || f.grade === "쓰레기"){
     return {attack:0, hp:0, maxHp:0, dodge:0, critRate:0, critDamage:0, status:"전투 불가", combatVersion:COMBAT_VERSION, stars:{attack:0,hp:0,dodge:0,critRate:0,critDamage:0}};
   }
@@ -1997,7 +2191,13 @@ function makeCombatStats(f){
   const hpRange = combatHpRanges[f.grade] || [50,200];
   const ratio = getSizeRatio(f);
 
-  const stars = {
+  const stars = fixedStars ? {
+    attack:clamp(Math.floor(Number(fixedStars.attack || 0)), 0, 3),
+    hp:clamp(Math.floor(Number(fixedStars.hp || 0)), 0, 3),
+    dodge:clamp(Math.floor(Number(fixedStars.dodge || 0)), 0, 3),
+    critRate:clamp(Math.floor(Number(fixedStars.critRate || 0)), 0, 3),
+    critDamage:clamp(Math.floor(Number(fixedStars.critDamage || 0)), 0, 3)
+  } : {
     attack:rollStarTier(),
     hp:rollStarTier(),
     dodge:rollStarTier(),
@@ -2142,7 +2342,8 @@ function migrateCombatStatsToCurrentVersion(){
     const currentVersion = Number((f.combat && f.combat.combatVersion) || 0);
 
     if(currentVersion < targetVersion){
-      f.combat = makeCombatStats(f);
+      const existingStars = f.combat && f.combat.stars ? {...f.combat.stars} : null;
+      f.combat = makeCombatStats(f, existingStars);
       f.combat.combatVersion = targetVersion;
       changed = true;
     }
@@ -2348,7 +2549,7 @@ function buildBossBattleText(){
     s += "\n";
   }
   s += "드랍\n" + boss.drop + "\n\n";
-  s += "명령어\n준비 번호\n준비해제 번호\n정보 번호\n전투\n보스정보\n보스목록\n보스선택 번호\n인벤토리\n나가기\n\n";
+  s += "명령어\n준비 번호\n준비해제 번호\n정보 번호\n전투\n보스정보\n보스정보 번호\n보스목록\n보스선택 번호\n인벤토리\n나가기\n\n";
   s += line();
   return s;
 }
@@ -2359,8 +2560,7 @@ function showBossBattle(){
   print(buildBossBattleText());
 }
 
-function buildBossInfoText(){
-  const boss = getCurrentBoss();
+function buildBossInfoText(boss = getCurrentBoss()){
   const hp = getBossHp(boss);
   let s = bossColor(boss.name, boss) + " [" + boss.grade + "]\n\n";
   s += line() + "\n\n";
@@ -2384,13 +2584,21 @@ function buildBossInfoText(){
     s += "패시브 - 태초의 바다\n매 턴 최대 체력의 2% 회복\n\n";
     s += "창세의 바다 (25%)\n공격력 2배\n\n";
     s += "괴수 탄생 (15%)\n새끼 용 3마리 소환\n\n";
-    s += "새끼 용\nHP 100,000~300,000 랜덤\n공격력 10,000~30,000 랜덤\n일반 공격만 사용\n\n";
+    s += "새끼 용\nHP 100,000~300,000 랜덤\n공격력 10,000~30,000 랜덤\n\n";
     } else if(boss.id === "jormungandr"){
     s += "패시브 - 세계를 감은 자\n매 턴 공격력 5% 증가\n기본 최대 50% 증가\n세계의 고리 완성 시 최대 100% 증가\n\n";
     s += "미드가르드 감기 (25%)\n공격력 2배\n세계의 고리 1단계 진행\n\n";
     s += "세계의 고리\n3단계 완성 시 공격력 증가 한도가 100%로 확장\n완성 즉시 공격력이 더 강해짐\n\n";
     s += "종말의 독 (15%)\n공격력 1.2배\n독 1중첩 부여\n\n";
     s += "독\n턴 시작 시 최대 체력의 2% 피해\n최대 3중첩\n\n";
+    } else if(boss.id === "fenrir"){
+    s += "패시브 - 글레이프니르\n매듭 6개로 시작\n매듭이 남아 있으면 회피율 0%, 공격력 25% 감소\n치명타를 받을 때 매듭 1개 해제\n한 턴에 최대 2개 해제\n\n";
+    s += "티르의 오른손 (20%)\n공격력이 가장 높은 물고기에게 공격력 1.3배\n대상 공격력의 40%를 다음 공격에 추가\n\n";
+    s += "신을 삼키는 자 (15%)\n매듭이 모두 풀린 뒤 사용 가능\n공격력이 가장 높은 물고기는 다음 턴 행동 불가\n남은 물고기가 치명타 피해를 주면 구출 성공\n구출 실패 시 최대 체력의 50% 피해\n이후 전투에 복귀\n\n";
+    } else if(boss.id === "surtr"){
+    s += "패시브 - 불꽃의 검\n불꽃의 검 내구도 30,000,000\n받는 피해를 수르트와 불꽃의 검이 절반씩 나눠 받음\n검 파괴 후 받는 피해 30% 증가\n파괴된 검은 재점화되지 않음\n\n";
+    s += "프레이르와의 결투 (20%)\n해당 턴은 공격력이 가장 높은 물고기와 수르트만 행동\n서로 동시에 1회 공격\n물고기는 공격력 1배, 수르트는 공격력 1.8배\n양쪽 모두 회피 불가, 치명타 발동 가능\n\n";
+    s += "무스펠의 진군 (15%)\n발동한 턴에는 수르트가 공격하지 않음\n다음 턴 시작 시 모든 물고기에게 공격력 0.8배\n해당 전체 공격이 그 턴의 수르트 행동을 대신함\n\n";
     } else {
     s += "스킬\n\n";
     s += boss.skillName + (boss.skillRate ? " (" + boss.skillRate + "%)" : "") + "\n" + boss.skillDesc + "\n\n";
@@ -2406,7 +2614,18 @@ function buildBossInfoText(){
   return s;
 }
 
-function showBossInfo(){ print(buildBossInfoText()); }
+function showBossInfo(number){
+  if(number === undefined || number === null || number === ""){
+    return print(buildBossInfoText());
+  }
+
+  const index = Number(number) - 1;
+  if(!Number.isInteger(index) || index < 0 || index >= bossList.length){
+    return print("사용법 : 보스정보 번호\n\n보스목록에서 번호를 확인해주세요.");
+  }
+
+  print(buildBossInfoText(bossList[index]));
+}
 
 function buildBossListText(){
   let s = "보스목록\n\n────┬────────────────────\n";
@@ -2416,7 +2635,7 @@ function buildBossListText(){
     if(i !== bossList.length - 1) s += "────┼────────────────────\n";
   });
   s += "────┴────────────────────\n\n";
-  s += "명령어 : 보스선택 번호";
+  s += "명령어 : 보스정보 번호 / 보스선택 번호";
   return s;
 }
 
@@ -2538,16 +2757,33 @@ function getBossAttackMultiplier(boss){
     multiplier *= (1 + boost);
   }
 
+  if(boss.id === "fenrir" && Number(boss._gleipnirKnots || 0) > 0){
+    multiplier *= 0.75;
+  }
+
   return multiplier;
 }
 
 function getBossAttackValue(boss, bossAttackMultiplier=1){
-  const bonusAttack = Number(boss._bahamutAttackBonus || 0);
+  const bonusAttack = Number(boss._bahamutAttackBonus || 0) + Number(boss._fenrirNextAttackBonus || 0);
   return Math.floor((boss.attack + bonusAttack) * bossAttackMultiplier * getBossAttackMultiplier(boss));
 }
 
 function getAliveTargets(targets){
-  return targets.filter(f => ensureCombatStats(f).hp > 0 && ensureCombatStats(f).status !== "기절");
+  return targets.filter(f => {
+    const c = ensureCombatStats(f);
+    return c.hp > 0 && c.status !== "기절" && !c.devouredByFenrir;
+  });
+}
+
+function getStrongestAliveFish(targets){
+  const alive = getAliveTargets(targets);
+  return alive.sort((a,b) => ensureCombatStats(b).attack - ensureCombatStats(a).attack)[0] || null;
+}
+
+function getEffectiveBossDodge(boss){
+  if(boss.id === "fenrir" && Number(boss._gleipnirKnots || 0) > 0) return 0;
+  return Number(boss.dodge || 0);
 }
 
 function applyDamageToFish(f, damage, battleLog, prefix){
@@ -2598,6 +2834,24 @@ function bossSingleTargetAttack(boss, targets, battleLog, bossAttackMultiplier=1
   }
 }
 
+function bossAttackSpecificTarget(boss, f, battleLog, bossAttackMultiplier=1, skillName="공격", ignoreDodge=false){
+  if(!f) return false;
+  const c = ensureCombatStats(f);
+  if(c.hp <= 0 || c.status === "기절" || c.devouredByFenrir) return false;
+
+  const dodgeRoll = Math.random() * 100 < c.dodge;
+  if(dodgeRoll && !ignoreDodge){
+    battleLog.push(bossColor(boss.name, boss) + "의 " + skillName + "\n" + color(lineFish(f), f.grade) + " 회피");
+    return false;
+  }
+
+  const hit = calcDamage(getBossAttackValue(boss, bossAttackMultiplier), boss.critRate, boss.critDamage);
+  let prefix = bossColor(boss.name, boss) + "의 " + skillName + "\n";
+  if(hit.crit) prefix += "치명타!\n";
+  applyDamageToFish(f, hit.damage, battleLog, prefix);
+  return true;
+}
+
 function bossAllTargetAttack(boss, targets, battleLog, bossAttackMultiplier=1, skillName="전체 공격", options={}){
   const logs = [];
   const bossAttack = getBossAttackValue(boss, bossAttackMultiplier);
@@ -2641,6 +2895,8 @@ function bossAllTargetAttack(boss, targets, battleLog, bossAttackMultiplier=1, s
 }
 
 function applyBossPassiveBeforeFishAttack(boss, damage, battleLog=null){
+  boss._lastDamageToSword = 0;
+
   if(boss.id === "behemoth") return Math.floor(damage * 0.8);
 
   if(boss.id === "bahamut"){
@@ -2655,7 +2911,96 @@ function applyBossPassiveBeforeFishAttack(boss, damage, battleLog=null){
     }
   }
 
+  if(boss.id === "surtr"){
+    const swordHp = Math.max(0, Number(boss._flameSwordHp || 0));
+    if(swordHp > 0){
+      const swordDamage = Math.min(swordHp, Math.floor(damage * 0.5));
+      boss._flameSwordHp = Math.max(0, swordHp - swordDamage);
+      boss._lastDamageToSword = swordDamage;
+      const bossDamage = damage - swordDamage;
+
+      if(battleLog){
+        battleLog.push(bossColor(boss.name, boss) + "의 불꽃의 검\n검에 " + swordDamage.toLocaleString() + " 피해\n내구도 : " + boss._flameSwordHp.toLocaleString() + " / 30,000,000");
+      }
+
+      if(boss._flameSwordHp <= 0 && !boss._flameSwordBroken){
+        boss._flameSwordBroken = true;
+        if(battleLog) battleLog.push(bossColor(boss.name, boss) + "의 불꽃의 검이 파괴되었습니다.\n이후 수르트가 받는 피해가 30% 증가합니다.");
+      }
+      return bossDamage;
+    }
+
+    if(boss._flameSwordBroken) return Math.floor(damage * 1.3);
+  }
+
   return damage;
+}
+
+function handleFenrirCriticalHit(boss, hit, battleLog){
+  if(boss.id !== "fenrir" || !hit.crit) return;
+
+  if(boss._devouredFish) boss._devourCritThisTurn = true;
+
+  const knots = Number(boss._gleipnirKnots || 0);
+  const brokenThisTurn = Number(boss._knotsBrokenThisTurn || 0);
+  if(knots <= 0 || brokenThisTurn >= 2) return;
+
+  boss._gleipnirKnots = knots - 1;
+  boss._knotsBrokenThisTurn = brokenThisTurn + 1;
+  battleLog.push(bossColor(boss.name, boss) + "의 글레이프니르\n매듭 해제 : " + boss._gleipnirKnots + " / 6 남음");
+
+  if(boss._gleipnirKnots <= 0){
+    battleLog.push(bossColor(boss.name, boss) + "가 글레이프니르를 완전히 끊었습니다.\n공격력과 회피율이 원래 수치로 돌아가며 신을 삼키는 자를 사용할 수 있습니다.");
+  }
+}
+
+function resolveFenrirDevour(boss, bossHp, battleLog){
+  const f = boss._devouredFish;
+  if(boss.id !== "fenrir" || !f) return;
+
+  const c = ensureCombatStats(f);
+  delete c.devouredByFenrir;
+
+  if(bossHp <= 0 || boss._devourCritThisTurn){
+    battleLog.push(color(lineFish(f), f.grade) + "\n신을 삼키는 자에서 구출되었습니다.");
+  } else {
+    const damage = Math.floor(c.maxHp * 0.5);
+    applyDamageToFish(f, damage, battleLog, bossColor(boss.name, boss) + "의 신을 삼키는 자\n구출 실패\n");
+  }
+
+  boss._devouredFish = null;
+  boss._devourCritThisTurn = false;
+}
+
+function prepareSurtrTurn(boss, participants, battleLog){
+  if(boss.id !== "surtr") return;
+
+  boss._surtrTurnAction = "normal";
+  boss._surtrDuelTarget = null;
+
+  if(boss._muspelPending){
+    boss._muspelPending = false;
+    boss._surtrTurnAction = "march";
+    bossAllTargetAttack(boss, participants, battleLog, 0.8, "무스펠의 진군");
+    return;
+  }
+
+  const roll = Math.random() * 100;
+  if(roll < 20){
+    const target = getStrongestAliveFish(participants);
+    if(target){
+      boss._surtrTurnAction = "duel";
+      boss._surtrDuelTarget = target;
+      battleLog.push(bossColor(boss.name, boss) + "의 프레이르와의 결투\n" + color(lineFish(target), target.grade) + "와 1대1 결투를 시작합니다.\n다른 물고기는 이번 턴에 행동하지 않습니다.");
+    }
+    return;
+  }
+
+  if(roll < 35){
+    boss._surtrTurnAction = "prepare";
+    boss._muspelPending = true;
+    battleLog.push(bossColor(boss.name, boss) + "가 무스펠의 진군을 준비합니다.\n이번 턴에는 공격하지 않고 다음 턴 시작 시 전체 공격을 사용합니다.");
+  }
 }
 
 function applyPhoenixImmortalityIfNeeded(boss, bossHp, battleLog){
@@ -2752,7 +3097,47 @@ function babyDragonActions(boss, participants, battleLog){
   });
 }
 
+function runFenrirTyrHand(boss, participants, battleLog){
+  const target = getStrongestAliveFish(participants);
+  if(!target) return;
+
+  const hit = bossAttackSpecificTarget(boss, target, battleLog, 1.3, "티르의 오른손", false);
+  boss._fenrirNextAttackBonus = 0;
+
+  if(hit){
+    boss._fenrirNextAttackBonus = Math.floor(ensureCombatStats(target).attack * 0.4);
+    battleLog.push(bossColor(boss.name, boss) + "가 " + color(lineFish(target), target.grade) + "의 공격력 40%를 빼앗았습니다.\n다음 공격 추가 공격력 : " + boss._fenrirNextAttackBonus.toLocaleString());
+  }
+}
+
+function runFenrirDevour(boss, participants, battleLog){
+  const target = getStrongestAliveFish(participants);
+  if(!target) return;
+
+  const c = ensureCombatStats(target);
+  c.devouredByFenrir = true;
+  boss._devouredFish = target;
+  boss._devourCritThisTurn = false;
+  battleLog.push(bossColor(boss.name, boss) + "의 신을 삼키는 자\n" + color(lineFish(target), target.grade) + "를 삼켰습니다.\n다음 턴에 남은 물고기가 치명타 피해를 주면 구출할 수 있습니다.");
+}
+
 function runBossAction(boss, participants, battleLog){
+  if(boss.id === "fenrir"){
+    const r = Math.random() * 100;
+    if(r < 20) return runFenrirTyrHand(boss, participants, battleLog);
+    if(r < 35 && Number(boss._gleipnirKnots || 0) <= 0 && !boss._devouredFish){
+      return runFenrirDevour(boss, participants, battleLog);
+    }
+    bossSingleTargetAttack(boss, participants, battleLog, 1, "공격", false);
+    boss._fenrirNextAttackBonus = 0;
+    return;
+  }
+
+  if(boss.id === "surtr"){
+    if(boss._surtrTurnAction === "normal") bossSingleTargetAttack(boss, participants, battleLog, 1, "공격", false);
+    return;
+  }
+
   if(boss.id === "phoenix"){
     const r = Math.random() * 100;
     if(r < 25) return bossSingleTargetAttack(boss, participants, battleLog, 1, "재의 낙인", false, {burn:true});
@@ -2824,6 +3209,7 @@ function cleanupBattleEffects(participants){
     const c = ensureCombatStats(f);
     delete c.burnStacks;
     delete c.poisonStacks;
+    delete c.devouredByFenrir;
   });
 }
 
@@ -2865,7 +3251,18 @@ function runBossBattle(){
     _summons:[],
     _attackBoost:0,
     _ring:0,
-    _ringCompleted:false
+    _ringCompleted:false,
+    _gleipnirKnots:6,
+    _knotsBrokenThisTurn:0,
+    _fenrirNextAttackBonus:0,
+    _devouredFish:null,
+    _devourCritThisTurn:false,
+    _flameSwordHp:30000000,
+    _flameSwordBroken:false,
+    _lastDamageToSword:0,
+    _muspelPending:false,
+    _surtrTurnAction:"normal",
+    _surtrDuelTarget:null
   };
 
   if(!isBossUnlocked(boss)) return print("아직 해금되지 않은 보스입니다.");
@@ -2889,6 +3286,8 @@ function runBossBattle(){
   while(bossHp > 0 && participants.some(f => ensureCombatStats(f).hp > 0 && ensureCombatStats(f).status !== "기절") && turn <= 200){
     boss._fishDisabledThisTurn = !!boss._fishDisabledNextTurn;
     boss._fishDisabledNextTurn = false;
+    boss._knotsBrokenThisTurn = 0;
+    if(boss._devouredFish) boss._devourCritThisTurn = false;
 
     battleLog.push("턴 " + turn);
 
@@ -2908,10 +3307,23 @@ function runBossBattle(){
     applyBossStartTurnEffects(participants, battleLog);
     if(!participants.some(f => ensureCombatStats(f).hp > 0 && ensureCombatStats(f).status !== "기절")) break;
 
+    prepareSurtrTurn(boss, participants, battleLog);
+    if(!participants.some(f => ensureCombatStats(f).hp > 0 && ensureCombatStats(f).status !== "기절")) break;
+
     for(const f of participants){
       const c = ensureCombatStats(f);
       if(c.hp <= 0 || c.status === "기절") continue;
       if(bossHp <= 0) break;
+
+      if(c.devouredByFenrir){
+        battleLog.push(color(lineFish(f), f.grade) + "\n펜리르에게 삼켜져 이번 턴에 행동할 수 없습니다.");
+        continue;
+      }
+
+      if(boss.id === "surtr" && boss._surtrTurnAction === "duel" && f !== boss._surtrDuelTarget){
+        battleLog.push(color(lineFish(f), f.grade) + "\n프레이르와의 결투가 진행 중이어서 이번 턴에 행동하지 않습니다.");
+        continue;
+      }
 
       if(boss._fishDisabledThisTurn){
         battleLog.push(color(lineFish(f), f.grade) + "\n메가 플레어의 여파로 행동할 수 없습니다.");
@@ -2938,11 +3350,12 @@ function runBossBattle(){
         continue;
       }
 
-      if(Math.random() * 100 >= boss.dodge){
+      const duelAttack = boss.id === "surtr" && boss._surtrTurnAction === "duel" && f === boss._surtrDuelTarget;
+      if(duelAttack || Math.random() * 100 >= getEffectiveBossDodge(boss)){
         const hit = calcDamage(c.attack, c.critRate, c.critDamage);
         let damage = applyBossPassiveBeforeFishAttack(boss, hit.damage, battleLog);
         bossHp = Math.max(0, bossHp - damage);
-        totalDamage += damage;
+        totalDamage += damage + Number(boss._lastDamageToSword || 0);
 
         let entry = color(lineFish(f), f.grade) + " 공격\n";
         if(hit.crit) entry += "치명타!\n";
@@ -2951,11 +3364,19 @@ function runBossBattle(){
         entry += bossColor(boss.name, boss) + "\n" + hpBar(bossHp, boss.hp);
         battleLog.push(entry);
 
+        handleFenrirCriticalHit(boss, hit, battleLog);
+
         bossHp = applyPhoenixImmortalityIfNeeded(boss, bossHp, battleLog);
+
+        if(duelAttack){
+          bossAttackSpecificTarget(boss, f, battleLog, 1.8, "프레이르와의 결투", true);
+        }
       } else {
         battleLog.push(color(lineFish(f), f.grade) + " 공격\n" + bossColor(boss.name, boss) + " 회피");
       }
     }
+
+    resolveFenrirDevour(boss, bossHp, battleLog);
 
     if(bossHp <= 0) break;
 
@@ -3090,11 +3511,13 @@ function leaveBossMenu(){
 
 function isAllowedInBossMenu(cmd){
   if(!isBossMenu) return true;
-  if(cmd === "보스전" || cmd === "보스정보" || cmd === "보스목록" || cmd === "인벤토리" || cmd === "전투 확인" || cmd === "물고기도감" || cmd === "코어도감" || cmd === "전투" || cmd === "나가기" || cmd === "명령어") return true;
+  if(cmd === "보스전" || cmd === "보스정보" || cmd === "보스목록" || cmd === "인벤토리" || cmd === "양동이" || cmd === "전투 확인" || cmd === "물고기도감" || cmd === "코어도감" || cmd === "전투" || cmd === "나가기" || cmd === "명령어") return true;
   if(cmd.startsWith("보스선택 ")) return true;
+  if(cmd.startsWith("보스정보 ")) return true;
   if(cmd.startsWith("준비 ")) return true;
   if(cmd.startsWith("준비해제 ")) return true;
   if(cmd.startsWith("정보 ")) return true;
+  if(cmd.startsWith("정렬 ")) return true;
   return false;
 }
 
@@ -3105,9 +3528,13 @@ function blockedBossCommand(){
 
 function updateWallet(){
   const shownMoney = currentUser ? money : 0;
-  document.getElementById("wallet").innerHTML =
-  `현재 돈 : <b>${formatMoney(shownMoney)}</b>` +
-  `<br>계정 : <b>${currentUser ? currentUser : "로그인 안 됨"}</b>`;
+  const wallet = document.getElementById("wallet");
+  wallet.replaceChildren();
+  const moneyBold = document.createElement("b");
+  const userBold = document.createElement("b");
+  moneyBold.textContent = formatMoney(shownMoney);
+  userBold.textContent = currentUser ? currentUser : "로그인 안 됨";
+  wallet.append("현재 돈 : ", moneyBold, document.createElement("br"), "계정 : ", userBold);
 }
 
 function getUpgradeCost(level){
@@ -3146,7 +3573,7 @@ function getUpgradeSuccessRate(level){
 }
 
 function getCurrentPlayableMaxRod(){
-  return 1400;
+  return 1500;
 }
 
 function getBossMaterialRequirement(level){
@@ -3164,6 +3591,8 @@ function getBossMaterialRequirement(level){
   else if(level < 1300){ item = "용왕의 심장"; start = 1250; }
   else if(level < 1350){ item = "혼돈의 파편"; start = 1300; }
   else if(level < 1400){ item = "세계뱀의 비늘"; start = 1350; }
+  else if(level < 1450){ item = "글레이프니르의 파편"; start = 1400; }
+  else if(level < 1500){ item = "무스펠의 불꽃"; start = 1450; }
   else return "LOCKED";
 
   const amount = Math.floor((level - start) / 25) + 1;
@@ -3193,7 +3622,7 @@ function consumeRequiredBossMaterials(level){
 }
 
 function getLockedUpgradeMessage(){
-  return "현재 버전의 최대 강화 레벨은 1200입니다.\n\n추후 업데이트에서 새로운 강화 단계가 추가될 예정입니다.";
+  return "낚싯대가 최대 강화 레벨인 1500레벨에 도달했습니다.";
 }
 
 function tryUpgradeSuccess(level){
@@ -3281,13 +3710,20 @@ function addCollection(f){
 function fish(){
   if(isFishing) return print("이미 낚시 중입니다.");
   isFishing=true;
+  const castUser = currentUser;
+  const castSessionId = ++fishingSessionId;
   const t=(rodLevel-1)/(MAX_ROD-1);
   const timeMultiplier = getFishingTimeMultiplier();
   const minTime=Math.floor((15000-(7000*t)) * timeMultiplier); // Lv1 15초 -> Lv1000 8초, 연구소 적용
   const maxTime=Math.floor((30000-(15000*t)) * timeMultiplier); // Lv1 30초 -> Lv1000 15초, 연구소 적용
   const wait=Math.floor(Math.random()*(maxTime-minTime))+minTime;
   print("낚싯대를 던졌습니다.");
-  setTimeout(()=>{
+  fishingTimer = setTimeout(()=>{
+    fishingTimer = null;
+    if(castSessionId !== fishingSessionId || currentUser !== castUser){
+      isFishing = false;
+      return;
+    }
     const g=pickGrade();
     const name=pickName(g.name);
     const size=makeSizeByName(name);
@@ -3306,6 +3742,7 @@ function fish(){
         print(color("[" + g.name + "] " + name, g.name) + subjectParticle(name) + " 도주했습니다.");
         printAchievementRewards(newAchievements);
         isFishing=false;
+        fishingSessionId++;
         return;
       }
     }
@@ -3324,19 +3761,34 @@ function fish(){
     announceEternalCatch(caught);
     printAchievementRewards(newAchievements);
     isFishing=false;
+    fishingSessionId++;
   }, wait);
 }
 
 
-let bucketSortOrder = localStorage.getItem("textFishingBucketSortOrder") || "내림차순";
+let bucketSortOrder = localStorage.getItem("textFishingBucketSortOrder") || "등급";
+if(["오름차순", "내림차순", "공격력 오름차순", "공격력 내림차순", "체력 오름차순", "체력 내림차순"].includes(bucketSortOrder)){
+  if(bucketSortOrder.startsWith("공격력")) bucketSortOrder = "공격력";
+  else if(bucketSortOrder.startsWith("체력")) bucketSortOrder = "체력";
+  else bucketSortOrder = "등급";
+  localStorage.setItem("textFishingBucketSortOrder", bucketSortOrder);
+}
 
 function sortedBucketList(){
   return bucket.map((fish, originalIndex) => ({fish, originalIndex})).sort((a,b)=>{
     const gradeCompare = gradePower[b.fish.grade] - gradePower[a.fish.grade];
     const nameCompare = a.fish.name.localeCompare(b.fish.name, "ko");
+    const attackA = Number(a.fish.combat && a.fish.combat.attack || 0);
+    const attackB = Number(b.fish.combat && b.fish.combat.attack || 0);
+    const hpA = Number(a.fish.combat && (a.fish.combat.maxHp ?? a.fish.combat.hp) || 0);
+    const hpB = Number(b.fish.combat && (b.fish.combat.maxHp ?? b.fish.combat.hp) || 0);
 
-    if(bucketSortOrder === "오름차순"){
-      return -gradeCompare || nameCompare;
+    if(bucketSortOrder === "공격력"){
+      return (attackB - attackA) || (hpB - hpA) || gradeCompare || nameCompare;
+    }
+
+    if(bucketSortOrder === "체력"){
+      return (hpB - hpA) || (attackB - attackA) || gradeCompare || nameCompare;
     }
 
     return gradeCompare || nameCompare;
@@ -3361,7 +3813,11 @@ function buildBucketText(){
   const list = sortedBucketList();
   list.forEach((item,i)=>{
     const f = item.fish;
-    s+=fullWidthNumber(i+1)+"│"+color(lineFish(f), f.grade)+(f.locked?" [잠금]":"")+"\n";
+    const combat = f.combat || {};
+    let statText = "";
+    if(bucketSortOrder.startsWith("공격력")) statText = " [공격력 " + Number(combat.attack || 0).toLocaleString() + "]";
+    if(bucketSortOrder.startsWith("체력")) statText = " [체력 " + Number(combat.maxHp ?? combat.hp ?? 0).toLocaleString() + "]";
+    s+=fullWidthNumber(i+1)+"│"+color(lineFish(f), f.grade)+statText+(f.locked?" [잠금]":"")+"\n";
     if(i!==list.length-1) s+="────┼────────────────────\n";
   });
   s+="────┴────────────────────";
@@ -3426,14 +3882,17 @@ async function showBucket(){
 }
 
 function sortBucket(type){
-  if(type !== "오름차순" && type !== "내림차순"){
-    return print("정렬 명령어: 정렬 오름차순 / 정렬 내림차순");
+  const allowed = ["등급", "공격력", "체력"];
+  if(!allowed.includes(type)){
+    return print("정렬 명령어\n\n정렬 등급\n정렬 공격력\n정렬 체력");
   }
 
   bucketSortOrder = type;
   localStorage.setItem("textFishingBucketSortOrder", bucketSortOrder);
 
-  print("양동이 정렬을 " + type + "으로 설정했습니다.\n기준 : 등급 1순위, 가나다 2순위");
+  const basis = type.startsWith("공격력") ? "공격력 1순위, 체력 2순위" :
+    type.startsWith("체력") ? "최대 체력 1순위, 공격력 2순위" : "등급 1순위, 가나다 2순위";
+  print("양동이 정렬을 " + type + "으로 설정했습니다.\n기준 : " + basis);
   showBucket();
 }
 
@@ -3677,7 +4136,7 @@ function upgradeMax(){
   msg += "남은 돈 : "+formatMoney(money);
 
   if(rodLevel>=getCurrentPlayableMaxRod()){
-    msg += "\n\n현재 버전의 최대 강화 레벨에 도달했습니다.\n추후 업데이트에서 새로운 강화 단계가 추가될 예정입니다.";
+    msg += "\n\n" + getLockedUpgradeMessage();
   } else if(rodLevel<MAX_ROD && attempts>=10000){
     msg += "\n\n시도 횟수가 너무 많아 자동 중단되었습니다.";
   } else if(rodLevel>=1000 && !hasRequiredBossMaterials(rodLevel)){
@@ -4250,7 +4709,8 @@ async function finishPvpReady(){
     if(!roomSnap.exists) return print("대전방을 찾을 수 없습니다.");
 
     const room = roomSnap.data() || {};
-    if(room.status !== "accepted") return print("현재 준비할 수 없는 대전 상태입니다.");
+    const staleResolution = room.status === "resolving" && Number(room.resolvingAtMillis || 0) < Date.now() - 30000;
+    if(room.status !== "accepted" && !staleResolution) return print("현재 준비할 수 없는 대전 상태입니다.");
 
     const myKey = currentUser + "_ready";
     const myTeamKey = currentUser + "_team";
@@ -4287,15 +4747,41 @@ async function finishPvpReady(){
       return print("대전 준비완료\n\n상대 대기중...");
     }
 
-    const leftName = room.from;
-    const rightName = room.to;
+    let claimedRoom = null;
+    await db.runTransaction(async tx => {
+      claimedRoom = null;
+      const latestSnap = await tx.get(roomRef);
+      if(!latestSnap.exists) return;
+
+      const latest = latestSnap.data() || {};
+      const leftReady = !!latest[(latest.from || room.from) + "_ready"];
+      const rightReady = !!latest[(latest.to || room.to) + "_ready"];
+      const canClaim = latest.status === "accepted" ||
+        (latest.status === "resolving" && Number(latest.resolvingAtMillis || 0) < Date.now() - 30000);
+      if(!canClaim || !leftReady || !rightReady) return;
+
+      claimedRoom = latest;
+      tx.set(roomRef, {
+        status:"resolving",
+        resolvedBy:currentUser,
+        resolvingAtMillis:Date.now(),
+        updatedAtMillis:Date.now()
+      }, {merge:true});
+    });
+
+    if(!claimedRoom){
+      return print("상대 브라우저에서 대전 결과를 계산 중입니다.");
+    }
+
+    const leftName = claimedRoom.from;
+    const rightName = claimedRoom.to;
     const result = simulatePvpBattle({
       leftName,
-      leftTitle: room.fromTitle || "",
-      leftTeam: after[leftName + "_team"] || [],
+      leftTitle: claimedRoom.fromTitle || "",
+      leftTeam: claimedRoom[leftName + "_team"] || [],
       rightName,
-      rightTitle: room.toTitle || "",
-      rightTeam: after[rightName + "_team"] || []
+      rightTitle: claimedRoom.toTitle || "",
+      rightTeam: claimedRoom[rightName + "_team"] || []
     });
 
     await roomRef.set({
@@ -4353,6 +4839,7 @@ function showCommands(){
 정보 번호
 보스전
 보스정보
+보스정보 번호
 보스목록
 보스선택 번호
 인벤토리
@@ -4399,8 +4886,9 @@ function showCommands(){
 일괄강화
 
 [정렬]
-정렬 오름차순
-정렬 내림차순
+정렬 등급
+정렬 공격력
+정렬 체력
 
 [잠금]
 잠금 1
@@ -4430,8 +4918,8 @@ function buildGameInfoText(){
 
 [강화]
 
-강화 성공률 : ${rodLevel>=getCurrentPlayableMaxRod() ? "추후 업데이트 예정" : getUpgradeSuccessRate(rodLevel).toFixed(1)+"%"}
-다음 강화 비용 : ${rodLevel>=getCurrentPlayableMaxRod() ? "추후 업데이트 예정" : formatMoney(getUpgradeCost(rodLevel))}
+강화 성공률 : ${rodLevel>=getCurrentPlayableMaxRod() ? (rodLevel>=MAX_ROD ? "최대 레벨" : "보스 처치 필요") : getUpgradeSuccessRate(rodLevel).toFixed(1)+"%"}
+다음 강화 비용 : ${rodLevel>=getCurrentPlayableMaxRod() ? (rodLevel>=MAX_ROD ? "최대 레벨" : "보스 처치 후 해금") : formatMoney(getUpgradeCost(rodLevel))}
 
 [연구소]
 
@@ -4490,13 +4978,15 @@ async function sendMoney(targetNickname, amount){
   targetNickname = cleanNickname(targetNickname);
   amount = Number(amount);
 
-  if(!targetNickname || !amount || amount <= 0) return print("사용법 : 송금 닉네임 금액");
+  if(!targetNickname || !Number.isSafeInteger(amount) || amount <= 0) return print("송금 금액은 1 이상의 안전한 정수로 입력해주세요.");
   if(targetNickname === currentUser) return print("자기 자신에게는 송금할 수 없습니다.");
 
   isOnlineActionRunning = true;
 
   try{
     await refreshMyCloudData();
+    const sessionHash = await getCurrentSessionHash();
+    if(!sessionHash) throw new Error("SESSION_INVALID");
 
     if(money < amount){
       isOnlineActionRunning = false;
@@ -4515,6 +5005,7 @@ async function sendMoney(targetNickname, amount){
 
       const myData = mySnap.data();
       const targetData = targetSnap.data();
+      if(myData.sessionTokenHash !== sessionHash) throw new Error("SESSION_INVALID");
 
       const myState = myData.gameState || {};
       const targetState = targetData.gameState || {};
@@ -4529,12 +5020,14 @@ async function sendMoney(targetNickname, amount){
 
       tx.set(myRef, {
         money: currentMoney - amount,
+        cloudRevision: Number(myData.cloudRevision || 0) + 1,
         gameState: myState,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       }, {merge:true});
 
       tx.set(targetRef, {
         money: (targetData.money || 0) + amount,
+        cloudRevision: Number(targetData.cloudRevision || 0) + 1,
         gameState: {...targetState, money:(targetState.money || targetData.money || 0) + amount, notifications: targetNotifications},
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       }, {merge:true});
@@ -4576,6 +5069,8 @@ async function sendFish(targetNickname, displayNumber){
 
   try{
     await refreshMyCloudData();
+    const sessionHash = await getCurrentSessionHash();
+    if(!sessionHash) throw new Error("SESSION_INVALID");
 
     const idx = getBucketIndexByDisplayNumber(Number(displayNumber));
     if(idx < 0 || !bucket[idx]){
@@ -4602,6 +5097,7 @@ async function sendFish(targetNickname, displayNumber){
 
       const myData = mySnap.data();
       const targetData = targetSnap.data();
+      if(myData.sessionTokenHash !== sessionHash) throw new Error("SESSION_INVALID");
 
       const myState = myData.gameState || {};
       const targetState = targetData.gameState || {};
@@ -4630,11 +5126,13 @@ async function sendFish(targetNickname, displayNumber){
       targetNotifications.push("📢 알림\n\n" + formatCurrentUserName() + " 님이 " + lineFish(movedFish) + objParticle(movedFish.name) + " 전송했습니다.");
 
       tx.set(myRef, {
+        cloudRevision: Number(myData.cloudRevision || 0) + 1,
         gameState: {...myState, bucket: myBucket},
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       }, {merge:true});
 
       tx.set(targetRef, {
+        cloudRevision: Number(targetData.cloudRevision || 0) + 1,
         gameState: {...targetState, bucket: targetBucket, notifications: targetNotifications},
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       }, {merge:true});
@@ -4739,6 +5237,7 @@ async function sendMessage(targetNickname){
       targetMessages.push(payload);
 
       tx.set(targetRef, {
+        cloudRevision: Number(data.cloudRevision || 0) + 1,
         gameState: {
           ...state,
           messages: targetMessages
@@ -4787,7 +5286,7 @@ function runCommand(){
   // 예전처럼 !를 붙여도 작동하게 호환
   if(cmd.startsWith("!")) cmd = cmd.slice(1).trim();
 
-  print("> "+cmd);
+  print("> "+escapeHtml(cmd));
 
   if(cmd.startsWith("대전 ") && cmd.split(/\s+/).length === 2) return requestPvp(cmd.split(/\s+/)[1]);
   if(cmd.startsWith("대전준비 ")) return preparePvpFish(cmd.split(/\s+/)[1]);
@@ -4819,6 +5318,7 @@ function runCommand(){
   else if(cmd==="정보") print("사용법 : 내정보 / 정보 번호");
   else if(cmd==="보스전") showBossBattle();
   else if(cmd==="보스정보") showBossInfo();
+  else if(cmd.startsWith("보스정보 ")) showBossInfo(cmd.slice("보스정보 ".length).trim());
   else if(cmd==="보스목록") showBossList();
   else if(cmd.startsWith("보스선택 ")){ const p=cmd.split(" "); selectBoss(Number(p[1])); }
   else if(cmd==="인벤토리") showInventory();
@@ -4857,7 +5357,7 @@ function runCommand(){
   else if(cmd.startsWith("전송 ")){ const p=cmd.split(" "); sendFish(p[1], p[2]); }
   else if(cmd==="강화") upgradeOne();
   else if(cmd==="일괄강화" || cmd==="강화 최대") upgradeMax();
-  else if(cmd.startsWith("정렬 ")) sortBucket(cmd.split(" ")[1]);
+  else if(cmd.startsWith("정렬 ")) sortBucket(cmd.slice("정렬 ".length).trim());
   else if(cmd==="일괄판매" || cmd==="물고기 일괄판매") sellAll();
   else if(cmd.startsWith("판매 ")) sellOne(Number(cmd.split(" ")[1]));
   else if(cmd.startsWith("물고기 판매 ")) sellOne(Number(cmd.split(" ")[2]));
@@ -4867,11 +5367,15 @@ function runCommand(){
 }
 
 input.addEventListener("keydown", e=>{ if(e.key==="Enter") runCommand(); });
-window.addEventListener("beforeunload", stopOnlinePresence);
+window.addEventListener("beforeunload", () => {
+  cancelActiveFishing();
+  stopOnlinePresence();
+});
 
 loadGame();
 
 if(!currentUser){
+  clearUserSession();
   resetGameData();
   refreshMarketIfNeeded();
   saveGame();
@@ -4892,6 +5396,7 @@ if(!currentUser){
       if(!snap.exists){
         currentUser = null;
         localStorage.removeItem("textFishingCurrentUser");
+        clearUserSession();
         resetGameData();
         updateWallet();
         print("저장된 계정을 찾을 수 없습니다.\n다시 로그인해주세요.");
@@ -4899,7 +5404,17 @@ if(!currentUser){
       }
 
       const data = snap.data();
+      if(!(await hasValidSession(data))){
+        currentUser = null;
+        localStorage.removeItem("textFishingCurrentUser");
+        clearUserSession();
+        resetGameData();
+        updateWallet();
+        print("로그인 세션이 없거나 만료되었습니다. 다시 로그인해주세요.");
+        return;
+      }
       applyGameState(data.gameState);
+      cloudRevision = Number(data.cloudRevision || 0);
       migrateCombatStatsToCurrentVersion();
       updateWallet();
 
