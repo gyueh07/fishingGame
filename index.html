@@ -200,7 +200,7 @@ let cloudSaveChain=Promise.resolve();
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
-const GAME_VERSION = "2026-06-22-trait-clean-reason-v1";
+const GAME_VERSION = "2026-06-22-trait-pvp-bugfix-v1";
 const UPDATE_NOTICE_TITLE = "📢 업데이트 안내";
 const UPDATE_NOTICES = [
   {
@@ -2990,9 +2990,12 @@ function snapshotFishTraitState(f){
   const c = ensureCombatStats(f);
   return {
     hp:Number(c.hp || 0), maxHp:Number(c.maxHp || 1), status:c.status,
+    stunUntil:c.stunUntil,
     burnStacks:Number(c.burnStacks || 0), poisonStacks:Number(c.poisonStacks || 0),
     azhiCurses:c.azhiCurses ? {...c.azhiCurses} : null,
-    existence:c.existence
+    ratatoskrRedirect:c.ratatoskrRedirect,
+    existence:c.existence,
+    traitState:c._traitBattle ? JSON.parse(JSON.stringify(c._traitBattle)) : null
   };
 }
 
@@ -3000,13 +3003,15 @@ function restoreFishTraitState(f, snap){
   if(!f || !snap) return;
   const c = ensureCombatStats(f);
   c.maxHp = Math.max(1, Number(snap.maxHp || c.maxHp));
-  c.hp = Math.max(1, Math.min(c.maxHp, Number(snap.hp || 1)));
-  c.status = "정상";
-  delete c.stunUntil;
+  c.hp = Math.max(0, Math.min(c.maxHp, Number(snap.hp ?? 0)));
+  c.status = snap.status || "정상";
+  if(snap.stunUntil !== undefined) c.stunUntil=snap.stunUntil; else delete c.stunUntil;
   if(snap.burnStacks) c.burnStacks=snap.burnStacks; else delete c.burnStacks;
   if(snap.poisonStacks) c.poisonStacks=snap.poisonStacks; else delete c.poisonStacks;
   if(snap.azhiCurses) c.azhiCurses={...snap.azhiCurses}; else delete c.azhiCurses;
+  if(snap.ratatoskrRedirect !== undefined) c.ratatoskrRedirect=snap.ratatoskrRedirect; else delete c.ratatoskrRedirect;
   if(snap.existence !== undefined) c.existence=snap.existence;
+  if(snap.traitState) c._traitBattle=JSON.parse(JSON.stringify(snap.traitState));
 }
 
 function clearOneFishStatus(f){
@@ -3297,7 +3302,7 @@ function afterFishAttackTrait(f,boss,outcome,baseAttack,battleLog){
     else battleLog.push(traitUseByFish(f, "백염 "+boss._whiteFlameStacks+" / 3"));
   }
   if(f.name==="해신룡"){
-    if(st.tideHigh){dealTraitDamage(boss,getEffectiveFishAttack(f,boss)*0.4,traitUseByFish(f, "상태 : 밀물\n밀물의 파도가 이어져 추가 피해가 들어갑니다."),battleLog);st.tideStored=false;}
+    if(st.tideHigh){dealTraitDamage(boss,getEffectiveFishAttack(f,boss)*0.4,traitUseByFish(f, "밀물의 파도가 이어져 추가 피해가 들어갑니다."),battleLog);st.tideStored=false;}
     else st.tideStored=true;
   }
   if(f.name==="바다를 삼킨 태양"&&st.sunStage===5)dealTraitDamage(boss,getEffectiveFishAttack(f,boss)*2,traitUseByFish(f, "태양 주기가 태양 폭발 단계에 도달했습니다."),battleLog);
@@ -5491,15 +5496,34 @@ function simulatePvpBattle({leftName,leftTitle,leftTeam,rightName,rightTitle,rig
     return max>0?hp/max:0;
   }
   function snapshotSide(side){
-    return new Map(teamOf(side).map(f=>[f.id,{hp:f.combat.hp,maxHp:f.combat.maxHp,status:f.combat.status,whiteFlame:f.combat.whiteFlame||0}]));
+    return new Map(teamOf(side).map(f=>[f.id,{combat:JSON.parse(JSON.stringify(f.combat))}]));
   }
   function restoreSide(side,snap){
     teamOf(side).forEach(f=>{
       const s=snap&&snap.get(f.id); if(!s)return;
-      f.combat.maxHp=s.maxHp; f.combat.hp=Math.max(1,Math.min(s.maxHp,s.hp));
-      f.combat.status="정상"; delete f.combat._pvp.gone;
-      if(s.whiteFlame) f.combat.whiteFlame=s.whiteFlame; else delete f.combat.whiteFlame;
+      f.combat=JSON.parse(JSON.stringify(s.combat));
     });
+  }
+  function restorePvpHealthAndStatuses(f,snap){
+    if(!f||!snap||!snap.combat)return;
+    const past=snap.combat,c=f.combat;
+    c.hp=Math.max(0,Math.min(c.maxHp,Number(past.hp||0)));
+    c.status=past.status||"정상";
+    ["whiteFlame","burnStacks","poisonStacks","azhiCurses","ratatoskrRedirect"].forEach(key=>{
+      if(past[key]!==undefined)c[key]=JSON.parse(JSON.stringify(past[key]));
+      else delete c[key];
+    });
+  }
+  function clearOnePvpStatus(f){
+    const c=f&&f.combat;if(!c)return "";
+    if(c.whiteFlame){delete c.whiteFlame;return "백염";}
+    if(c.burnStacks){delete c.burnStacks;return "화상";}
+    if(c.poisonStacks){delete c.poisonStacks;return "독";}
+    const curse=Object.keys(c.azhiCurses||{}).find(k=>c.azhiCurses[k]);
+    if(curse){delete c.azhiCurses[curse];return "재앙";}
+    if(c.ratatoskrRedirect){delete c.ratatoskrRedirect;return "이간질";}
+    if(c.status&&c.status!=="정상"){const removed=c.status;c.status="정상";return removed;}
+    return "";
   }
   function getStormEye(side){
     if(!hasFish(side,"휘몰아치는 마음")) return null;
@@ -5520,9 +5544,9 @@ function simulatePvpBattle({leftName,leftTitle,leftTeam,rightName,rightTitle,rig
     const logs=[];
     livingSide(side).forEach(f=>{
       const c=f.combat,heal=Math.floor(c.maxHp*0.1);
-      delete c.whiteFlame;
+      const removed=clearOnePvpStatus(f);
       c.hp=Math.min(c.maxHp,c.hp+heal);
-      logs.push(pvpFishLabel(f)+" · 백염 해제 · "+heal.toLocaleString()+" 회복");
+      logs.push(pvpFishLabel(f)+(removed?" · "+removed+" 해제":"")+" · "+heal.toLocaleString()+" 회복");
     });
     return traitUseByFish(dragon, logs.join("\n"))+"\n\n";
   }
@@ -5613,8 +5637,8 @@ function simulatePvpBattle({leftName,leftTitle,leftTeam,rightName,rightTitle,rig
     }
     const wish=livingSide(side).find(f=>f.name==="호수에 비친 별");
     if(wish){
-      const st=pvpState(wish); if(!st.wish){st.wish=["crit","dodge","low"][Math.floor(Math.random()*3)];st.wishCount=0;}
-      if(st.wish===outcome){st.wishCount++;const need=outcome==="crit"?2:1;if(st.wishCount>=need){state[enemySide].sealNext=true;st.wish="";st.wishCount=0;logParts.push(traitUseByFish(wish, "소원 성취\n상대의 다음 공격 1회를 봉인합니다.")+"\n\n");}}
+      const st=pvpState(wish);
+      if(st.wish===outcome){st.wishCount++;const need=outcome==="crit"?3:outcome==="dodge"?2:1;if(st.wishCount>=need){state[enemySide].sealNext=true;st.wish="";st.wishCount=0;logParts.push(traitUseByFish(wish, "소원 성취\n상대의 다음 공격 1회를 봉인합니다.")+"\n\n");}}
     }
   }
   function afterHit(side,f,enemySide,target,logParts){
@@ -5626,7 +5650,7 @@ function simulatePvpBattle({leftName,leftTitle,leftTeam,rightName,rightTitle,rig
     }
     if(f.name==="해신룡"){
       const st=pvpState(f);
-      if(st.tideHigh&&target&&target.combat.hp>0){logParts.push(applyPvpDamage(enemySide,target,Number(f.combat.attack||0)*0.4,null,side,traitUseByFish(f, "상태 : 밀물\n밀물의 파도가 이어져 추가 피해가 들어갑니다.")));st.tideStored=false;}
+      if(st.tideHigh&&target&&target.combat.hp>0){logParts.push(applyPvpDamage(enemySide,target,Number(f.combat.attack||0)*0.4,null,side,traitUseByFish(f, "밀물의 파도가 이어져 추가 피해가 들어갑니다.")));st.tideStored=false;}
       else if(!st.tideHigh)st.tideStored=true;
     }
     if(f.name==="바다를 삼킨 태양"&&pvpState(f).sunStage===5){const t=chooseTarget(enemySide);if(t)logParts.push(applyPvpDamage(enemySide,t,Number(f.combat.attack||0)*2,null,side,traitUseByFish(f, "태양 주기가 태양 폭발 단계에 도달했습니다.")));}
@@ -5634,21 +5658,48 @@ function simulatePvpBattle({leftName,leftTitle,leftTeam,rightName,rightTitle,rig
   }
   function startPvpTurn(side){
     const stSide=state[side];
+    const turnLogs=[];
     stSide.history.push({turn,states:snapshotSide(side)}); if(stSide.history.length>5)stSide.history.shift();
-    if(turn===3&&hasFish(side,"무한한 시간"))stSide.checkpoint=snapshotSide(side);
+    if(turn===3&&hasFish(side,"무한한 시간")){
+      stSide.checkpoint=snapshotSide(side);
+      turnLogs.push(traitUseByFish(livingSide(side).find(f=>f.name==="무한한 시간"), "3턴의 파티 상태를 저장했습니다.")+"\n\n");
+    }
+    const wish=livingSide(side).find(f=>f.name==="호수에 비친 별");
+    if(wish&&!pvpState(wish).wish){
+      const st=pvpState(wish),kinds=["crit","dodge","low"];
+      st.wish=kinds[Math.floor(Math.random()*kinds.length)];st.wishCount=0;
+      const label=st.wish==="crit"?"아군 치명타 3회":st.wish==="dodge"?"아군 회피 2회":"빈사 상태로 1턴 생존";
+      turnLogs.push(traitUseByFish(wish, "목표 : "+label)+"\n\n");
+    }
     if(turn%4===0&&hasFish(side,"호수에 비친 달")){
       const past=stSide.history.find(x=>x.turn===turn-2);
       const target=livingSide(side).sort((a,b)=>a.combat.hp/a.combat.maxHp-b.combat.hp/b.combat.maxHp)[0];
-      if(past&&target&&past.states.get(target.id)){const s=past.states.get(target.id);target.combat.hp=Math.max(1,Math.min(target.combat.maxHp,s.hp));delete target.combat.whiteFlame;}
+      if(past&&target&&past.states.get(target.id)){
+        restorePvpHealthAndStatuses(target,past.states.get(target.id));
+        turnLogs.push(traitUseByFish(livingSide(side).find(f=>f.name==="호수에 비친 달"), pvpFishLabel(target)+"\n2턴 전 상태를 되찾았습니다.")+"\n\n");
+      }
     }
     livingSide(side).forEach(f=>{
       const c=f.combat,st=pvpState(f);
-      if(f.name==="이무기"&&turn>=7&&!st.ascended){st.ascended=true;c.maxHp=Math.floor(c.maxHp*1.2);c.hp=Math.min(c.maxHp,c.hp+Math.floor(c.maxHp*0.3));}
-      if(f.name==="금빛 보름달 드래곤"){st.moonPhase=(turn-1)%3;if(st.moonPhase===1){const t=livingSide(side).sort((a,b)=>a.combat.hp/a.combat.maxHp-b.combat.hp/b.combat.maxHp)[0];if(t)t.combat.hp=Math.min(t.combat.maxHp,t.combat.hp+Math.floor(t.combat.maxHp*0.1));}}
+      if(f.name==="이무기"&&turn>=7&&!st.ascended){
+        st.ascended=true;const oldMax=c.maxHp;c.maxHp=Math.floor(oldMax*1.2);c.hp=Math.min(c.maxHp,c.hp+Math.floor(oldMax*0.3));
+        turnLogs.push(traitUseByFish(f, pvpFishLabel(f)+"\n최대 체력 20% 증가, 체력 30% 회복, 공격력과 회피율이 상승했습니다.")+"\n\n");
+      }
+      if(f.name==="금빛 보름달 드래곤"){
+        st.moonPhase=(turn-1)%3;
+        if(st.moonPhase===1){
+          const t=livingSide(side).sort((a,b)=>a.combat.hp/a.combat.maxHp-b.combat.hp/b.combat.maxHp)[0];
+          if(t){const heal=Math.floor(t.combat.maxHp*0.1);t.combat.hp=Math.min(t.combat.maxHp,t.combat.hp+heal);turnLogs.push(traitUseByFish(f,"반달\n"+pvpFishLabel(t)+" "+heal.toLocaleString()+" 회복")+"\n\n");}
+        }else if(st.moonPhase===2){
+          const t=livingSide(side).find(x=>clearOnePvpStatus(x));
+          if(t)turnLogs.push(traitUseByFish(f,"보름달\n"+pvpFishLabel(t)+"의 상태이상을 해제했습니다.")+"\n\n");
+        }
+      }
       if(f.name==="불타는 마음"){st.rageStage=((turn-1)%7)+1;c.maxHp=Math.max(1,Math.floor((st.originalMaxHp||c.maxHp)*(1-Math.min(0.18,(st.rageStage-1)*0.03))));c.hp=Math.min(c.hp,c.maxHp);}
       if(f.name==="바다를 삼킨 태양")st.sunStage=((turn-1)%5)+1;
       if(f.name==="해신룡")st.tideHigh=turn%2===1;
     });
+    return turnLogs.join("");
   }
   function sideAttack(side){
     const enemySide=otherSide(side);
@@ -5662,7 +5713,7 @@ function simulatePvpBattle({leftName,leftTitle,leftTeam,rightName,rightTitle,rig
     for(const attacker of attackers){
       if(!attacker.combat||attacker.combat.hp<=0||pvpState(attacker).ashRemnant&&pvpState(attacker).ashTurns<=0)continue;
       if(state[side].sealNext){state[side].sealNext=false;sideLog.push(traitUseByFish(livingSide(enemySide).find(f=>f.name==="호수에 비친 별"), pvpFishLabel(attacker)+"의 공격이 봉인되었습니다.")+"\n\n");continue;}
-      if(state[otherSide(side)].observedId===attacker.id&&turn<=state[otherSide(side)].observedUntil&&!state[otherSide(side)].observedUsed){state[otherSide(side)].observedUsed=true;sideLog.push(traitUseByFish(livingSide(enemySide).find(f=>f.name==="수상한 기운 👁️"), pvpFishLabel(attacker)+"의 공격이 관측되어 실패했습니다.")+"\n\n");continue;}
+      if(state[otherSide(side)].observedId===attacker.id&&turn<=state[otherSide(side)].observedUntil){sideLog.push(traitUseByFish(livingSide(enemySide).find(f=>f.name==="수상한 기운 👁️"), pvpFishLabel(attacker)+"의 공격이 관측되어 실패했습니다.")+"\n\n");continue;}
       const target=chooseTarget(enemySide); if(!target)break;
       const pair=attacker.id+":"+target.id;
       if(hasFish(enemySide,"얼어붙은 마음")&&state[enemySide].lastPair===pair){state[enemySide].lastPair="";sideLog.push(traitUseByFish(livingSide(enemySide).find(f=>f.name==="얼어붙은 마음"), "같은 공격 흐름이 얼어붙어 "+pvpFishLabel(attacker)+"의 공격이 취소되었습니다.")+"\n\n");continue;}
@@ -5689,7 +5740,10 @@ function simulatePvpBattle({leftName,leftTitle,leftTeam,rightName,rightTitle,rig
       }else sideLog.push(applyPvpDamage(enemySide,target,dmg,attacker,side,pvpFishLabel(attacker)+"의 공격"));
       recordOutcome(side,crit?"crit":"hit",enemySide,sideLog);
       afterHit(side,attacker,enemySide,target,sideLog);
-      if(hasFish(enemySide,"수상한 기운 👁️")){state[enemySide].observedId=attacker.id;state[enemySide].observedUntil=turn+3;state[enemySide].observedUsed=false;}
+      if(hasFish(enemySide,"수상한 기운 👁️")&&(!state[enemySide].observedId||turn>state[enemySide].observedUntil)){
+        state[enemySide].observedId=attacker.id;state[enemySide].observedUntil=turn+3;
+        sideLog.push(traitUseByFish(livingSide(enemySide).find(f=>f.name==="수상한 기운 👁️"), pvpFishLabel(attacker)+"의 공격을 3턴 동안 관측합니다.")+"\n\n");
+      }
       if(!pvpAlive(teamOf(enemySide)))break;
     }
     if(hasFish(side,"황룡")){
@@ -5701,11 +5755,13 @@ function simulatePvpBattle({leftName,leftTitle,leftTeam,rightName,rightTitle,rig
   function finishPvpTurn(){
     ["left","right"].forEach(side=>{
       state[side].diamondUsed=false;
+      const lowLogs=[];
       livingSide(side).forEach(f=>{
         const st=pvpState(f);
         if(st.ashRemnant){st.ashTurns--;if(st.ashTurns<=0){f.combat.hp=0;st.gone=true;}}
-        if(f.combat.hp>0&&f.combat.hp/f.combat.maxHp<=0.15)recordOutcome(side,"low",otherSide(side),[]);
+        if(f.combat.hp>0&&f.combat.hp/f.combat.maxHp<=0.15)recordOutcome(side,"low",otherSide(side),lowLogs);
       });
+      if(lowLogs.length)logText+=lowLogs.join("");
       const enemy=otherSide(side);
       if(!state[side].period&&hasFish(side,"잃어버린 세 번째 편지 조각 ✉️")&&teamHpRate(enemy)<=0.1&&pvpAlive(teamOf(enemy))){state[side].period=true;state[side].periodLeft=3;logText+=traitUseByFish(livingSide(side).find(f=>f.name==="잃어버린 세 번째 편지 조각 ✉️"), sideTitle(side)+subjectParticle(sideTitle(side))+" 3턴 뒤 승리를 확정합니다. 상대 공격이 강화됩니다.")+"\n\n";}
       else if(state[side].period&&pvpAlive(teamOf(enemy))){state[side].periodLeft--;if(state[side].periodLeft<=0){teamOf(enemy).forEach(f=>f.combat.hp=0);logText+="마침표가 완성되어 "+sideTitle(side)+subjectParticle(sideTitle(side))+" 전투를 끝냈습니다.\n\n";}}
@@ -5717,7 +5773,7 @@ function simulatePvpBattle({leftName,leftTitle,leftTeam,rightName,rightTitle,rig
 
   while(pvpAlive(left) && pvpAlive(right) && turn <= 200){
     logText += "턴 " + turn + "\n\n";
-    startPvpTurn("left"); startPvpTurn("right");
+    logText += startPvpTurn("left"); logText += startPvpTurn("right");
     const order = firstSide === "left" ? ["left","right"] : ["right","left"];
     for(const side of order){
       if(!pvpAlive(teamOf(side))||!pvpAlive(teamOf(otherSide(side))))break;
