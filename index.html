@@ -136,7 +136,7 @@ const grades = [
   {name:"신화", color:"#ff4d4f", basePrice:75000000, chance:0.7},
   {name:"초월", color:"#ffd700", basePrice:1000000000, chance:0.12},
   {name:"영원", color:"#E5E4E2", basePrice:100000000000, chance:0},
-  {name:"공허", color:"#5C0011", basePrice:500000000000, chance:0}
+  {name:"공허", color:"#5C0011", basePrice:3500000000000, chance:0}
 ];
 
 const gradePower = {"쓰레기":0,"일반":1,"희귀":2,"영웅":3,"전설":4,"신화":5,"초월":6,"영원":7,"공허":8};
@@ -436,6 +436,15 @@ function normalizeUpdateNoticeIds(value, oldValue){
   return [];
 }
 
+function normalizeLegacyTitleName(value){
+  return value === "만렙" ? "천 번의 담금질" : value;
+}
+
+function normalizeLegacyTitleList(value){
+  if(!Array.isArray(value)) return [];
+  return [...new Set(value.map(normalizeLegacyTitleName))];
+}
+
 
 function normalizeBossProgress(value){
   const base = {defeated:{}, hp:{}, materials:{}, selectedBossId:"", cooldownUntil:0, cooldowns:{}};
@@ -479,15 +488,15 @@ function applyGameState(s){
   ranking=s.ranking??ranking;
   totalFishingCount=s.totalFishingCount??totalFishingCount;
   gradeCounts=s.gradeCounts??gradeCounts;
-  completedAchievements=s.completedAchievements??completedAchievements;
+  completedAchievements=normalizeLegacyTitleList(s.completedAchievements??completedAchievements);
   marketHour=s.marketHour??marketHour;
   marketRates=s.marketRates??marketRates;
   notifications=s.notifications??notifications;
   messages=Array.isArray(s.messages)?s.messages:messages;
   researchLevels=normalizeResearchLevels(s.researchLevels??researchLevels);
   trainingLevels=normalizeTrainingLevels(s.trainingLevels??trainingLevels);
-  unlockedTitles=Array.isArray(s.unlockedTitles)?s.unlockedTitles:unlockedTitles;
-  equippedTitle=s.equippedTitle??equippedTitle;
+  unlockedTitles=normalizeLegacyTitleList(Array.isArray(s.unlockedTitles)?s.unlockedTitles:unlockedTitles);
+  equippedTitle=normalizeLegacyTitleName(s.equippedTitle??equippedTitle);
   seenUpdateNoticeIds=normalizeUpdateNoticeIds(s.seenUpdateNoticeIds, s.lastSeenUpdateVersion);
   bossProgress=normalizeBossProgress(s.bossProgress??bossProgress);
   pvpPrepIndexes=Array.isArray(s.pvpPrepIndexes)?s.pvpPrepIndexes:[];
@@ -1493,7 +1502,7 @@ const achievementList = [
   {name:"중독자", desc:"1,000회 낚시", reward:20000000000, check:()=> totalFishingCount >= 1000},
   {name:"거장", desc:"10,000회 낚시", reward:2000000000000, check:()=> totalFishingCount >= 10000},
 
-  {name:"만렙", desc:"낚싯대 Lv.1000 달성", reward:0, check:()=> rodLevel >= 1000},
+  {name:"천 번의 담금질", desc:"낚싯대 Lv.1000 달성", reward:0, check:()=> rodLevel >= 1000},
   {name:"초월 낚싯대", desc:"낚싯대 Lv.1200 달성", reward:0, check:()=> rodLevel >= 1200},
   {name:"궁극 낚싯대", desc:"낚싯대 Lv.1400 달성", reward:0, check:()=> rodLevel >= 1400},
   {name:"행운아", desc:"영원 등급 1마리 수집", reward:7777777, check:()=> (gradeCounts["영원"]||0) >= 1},
@@ -1618,7 +1627,7 @@ function getOwnedTitles(){
     "베테랑",
     "중독자",
     "거장",
-    "만렙",
+    "천 번의 담금질",
     "초월 낚싯대",
     "궁극 낚싯대",
     "행운아",
@@ -1709,7 +1718,7 @@ function loadGame(){
     bucket=s.bucket??[]; collection=s.collection??{}; ranking=s.ranking??[];
     totalFishingCount=s.totalFishingCount??0;
     gradeCounts=s.gradeCounts??{};
-    completedAchievements=s.completedAchievements??s.removedUnlockedTitles??[];
+    completedAchievements=normalizeLegacyTitleList(s.completedAchievements??s.removedUnlockedTitles??[]);
 
     marketHour=s.marketHour??null;
     marketRates=s.marketRates??{};
@@ -1717,8 +1726,8 @@ function loadGame(){
     messages=Array.isArray(s.messages)?s.messages:[];
     researchLevels=normalizeResearchLevels(s.researchLevels);
     trainingLevels=normalizeTrainingLevels(s.trainingLevels);
-    unlockedTitles=Array.isArray(s.unlockedTitles)?s.unlockedTitles:[];
-    equippedTitle=s.equippedTitle??"";
+    unlockedTitles=normalizeLegacyTitleList(s.unlockedTitles);
+    equippedTitle=normalizeLegacyTitleName(s.equippedTitle??"");
     seenUpdateNoticeIds=normalizeUpdateNoticeIds(s.seenUpdateNoticeIds, s.lastSeenUpdateVersion);
     bossProgress=normalizeBossProgress(s.bossProgress);
     pvpPrepIndexes=Array.isArray(s.pvpPrepIndexes)?s.pvpPrepIndexes:[];
@@ -3564,9 +3573,9 @@ function getUpgradeCost(level){
 
 function getUpgradeSuccessRate(level){
   if(level >= MAX_ROD) return 0;
-  if(level <= 1000){
-    const t = (level - 1) / (1000 - 1);
-    return Math.max(1, 100 - (99 * t));
+  if(level < 1000){
+    const t = (level - 1) / (999 - 1);
+    return 100 - (90 * t);
   }
   const t = (level - 1000) / (1500 - 1000);
   return Math.max(20, 100 - (80 * t));
@@ -4103,6 +4112,8 @@ function upgradeMax(){
       fail++;
     }
 
+    if(before < 1000 && rodLevel >= 1000) break;
+
     if(attempts >= 10000) break;
   }
 
@@ -4137,6 +4148,8 @@ function upgradeMax(){
 
   if(rodLevel>=getCurrentPlayableMaxRod()){
     msg += "\n\n" + getLockedUpgradeMessage();
+  } else if(before < 1000 && rodLevel === 1000){
+    msg += "\n\n1000레벨에 도달하여 일괄강화를 멈췄습니다.\n계속 강화하려면 일괄강화를 다시 입력해주세요.";
   } else if(rodLevel<MAX_ROD && attempts>=10000){
     msg += "\n\n시도 횟수가 너무 많아 자동 중단되었습니다.";
   } else if(rodLevel>=1000 && !hasRequiredBossMaterials(rodLevel)){
