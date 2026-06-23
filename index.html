@@ -200,9 +200,17 @@ let cloudSaveChain=Promise.resolve();
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
-const GAME_VERSION = "2026-06-23-burning-heartbeat-v1";
+const GAME_VERSION = "2026-06-23-log-spacing-v1";
 const UPDATE_NOTICE_TITLE = "📢 업데이트 안내";
 const UPDATE_NOTICES = [
+  {
+    id: "2026-06-23-log-spacing-1",
+    title: "전투 로그 가독성 수정",
+    lines: [
+      "수르트의 불꽃의 검 분산 로그에서 피해량이 중복 표시되는 문제를 수정했습니다.",
+      "고유 특성 추가 피해와 불꽃의 검 분산 로그 사이에 문단 간격을 추가해 읽기 쉽게 정리했습니다."
+    ]
+  },
   {
     id: "2026-06-23-burning-heartbeat-1",
     title: "불타는 마음 특성 개편",
@@ -3352,12 +3360,18 @@ function dealTraitDamage(boss,raw,label,battleLog){
   const ctx=activeTraitBattle;if(!ctx||raw<=0||Number(boss._currentHp)<=0)return 0;
   const damage=applyBossPassiveBeforeFishAttack(boss,Math.max(1,Math.floor(raw)),battleLog);
   boss._currentHp=Math.max(0,Number(boss._currentHp)-damage);ctx.traitDamage+=damage+Number(boss._lastDamageToSword||0);
-  let extra = "";
   if(boss.id==="surtr" && Number(boss._lastDamageToSword||0)>0){
-    extra = "\n수르트가 피해를 불꽃의 검과 나눠 받았습니다.\n수르트 : " + damage.toLocaleString() + " 피해\n불꽃의 검 : " + Number(boss._lastDamageToSword||0).toLocaleString() + " 피해\n검 내구도 : " + Number(boss._flameSwordHp||0).toLocaleString() + " / 30,000,000";
-    if(boss._flameSwordJustBroken) extra += "\n불꽃의 검이 파괴되었습니다.\n이후 수르트가 받는 피해가 30% 증가합니다.";
+    let entry = label + "\n\n";
+    entry += "수르트가 피해를 불꽃의 검과 나눠 받았습니다.\n\n";
+    entry += "수르트 : " + damage.toLocaleString() + " 피해\n";
+    entry += "불꽃의 검 : " + Number(boss._lastDamageToSword||0).toLocaleString() + " 피해\n";
+    entry += "검 내구도 : " + Number(boss._flameSwordHp||0).toLocaleString() + " / 30,000,000";
+    if(boss._flameSwordJustBroken) entry += "\n\n불꽃의 검이 파괴되었습니다.\n이후 수르트가 받는 피해가 30% 증가합니다.";
+    entry += "\n\n" + bossColor(boss.name,boss) + "\n" + hpBar(boss._currentHp,boss.hp);
+    battleLog.push(entry);
+  } else {
+    battleLog.push(label+"\n\n"+damage.toLocaleString()+" 피해\n\n"+bossColor(boss.name,boss)+"\n"+hpBar(boss._currentHp,boss.hp));
   }
-  battleLog.push(label+"\n"+damage.toLocaleString()+" 피해"+extra+"\n\n"+bossColor(boss.name,boss)+"\n"+hpBar(boss._currentHp,boss.hp));
   startPeriodTraitIfNeeded(boss,battleLog);
   return damage;
 }
@@ -4432,11 +4446,11 @@ function runBossBattle(){
         if(hit.crit) entry += "치명타!\n";
         if(boss.id === "behemoth" && damage < hit.damage) entry += "베히모스가 피해를 감소시켰습니다.\n";
         if(boss.id === "surtr" && Number(boss._lastDamageToSword || 0) > 0){
-          entry += "수르트가 피해를 불꽃의 검과 나눠 받았습니다.\n";
+          entry += "\n수르트가 피해를 불꽃의 검과 나눠 받았습니다.\n\n";
           entry += "수르트 : " + damage.toLocaleString() + " 피해\n";
           entry += "불꽃의 검 : " + Number(boss._lastDamageToSword || 0).toLocaleString() + " 피해\n";
           entry += "검 내구도 : " + Number(boss._flameSwordHp || 0).toLocaleString() + " / 30,000,000\n";
-          if(boss._flameSwordJustBroken) entry += "불꽃의 검이 파괴되었습니다.\n이후 수르트가 받는 피해가 30% 증가합니다.\n";
+          if(boss._flameSwordJustBroken) entry += "\n불꽃의 검이 파괴되었습니다.\n이후 수르트가 받는 피해가 30% 증가합니다.\n";
           entry += "\n";
         } else {
           entry += damage.toLocaleString() + " 피해\n\n";
