@@ -162,11 +162,11 @@ const fishTraits = {
   "영롱한 다이아몬드": {name:"빛의 굴절", desc:"매턴 처음 받는 단일 대상 보스 공격의 총피해를 30% 줄이고 살아 있는 아군에게 분산합니다."},
   "얼어붙은 마음": {name:"절대영도", desc:"보스가 같은 특수 스킬을 다시 사용하면 취소하고 3턴 동안 봉인합니다."},
   "빛나는 마음": {name:"생명의 빛", desc:"아군이 받은 실제 피해의 25%를 빛으로 저장합니다. 저장된 빛이 대상 최대 체력의 30% 이상이면 그만큼 소모해 죽음을 막고 체력 30%를 회복합니다. 죽음을 막은 공격은 빛으로 저장되지 않습니다."},
-  "불타는 마음": {name:"폭주", desc:"턴마다 공격력과 치명타 피해가 증가하고 최대 체력이 감소합니다. 7턴째 완전 연소 피해를 준 뒤 초기화됩니다."},
+  "불타는 마음": {name:"화염의 심박", desc:"공격할 때마다 현재 체력을 조금 소모합니다. 체력이 낮아질수록 심박 단계가 올라 공격과 치명타가 강해지고, 심박 2 이상에서는 추가 공격이 발생할 수 있습니다. 심박 3에서는 받는 피해가 증가하지만 일정 확률로 체력을 조금 회복합니다."},
   "무한한 시간": {name:"시간의 기준점", desc:"자신의 체력이 0이 되면 전투당 1회 파티 전체를 5턴 전 상태로 되돌립니다. 보스의 체력과 상태는 되돌아가지 않습니다."},
-  "잃어버린 첫 번째 편지 조각 ✉️": {name:"삭제된 서두", desc:"보스가 처음 사용하려는 특수 스킬을 취소하고 해당 스킬을 이번 전투에서 영구 삭제합니다."},
+  "잃어버린 첫 번째 편지 조각 ✉️": {name:"삭제된 서두", desc:"보스가 처음 사용하려는 특수 스킬을 취소하고 해당 스킬을 이번 전투에서 영구 삭제합니다. 여러 마리가 있어도 전투당 하나의 스킬만 삭제할 수 있습니다."},
   "잃어버린 두 번째 편지 조각 ✉️": {name:"비어 있는 페이지", desc:"보스의 4번째 턴마다 일반 공격, 특수 스킬, 강화 행동을 모두 취소해 이번 턴에 행동하지 못하게 합니다."},
-  "잃어버린 세 번째 편지 조각 ✉️": {name:"완성되지 않은 마침표", desc:"보스 체력이 15% 이하가 되면 회복과 부활을 봉인하고 공격력을 30% 강화합니다. 아군의 명중은 문장 1개, 치명타는 2개를 기록하며 5개가 되면 보스를 처치합니다."},
+  "잃어버린 세 번째 편지 조각 ✉️": {name:"완성되지 않은 마침표", desc:"보스 체력이 15% 이하가 되면 회복을 봉인하고 공격력을 30% 강화합니다. 아군의 명중은 문장 1개, 치명타는 2개를 기록하며 5개가 되면 보스를 처치합니다."},
   "수상한 기운 👁️": {name:"뒤틀린 관측", desc:"보스의 특수 스킬을 3턴 동안 관측합니다. 같은 스킬을 다시 사용하면 효과를 뒤집어 아군을 회복하고 상태이상을 해제하며 보스를 약화합니다."},
   "기묘한 기운 🌀": {name:"수치 오류", desc:"받을 피해가 자신의 공격력보다 높을 때 20% 확률로 두 수치를 바꿉니다. 다음 공격은 원래 받을 피해가 되며 피해 제한은 없습니다."}
 };
@@ -200,9 +200,29 @@ let cloudSaveChain=Promise.resolve();
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
-const GAME_VERSION = "2026-06-23-economy-balance-v1";
+const GAME_VERSION = "2026-06-23-burning-heartbeat-v1";
 const UPDATE_NOTICE_TITLE = "📢 업데이트 안내";
 const UPDATE_NOTICES = [
+  {
+    id: "2026-06-23-burning-heartbeat-1",
+    title: "불타는 마음 특성 개편",
+    lines: [
+      "불타는 마음의 고유 특성이 폭주에서 화염의 심박으로 변경되었습니다.",
+      "공격 시 현재 체력을 조금 소모하고, 체력 비율에 따라 심박 단계가 상승합니다.",
+      "심박 2 이상에서는 추가 공격이, 심박 3에서는 낮은 체력 회복이 일정 확률로 발생합니다.",
+      "전투 중 상태 표시는 별도 로그가 아니라 해당 물고기의 공격 바로 위에 표시됩니다."
+    ]
+  },
+  {
+    id: "2026-06-23-surtr-letter-log-1",
+    title: "수르트/편지 특성 로그 수정",
+    lines: [
+      "무스펠의 진군으로 발생하는 피해가 수르트의 공격 로그와 물고기 체력바로 표시됩니다.",
+      "불꽃의 검 피해 분산은 물고기가 공격한 로그 안에서 함께 표시되도록 변경되었습니다.",
+      "잃어버린 첫 번째 편지는 여러 마리가 있어도 전투당 하나의 스킬만 삭제합니다.",
+      "잃어버린 세 번째 편지의 부활 봉인 효과가 제거되고 회복 봉인만 유지됩니다."
+    ]
+  },
   {
     id: "2026-06-23-training-rod-1750-1",
     title: "훈련소/낚싯대 확장",
@@ -2291,7 +2311,8 @@ function hpBar(current,max,size=10){
   max = Math.max(1, Number(max || 1));
   const ratio = Math.max(0, Math.min(1, current / max));
   const filled = Math.round(ratio * size);
-  return "[" + "█".repeat(filled) + "░".repeat(size - filled) + "] " + Math.floor(current).toLocaleString() + " / " + Math.floor(max).toLocaleString();
+  return "HP " + Math.floor(current).toLocaleString() + " / " + Math.floor(max).toLocaleString() + "\n" +
+    "█".repeat(filled) + "░".repeat(size - filled) + " " + Math.floor(ratio * 100) + "%";
 }
 
 function clamp(n,min,max){ return Math.max(min, Math.min(max, n)); }
@@ -2767,7 +2788,7 @@ function buildBossBattleText(){
   s += line() + "\n\n";
   s += "현재 보스\n" + bossColor(boss.name, boss) + "\n\n";
   s += "등급\n" + boss.grade + "\n\n";
-  s += "HP\n" + hpBar(hp, boss.hp) + "\n\n";
+  s += "체력\n" + hpBar(hp, boss.hp) + "\n\n";
   const cooldownLeft = getBossCooldownLeft();
   s += "쿨타임\n" + (cooldownLeft > 0 ? formatRemain(cooldownLeft) : "도전 가능") + "\n\n";
   s += "준비된 물고기\n" + bossPrepIndexes.length + " / 5\n\n";
@@ -3013,6 +3034,24 @@ function traitFishes(participants, name, aliveOnly=true){
   return (participants || []).filter(f => f && f.name === name && (!aliveOnly || ensureCombatStats(f).hp > 0));
 }
 
+function getBurningHeartStageByCombat(c){
+  if(!c || Number(c.maxHp || 0) <= 0) return 0;
+  const rate = Number(c.hp || 0) / Number(c.maxHp || 1);
+  if(rate <= 0.3) return 3;
+  if(rate <= 0.5) return 2;
+  if(rate <= 0.7) return 1;
+  return 0;
+}
+
+function consumeBurningHeartHp(c){
+  if(!c || Number(c.hp || 0) <= 1) return 0;
+  let cost = Math.floor(Number(c.hp || 0) * 0.03);
+  if(cost <= 0) cost = 1;
+  cost = Math.min(cost, Math.max(0, Number(c.hp || 0) - 1));
+  c.hp = Math.max(1, Number(c.hp || 0) - cost);
+  return cost;
+}
+
 function snapshotFishTraitState(f){
   const c = ensureCombatStats(f);
   return {
@@ -3087,7 +3126,7 @@ function registerTraitStatus(f, battleLog){
 function initTraitBattle(participants,boss,battleLog){
   setBattleDisplayNumbers(participants);
   activeTraitBattle={participants,boss,battleLog,turn:0,history:[],traitDamage:0,lastBossTarget:null,
-    deletedSkill:"",rewriteUsed:false,observedSkill:"",observedUntil:0,lightPool:0,
+    deletedSkill:"",firstLetterSealUsed:false,rewriteUsed:false,observedSkill:"",observedUntil:0,lightPool:0,
     periodStarted:false,periodSentences:0,timeRewindPending:false,timeRewindUsed:false,diamondTurn:0};
   participants.forEach(f=>{
     const c=ensureCombatStats(f);
@@ -3131,15 +3170,6 @@ function startTraitTurn(turn,boss,battleLog){
     }
   });
 
-  traitFishes(ctx.participants,"불타는 마음").forEach(f=>{
-    const c=ensureCombatStats(f),st=traitState(f),stage=((turn-1)%7)+1;
-    st.rageStage=stage;
-    const original=Number(st.originalMaxHp||c.maxHp);
-    const erosionRate=boss.id==="nidhogg"?1-Math.min(0.25,Number(boss._erosionStacks||0)*0.05):1;
-    c.maxHp=Math.max(1,Math.floor(original*(1-Math.min(0.18,(stage-1)*0.03))*erosionRate));
-    c.hp=Math.min(c.hp,c.maxHp);
-  });
-
   traitFishes(ctx.participants,"바다를 삼킨 태양").forEach(f=>traitState(f).sunStage=((turn-1)%5)+1);
   traitFishes(ctx.participants,"해신룡").forEach(f=>traitState(f).tideHigh=turn%2===1);
 
@@ -3171,7 +3201,11 @@ function getCyclingTraitStateText(f,st){
     return "상태 : " + labels[idx];
   }
   if(f.name==="불타는 마음"){
-    return "상태 : 폭주 " + Number(st.rageStage||1) + "단계";
+    const c=ensureCombatStats(f);
+    const stage=Number(st.heartbeatStage ?? getBurningHeartStageByCombat(c));
+    const label=stage>0 ? stage : "안정";
+    const cost=Number(st.heartbeatCost || 0);
+    return "상태 : 화염의 심박 " + label + (cost>0 ? "\n체력 " + cost.toLocaleString() + " 소모" : "");
   }
   if(f.name==="잿빛 밤하늘 드래곤" && st.ashRemnant){
     return "상태 : 재의 잔영 " + Number(st.ashTurns||0) + "턴";
@@ -3208,7 +3242,8 @@ function beginBossSpecial(boss,skillName,battleLog){
     battleLog.push(traitUseByFish(traitFish(ctx.participants,"잃어버린 첫 번째 편지 조각 ✉️",false), bossColor(boss.name,boss)+"의 "+subjectText(skillName)+" 이야기에서 삭제되어 사용할 수 없습니다."));
     return false;
   }
-  if(firstLetter&&!ctx.deletedSkill){
+  if(firstLetter&&!ctx.firstLetterSealUsed){
+    ctx.firstLetterSealUsed=true;
     ctx.deletedSkill=skillName;
     battleLog.push(traitUseByFish(firstLetter, bossColor(boss.name,boss)+"가 펼치려던 "+subjectText(skillName)+" 이야기에서 영구 삭제되었습니다."));
     return false;
@@ -3249,6 +3284,7 @@ function traitModifyIncoming(f,damage,battleLog,meta={}){
   let final=Math.max(0,Math.floor(damage)),afterHeal=0;
   if(!ctx) return {damage:final,afterHeal};
   if(f.name==="금빛 보름달 드래곤"&&st.moonPhase===0) final=Math.floor(final*0.8);
+  if(f.name==="불타는 마음"&&getBurningHeartStageByCombat(c)>=3) final=Math.floor(final*1.2);
   if(!meta.forced&&f.name==="기묘한 기운 🌀"&&final>Number(c.attack||0)&&Math.random()<0.2){
     st.numericStored=final; final=Math.max(0,Math.floor(c.attack));
     battleLog.push(traitUseByFish(f, "받을 피해와 공격 수치가 뒤바뀌었습니다. 다음 공격 : "+st.numericStored.toLocaleString()));
@@ -3298,7 +3334,14 @@ function traitAttackStats(f,boss,battleLog){
   if(f.name==="금빛 보름달 드래곤"&&st.moonPhase===2)multiplier*=1.5;
   if(st.scaleEmpowered){multiplier*=1.5;delete st.scaleEmpowered;}
   if(f.name==="해신룡"&&st.tideHigh)multiplier*=st.tideStored?1.7:1.4;
-  if(f.name==="불타는 마음"){multiplier*=1+Number(st.rageStage||1)*0.12;critDamage+=Number(st.rageStage||1)*20;}
+  if(f.name==="불타는 마음"){
+    st.heartbeatCost=consumeBurningHeartHp(c);
+    const stage=getBurningHeartStageByCombat(c);
+    st.heartbeatStage=stage;
+    if(stage===1){multiplier*=1.15;critDamage+=30;}
+    else if(stage===2){multiplier*=1.25;critDamage+=60;}
+    else if(stage>=3){multiplier*=1.35;critDamage+=100;}
+  }
   if(f.name==="바다를 삼킨 태양")multiplier*=[1.1,1.2,1.35,1.5,1.8][Math.max(0,Number(st.sunStage||1)-1)];
   const eye=getStormEye();if(eye&&eye!==f){extra+=Math.floor(ensureCombatStats(eye).attack*0.2);battleLog.push(traitUseByFish(traitFish(ctx.participants,"휘몰아치는 마음"), color(lineFish(eye),eye.grade)+"가 폭풍의 중심이 되어 이번 공격에 힘을 보탰습니다."));}
   if(st.numericStored){attack=st.numericStored;multiplier=1;extra=0;replaced=true;delete st.numericStored;}
@@ -3308,8 +3351,13 @@ function traitAttackStats(f,boss,battleLog){
 function dealTraitDamage(boss,raw,label,battleLog){
   const ctx=activeTraitBattle;if(!ctx||raw<=0||Number(boss._currentHp)<=0)return 0;
   const damage=applyBossPassiveBeforeFishAttack(boss,Math.max(1,Math.floor(raw)),battleLog);
-  boss._currentHp=Math.max(0,Number(boss._currentHp)-damage);ctx.traitDamage+=damage;
-  battleLog.push(label+"\n"+damage.toLocaleString()+" 피해\n\n"+bossColor(boss.name,boss)+"\n"+hpBar(boss._currentHp,boss.hp));
+  boss._currentHp=Math.max(0,Number(boss._currentHp)-damage);ctx.traitDamage+=damage+Number(boss._lastDamageToSword||0);
+  let extra = "";
+  if(boss.id==="surtr" && Number(boss._lastDamageToSword||0)>0){
+    extra = "\n수르트가 피해를 불꽃의 검과 나눠 받았습니다.\n수르트 : " + damage.toLocaleString() + " 피해\n불꽃의 검 : " + Number(boss._lastDamageToSword||0).toLocaleString() + " 피해\n검 내구도 : " + Number(boss._flameSwordHp||0).toLocaleString() + " / 30,000,000";
+    if(boss._flameSwordJustBroken) extra += "\n불꽃의 검이 파괴되었습니다.\n이후 수르트가 받는 피해가 30% 증가합니다.";
+  }
+  battleLog.push(label+"\n"+damage.toLocaleString()+" 피해"+extra+"\n\n"+bossColor(boss.name,boss)+"\n"+hpBar(boss._currentHp,boss.hp));
   startPeriodTraitIfNeeded(boss,battleLog);
   return damage;
 }
@@ -3327,7 +3375,7 @@ function startPeriodTraitIfNeeded(boss,battleLog){
   const ctx=activeTraitBattle;if(!ctx||ctx.periodStarted||Number(boss._currentHp)<=0||Number(boss._currentHp)>boss.hp*0.15)return false;
   const periodFish=traitFish(ctx.participants,"잃어버린 세 번째 편지 조각 ✉️");if(!periodFish)return false;
   ctx.periodStarted=true;ctx.periodSentences=0;boss._periodEnraged=true;boss._healingSealed=true;
-  battleLog.push(traitUseByFish(periodFish, "보스의 마지막 문장이 시작되었습니다.\n회복과 부활이 봉인됩니다.\n문장 0 / 5\n보스의 공격력이 30% 증가합니다."));
+  battleLog.push(traitUseByFish(periodFish, "보스의 마지막 문장이 시작되었습니다.\n회복이 봉인됩니다.\n문장 0 / 5\n보스의 공격력이 30% 증가합니다."));
   return true;
 }
 
@@ -3364,7 +3412,24 @@ function afterFishAttackTrait(f,boss,outcome,baseAttack,battleLog){
     else st.tideStored=true;
   }
   if(f.name==="바다를 삼킨 태양"&&st.sunStage===5)dealTraitDamage(boss,getEffectiveFishAttack(f,boss)*2,traitUseByFish(f, "태양 주기가 태양 폭발 단계에 도달했습니다."),battleLog);
-  if(f.name==="불타는 마음"&&st.rageStage===7)dealTraitDamage(boss,getEffectiveFishAttack(f,boss)*2.5,traitUseByFish(f, "폭주가 7단계에 도달해 완전 연소가 일어났습니다."),battleLog);
+  if(f.name==="불타는 마음"&&Number(st.heartbeatStage||0)>=2&&Number(boss._currentHp)>0){
+    const chance=Number(st.heartbeatStage)>=3?0.5:0.3;
+    const ratio=Number(st.heartbeatStage)>=3?0.5:0.4;
+    if(Math.random()<chance){
+      dealTraitDamage(boss,getEffectiveFishAttack(f,boss)*ratio,traitUseByFish(f, "심장이 한 번 더 뛰었습니다."),battleLog);
+    }
+  }
+  if(f.name==="불타는 마음"&&Number(st.heartbeatStage||0)>=3){
+    const c=ensureCombatStats(f);
+    const cap=Math.floor(c.maxHp*0.3);
+    if(c.hp>0&&c.hp<cap&&Math.random()<0.25){
+      const heal=Math.min(Math.floor(c.hp*0.3),cap-c.hp);
+      if(heal>0){
+        c.hp=Math.min(cap,c.hp+heal);
+        battleLog.push(traitUseByFish(f, "꺼져가던 심장이 다시 불붙었습니다.\n체력 "+heal.toLocaleString()+" 회복"));
+      }
+    }
+  }
   startPeriodTraitIfNeeded(boss,battleLog);
 }
 
@@ -3630,6 +3695,7 @@ function bossAllTargetAttack(boss, targets, battleLog, bossAttackMultiplier=1, s
 
 function applyBossPassiveBeforeFishAttack(boss, damage, battleLog=null){
   boss._lastDamageToSword = 0;
+  boss._flameSwordJustBroken = false;
 
   if(boss.id === "behemoth") return Math.floor(damage * 0.8);
 
@@ -3653,13 +3719,9 @@ function applyBossPassiveBeforeFishAttack(boss, damage, battleLog=null){
       boss._lastDamageToSword = swordDamage;
       const bossDamage = damage - swordDamage;
 
-      if(battleLog){
-        battleLog.push(bossColor(boss.name, boss) + "의 불꽃의 검\n검에 " + swordDamage.toLocaleString() + " 피해\n내구도 : " + boss._flameSwordHp.toLocaleString() + " / 30,000,000");
-      }
-
       if(boss._flameSwordHp <= 0 && !boss._flameSwordBroken){
         boss._flameSwordBroken = true;
-        if(battleLog) battleLog.push(bossColor(boss.name, boss) + "의 불꽃의 검이 파괴되었습니다.\n이후 수르트가 받는 피해가 30% 증가합니다.");
+        boss._flameSwordJustBroken = true;
       }
       return bossDamage;
     }
@@ -3715,7 +3777,7 @@ function prepareSurtrTurn(boss, participants, battleLog){
   if(boss._muspelPending){
     boss._muspelPending = false;
     boss._surtrTurnAction = "march";
-    bossAllTargetAttack(boss, participants, battleLog, 0.8, "무스펠의 진군",{isSpecial:true});
+    bossAllTargetAttack(boss, participants, battleLog, 0.8, "공격");
     return;
   }
 
@@ -3742,7 +3804,6 @@ function prepareSurtrTurn(boss, participants, battleLog){
 function applyPhoenixImmortalityIfNeeded(boss, bossHp, battleLog){
   if(boss.id !== "phoenix") return bossHp;
   if(bossHp > 0) return bossHp;
-  if(boss._healingSealed){battleLog.push(bossColor(boss.name,boss)+"의 부활이 마침표에 의해 봉인되었습니다.");return bossHp;}
   if(boss._revived) return bossHp;
 
   boss._revived = true;
@@ -4328,20 +4389,18 @@ function runBossBattle(){
         }
       }
 
-      const preAttackText=traitPreAttackText(f);
-      if(preAttackText) battleLog.push(preAttackText);
-
       const summons = getAliveSummons(boss);
       const targetSummon = summons.length > 0 ? summons[0] : null;
 
       if(targetSummon){
         const ts=traitAttackStats(f,boss,battleLog);
+        const preAttackText=traitPreAttackText(f);
         const hit = ts.replaced ? {damage:ts.attack,crit:false} : calcDamage(ts.attack, getEffectiveFishCritRate(f), ts.critDamage);
         const dealt=Math.max(1,Math.floor(hit.damage*ts.multiplier+ts.extra));
         targetSummon.hp = Math.max(0, targetSummon.hp - dealt);
         totalDamage += dealt;
 
-        let entry = color(lineFish(f), f.grade) + " 공격\n";
+        let entry = (preAttackText ? preAttackText + "\n" : "") + color(lineFish(f), f.grade) + " 공격\n";
         if(hit.crit) entry += "치명타!\n";
         entry += dealt.toLocaleString() + " 피해\n\n";
         entry += targetSummon.name + "\n" + hpBar(targetSummon.hp, targetSummon.maxHp);
@@ -4356,6 +4415,7 @@ function runBossBattle(){
       const duelAttack = boss.id === "surtr" && boss._surtrTurnAction === "duel" && f === boss._surtrDuelTarget;
       if(duelAttack || Math.random() * 100 >= getEffectiveBossDodge(boss)){
         const ts=traitAttackStats(f,boss,battleLog);
+        const preAttackText=traitPreAttackText(f);
         const hit = ts.replaced ? {damage:ts.attack,crit:false} : calcDamage(ts.attack, getEffectiveFishCritRate(f), ts.critDamage);
         const rawDamage=Math.max(1,Math.floor(hit.damage*ts.multiplier+ts.extra));
         let damage = applyBossPassiveBeforeFishAttack(boss, rawDamage, battleLog);
@@ -4368,10 +4428,19 @@ function runBossBattle(){
           boss._thisTurnTopDamageFish=f;
         }
 
-        let entry = color(lineFish(f), f.grade) + " 공격\n";
+        let entry = (preAttackText ? preAttackText + "\n" : "") + color(lineFish(f), f.grade) + " 공격\n";
         if(hit.crit) entry += "치명타!\n";
         if(boss.id === "behemoth" && damage < hit.damage) entry += "베히모스가 피해를 감소시켰습니다.\n";
-        entry += damage.toLocaleString() + " 피해\n\n";
+        if(boss.id === "surtr" && Number(boss._lastDamageToSword || 0) > 0){
+          entry += "수르트가 피해를 불꽃의 검과 나눠 받았습니다.\n";
+          entry += "수르트 : " + damage.toLocaleString() + " 피해\n";
+          entry += "불꽃의 검 : " + Number(boss._lastDamageToSword || 0).toLocaleString() + " 피해\n";
+          entry += "검 내구도 : " + Number(boss._flameSwordHp || 0).toLocaleString() + " / 30,000,000\n";
+          if(boss._flameSwordJustBroken) entry += "불꽃의 검이 파괴되었습니다.\n이후 수르트가 받는 피해가 30% 증가합니다.\n";
+          entry += "\n";
+        } else {
+          entry += damage.toLocaleString() + " 피해\n\n";
+        }
         entry += bossColor(boss.name, boss) + "\n" + hpBar(bossHp, boss.hp);
         battleLog.push(entry);
 
@@ -4403,7 +4472,9 @@ function runBossBattle(){
           bossAttackSpecificTarget(boss, f, battleLog, 1.8, "프레이르와의 결투", true);
         }
       } else {
-        battleLog.push(color(lineFish(f), f.grade) + " 공격\n" + bossColor(boss.name, boss) + " 회피");
+        traitAttackStats(f,boss,battleLog);
+        const preAttackText=traitPreAttackText(f);
+        battleLog.push((preAttackText ? preAttackText + "\n" : "") + color(lineFish(f), f.grade) + " 공격\n" + bossColor(boss.name, boss) + " 회피");
         afterFishAttackTrait(f,boss,"miss",getEffectiveFishAttack(f,boss),battleLog);
         bossHp=Math.max(0,Number(boss._currentHp));
         totalDamage+=Number(activeTraitBattle.traitDamage||0);
@@ -5563,7 +5634,7 @@ function simulatePvpBattle({leftName,leftTitle,leftTeam,rightName,rightTitle,rig
   function pvpState(f){ if(!f.combat._pvp) f.combat._pvp={originalMaxHp:f.combat.maxHp,originalCritDamage:f.combat.critDamage}; return f.combat._pvp; }
   function pvpPreAttackText(f){
     const stateText=getCyclingTraitStateText(f,pvpState(f));
-    return stateText ? stateText + "\n\n" : "";
+    return stateText ? stateText + "\n" : "";
   }
   function teamHpRate(side){
     const max=teamOf(side).reduce((s,f)=>s+Number(f.combat?.maxHp||0),0);
@@ -5629,6 +5700,7 @@ function simulatePvpBattle({leftName,leftTitle,leftTeam,rightName,rightTitle,rig
     const c=target.combat, st=pvpState(target);
     let dmg=Math.max(0,Math.floor(raw)), extraLog="";
     if(target.name==="금빛 보름달 드래곤"&&st.moonPhase===0)dmg=Math.floor(dmg*0.8);
+    if(target.name==="불타는 마음"&&getBurningHeartStageByCombat(c)>=3)dmg=Math.floor(dmg*1.2);
     if(target.name==="기묘한 기운 🌀"&&dmg>Number(c.attack||0)&&Math.random()<0.2){
       st.numericStored=dmg; dmg=Math.max(0,Math.floor(c.attack||0));
       extraLog+=traitUseByFish(target, "받을 피해와 공격 수치가 뒤바뀌었습니다.")+"\n\n";
@@ -5687,7 +5759,14 @@ function simulatePvpBattle({leftName,leftTitle,leftTeam,rightName,rightTitle,rig
     if(st.ascended)mult*=1.3;
     if(st.scaleEmpowered){mult*=1.5;delete st.scaleEmpowered;}
     if(f.name==="해신룡"&&st.tideHigh)mult*=st.tideStored?1.7:1.4;
-    if(f.name==="불타는 마음"){mult*=1+Number(st.rageStage||1)*0.12;critDmg+=Number(st.rageStage||1)*20;}
+    if(f.name==="불타는 마음"){
+      st.heartbeatCost=consumeBurningHeartHp(c);
+      const stage=getBurningHeartStageByCombat(c);
+      st.heartbeatStage=stage;
+      if(stage===1){mult*=1.15;critDmg+=30;}
+      else if(stage===2){mult*=1.25;critDmg+=60;}
+      else if(stage>=3){mult*=1.35;critDmg+=100;}
+    }
     if(f.name==="바다를 삼킨 태양")mult*=[1.1,1.2,1.35,1.5,1.8][Math.max(0,Number(st.sunStage||1)-1)];
     if(Number(st.observedWeakUntil||0)>=turn)mult*=0.8;
     const eye=getStormEye(side); if(eye&&eye!==f){extra+=Math.floor(Number(eye.combat.attack||0)*0.2);preLog+=traitUseByFish(livingSide(side).find(x=>x.name==="휘몰아치는 마음"), pvpFishLabel(eye)+"가 폭풍의 중심이 되어 이번 공격에 힘을 보탰습니다.")+"\n\n";}
@@ -5732,7 +5811,18 @@ function simulatePvpBattle({leftName,leftTitle,leftTeam,rightName,rightTitle,rig
       else if(!st.tideHigh)st.tideStored=true;
     }
     if(f.name==="바다를 삼킨 태양"&&pvpState(f).sunStage===5){const t=chooseTarget(enemySide);if(t)logParts.push(applyPvpDamage(enemySide,t,Number(f.combat.attack||0)*2,null,side,traitUseByFish(f, "태양 주기가 태양 폭발 단계에 도달했습니다.")));}
-    if(f.name==="불타는 마음"&&pvpState(f).rageStage===7){const t=chooseTarget(enemySide);if(t)logParts.push(applyPvpDamage(enemySide,t,Number(f.combat.attack||0)*2.5,null,side,traitUseByFish(f, "폭주가 7단계에 도달해 완전 연소가 일어났습니다.")));}
+    if(f.name==="불타는 마음"&&Number(pvpState(f).heartbeatStage||0)>=2){
+      const stage=Number(pvpState(f).heartbeatStage||0), t=chooseTarget(enemySide);
+      const chance=stage>=3?0.5:0.3, ratio=stage>=3?0.5:0.4;
+      if(t&&Math.random()<chance)logParts.push(applyPvpDamage(enemySide,t,Number(f.combat.attack||0)*ratio,null,side,traitUseByFish(f, "심장이 한 번 더 뛰었습니다.")));
+    }
+    if(f.name==="불타는 마음"&&Number(pvpState(f).heartbeatStage||0)>=3){
+      const c=f.combat,cap=Math.floor(c.maxHp*0.3);
+      if(c.hp>0&&c.hp<cap&&Math.random()<0.25){
+        const heal=Math.min(Math.floor(c.hp*0.3),cap-c.hp);
+        if(heal>0){c.hp=Math.min(cap,c.hp+heal);logParts.push(traitUseByFish(f, "꺼져가던 심장이 다시 불붙었습니다.\n체력 "+heal.toLocaleString()+" 회복")+"\n\n");}
+      }
+    }
   }
   function startPvpTurn(side){
     const stSide=state[side];
@@ -5769,7 +5859,6 @@ function simulatePvpBattle({leftName,leftTitle,leftTeam,rightName,rightTitle,rig
           if(t)turnLogs.push(traitUseByFish(f,"보름달\n"+pvpFishLabel(t)+"의 상태이상을 해제했습니다.")+"\n\n");
         }
       }
-      if(f.name==="불타는 마음"){st.rageStage=((turn-1)%7)+1;c.maxHp=Math.max(1,Math.floor((st.originalMaxHp||c.maxHp)*(1-Math.min(0.18,(st.rageStage-1)*0.03))));c.hp=Math.min(c.hp,c.maxHp);}
       if(f.name==="바다를 삼킨 태양")st.sunStage=((turn-1)%5)+1;
       if(f.name==="해신룡")st.tideHigh=turn%2===1;
     });
@@ -5804,8 +5893,7 @@ function simulatePvpBattle({leftName,leftTitle,leftTeam,rightName,rightTitle,rig
       const pair=attacker.id+":"+target.id;
       if(hasFish(enemySide,"얼어붙은 마음")&&state[enemySide].lastPair===pair){state[enemySide].lastPair="";sideLog.push(traitUseByFish(livingSide(enemySide).find(f=>f.name==="얼어붙은 마음"), "같은 공격 흐름이 얼어붙어 "+pvpFishLabel(attacker)+"의 공격이 취소되었습니다.")+"\n\n");continue;}
       state[enemySide].lastPair=pair;
-      sideLog.push(pvpPreAttackText(attacker));
-      const av=attackValue(side,attacker); sideLog.push(av.preLog);
+      const av=attackValue(side,attacker); sideLog.push(av.preLog); sideLog.push(pvpPreAttackText(attacker));
       let dodge=Number(target.combat.dodge||0);
       if(livingSide(side).some(f=>f.name==="바다를 삼킨 태양"&&pvpState(f).sunStage===3))dodge=0;
       if(livingSide(side).some(f=>f.name==="해신룡"&&pvpState(f).tideHigh))dodge=Math.max(0,dodge-10);
