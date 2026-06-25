@@ -200,7 +200,7 @@ let cloudSaveChain=Promise.resolve();
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
-const GAME_VERSION = "2026-06-25-pvp-log-cleanup-v1";
+const GAME_VERSION = "2026-06-25-damaged-recovery-status-v1";
 const UPDATE_NOTICE_TITLE = "📢 업데이트 안내";
 const UPDATE_NOTICES = [
   {
@@ -471,6 +471,8 @@ const db = firebase.firestore();
 
 let currentUser = localStorage.getItem("textFishingCurrentUser") || null;
 let cloudSaveTimer = null;
+let localSaveSeq = 0;
+let cloudSyncedSeq = 0;
 let serverAlertUnsubscribe = null;
 let serverAlertStartTime = Date.now();
 let isOnlineActionRunning = false;
@@ -686,6 +688,8 @@ function resetGameData(){
   pendingPresetSaleId = "";
   pendingPresetSellAll = false;
   cloudRevision = 0;
+  localSaveSeq = 0;
+  cloudSyncedSeq = 0;
   bucketSortOrder = "등급";
   localStorage.setItem("textFishingBucketSortOrder", bucketSortOrder);
   localStorage.setItem("textFishingSpeciesSizeSave", JSON.stringify(getGameState()));
@@ -693,11 +697,16 @@ function resetGameData(){
 
 function syncCloudSoon(){
   if(!currentUser) return;
+  localSaveSeq++;
   clearTimeout(cloudSaveTimer);
   cloudSaveTimer = setTimeout(saveCloudData, 700);
 }
 
 function saveCloudData(){
+  if(cloudSaveTimer !== null){
+    clearTimeout(cloudSaveTimer);
+    cloudSaveTimer = null;
+  }
   cloudSaveChain = cloudSaveChain.then(saveCloudDataNow, saveCloudDataNow);
   return cloudSaveChain;
 }
@@ -705,6 +714,7 @@ function saveCloudData(){
 async function saveCloudDataNow(){
   if(!currentUser) return;
   const userAtStart = currentUser;
+  const saveSeq = localSaveSeq;
   const sessionHash = await getCurrentSessionHash();
   if(!sessionHash) return;
 
@@ -733,11 +743,14 @@ async function saveCloudDataNow(){
       }, {merge:true});
     });
 
-    if(currentUser === userAtStart) cloudRevision = expectedRevision + 1;
+    if(currentUser === userAtStart){
+      cloudRevision = expectedRevision + 1;
+      cloudSyncedSeq = Math.max(cloudSyncedSeq, saveSeq);
+    }
   }catch(e){
     console.error(e);
     if(e.message === "STALE_STATE"){
-      await refreshMyCloudData();
+      await refreshMyCloudData(true);
       print("다른 탭이나 기기에서 더 최신 데이터가 확인되어 현재 화면을 새로 불러왔습니다.");
     }else if(e.message === "SESSION_INVALID"){
       cancelActiveFishing();
@@ -753,8 +766,13 @@ async function saveCloudDataNow(){
   }
 }
 
-async function refreshMyCloudData(){
+function hasPendingLocalCloudChanges(){
+  return !!currentUser && localSaveSeq > cloudSyncedSeq;
+}
+
+async function refreshMyCloudData(force=false){
   if(!currentUser) return false;
+  if(!force && hasPendingLocalCloudChanges()) return false;
 
   try{
     const snap = await db.collection("users").doc(currentUser).get();
@@ -764,6 +782,7 @@ async function refreshMyCloudData(){
     if(!(await hasValidSession(data))) throw new Error("SESSION_INVALID");
     applyGameState(data.gameState);
     cloudRevision = Number(data.cloudRevision || 0);
+    cloudSyncedSeq = localSaveSeq;
     migrateCombatStatsToCurrentVersion();
     localStorage.setItem("textFishingSpeciesSizeSave", JSON.stringify(getGameState()));
     updateWallet();
@@ -819,6 +838,7 @@ async function removeRealtimeNotification(matchText){
     });
 
     if(committedRevision !== null) cloudRevision = committedRevision;
+    if(committedRevision !== null) cloudSyncedSeq = localSaveSeq;
     if(committedState){
       applyGameState(committedState);
       migrateCombatStatsToCurrentVersion();
@@ -921,6 +941,7 @@ async function loginUser(){
 
     applyGameState(data.gameState);
     cloudRevision = nextRevision;
+    cloudSyncedSeq = localSaveSeq;
     migrateCombatStatsToCurrentVersion();
     updateWallet();
 
@@ -2488,15 +2509,60 @@ function formatRemain(ms){
   return m + "분 " + String(s).padStart(2, "0") + "초";
 }
 
+function hasMissingCombatHp(f){
+  if(!f || f.grade === "쓰레기") return false;
+  const c = ensureCombatStats(f);
+  return c.hp > 0 && c.maxHp > 0 && c.hp < c.maxHp;
+}
+
+function markRecoveringIfDamaged(f){
+  if(!hasMissingCombatHp(f)) return false;
+  const c = ensureCombatStats(f);
+  if(c.status === "회복 중" && c.stunUntil) return false;
+
+  const now = Date.now();
+  const maxHp = Math.max(1, Number(c.maxHp || 1));
+  const hpRate = clamp(Number(c.hp || 0) / maxHp, 0, 1);
+  const fullDuration = getStunMinutes(f.grade) * 60 * 1000;
+  const duration = Math.max(1000, Math.ceil(fullDuration * (1 - hpRate)));
+
+  c.status = "회복 중";
+  c.recoveryStartAt = now;
+  c.recoveryStartHp = Math.max(1, Math.floor(c.hp));
+  c.stunUntil = now + duration;
+  return true;
+}
+
 function updateRecoveringFishHp(f){
   const c = ensureCombatStats(f);
+  let changed = false;
 
-  if(c.status === "기절") c.status = "회복 중";
+  if(c.status === "기절"){
+    c.status = "회복 중";
+    changed = true;
+  }
+  if(c.status !== "회복 중" && hasMissingCombatHp(f)){
+    if(markRecoveringIfDamaged(f)) changed = true;
+  }
 
   if(c.status !== "회복 중") return false;
 
   const now = Date.now();
   const maxHp = Math.max(1, c.maxHp || 1);
+
+  if(c.hp >= maxHp){
+    c.hp = maxHp;
+    c.status = "정상";
+    delete c.stunUntil;
+    delete c.recoveryStartAt;
+    delete c.recoveryStartHp;
+    return true;
+  }
+
+  if(!c.stunUntil && c.hp > 0 && c.hp < maxHp){
+    c.status = "정상";
+    if(markRecoveringIfDamaged(f)) changed = true;
+  }
 
   if(!c.stunUntil){
     c.status = "정상";
@@ -2526,7 +2592,7 @@ function updateRecoveringFishHp(f){
     return true;
   }
 
-  return false;
+  return changed;
 }
 
 function recoverStunnedFish(){
@@ -2624,9 +2690,9 @@ function getCombatStatusText(f){
     if(left > 0) return "회복 중 (" + formatRemain(left) + ")";
   }
 
-  if(c.status === "회복 중") return "회복 중";
+  if(hasMissingCombatHp(f)) return "회복 중";
 
-  return "정상";
+  return c.status && c.status !== "" ? c.status : "정상";
 }
 
 
@@ -2940,12 +3006,13 @@ function prepareBossFish(displayNumber){
 
   bossPrepIndexes.push(idx);
   pendingRecoveryBattleConfirm = false;
-  saveGame();
 
   let msg = color(lineFish(f), f.grade) + "\n\n전투 준비 완료\n\n" + bossPrepIndexes.length + " / 5";
-  if(c.status === "회복 중"){
-    msg += "\n\n주의 : 이 물고기는 회복 중입니다.";
+  const statusText = getCombatStatusText(f);
+  if(statusText !== "정상"){
+    msg += "\n\n주의 : 이 물고기는 " + statusText + "입니다.";
   }
+  saveGame();
   print(msg);
 }
 
@@ -4234,13 +4301,17 @@ function cleanupBattleEffects(participants){
     delete c.azhiCurses;
     delete c.existence;
     if(c._preErosionMaxHp){
+      const oldMaxHp = Math.max(1, Number(c.maxHp || c._preErosionMaxHp || 1));
+      const hpRate = c.hp > 0 ? clamp(Number(c.hp || 0) / oldMaxHp, 0, 1) : 0;
       c.maxHp = c._preErosionMaxHp;
-      if(c.hp > 0) c.hp = c.maxHp;
+      if(c.hp > 0) c.hp = Math.max(1, Math.min(c.maxHp, Math.floor(c.maxHp * hpRate)));
       delete c._preErosionMaxHp;
     }
     if(c._traitBattle){
+      const oldMaxHp = Math.max(1, Number(c.maxHp || c._traitBattle.originalMaxHp || 1));
+      const hpRate = c.hp > 0 ? clamp(Number(c.hp || 0) / oldMaxHp, 0, 1) : 0;
       if(c._traitBattle.originalMaxHp) c.maxHp=c._traitBattle.originalMaxHp;
-      if(c.hp>0) c.hp=c.maxHp;
+      if(c.hp>0) c.hp=Math.max(1, Math.min(c.maxHp, Math.floor(c.maxHp * hpRate)));
       delete c._traitBattle;
     }
   });
@@ -4249,7 +4320,7 @@ function cleanupBattleEffects(participants){
 function getPreparedRecoveryFishes(){
   return bossPrepIndexes
     .map(idx => bucket[idx])
-    .filter(f => f && f.grade !== "쓰레기" && ensureCombatStats(f).status === "회복 중");
+    .filter(f => f && f.grade !== "쓰레기" && getCombatStatusText(f) !== "정상");
 }
 
 function runBossBattle(){
@@ -4586,15 +4657,21 @@ function runBossBattle(){
     battleLog.push(bossColor(boss.name, boss) + "의 체력이 최대 체력으로 회복되었습니다.\n다음 전투는 처음부터 다시 시작됩니다.");
   }
 
+  cleanupBattleEffects(participants);
   participants.forEach(f => {
     const c = ensureCombatStats(f);
     if(c.hp > 0){
-      c.hp = c.maxHp;
-      c.status = "정상";
-      delete c.stunUntil;
+      if(c.hp >= c.maxHp){
+        c.hp = c.maxHp;
+        c.status = "정상";
+        delete c.stunUntil;
+        delete c.recoveryStartAt;
+        delete c.recoveryStartHp;
+      }else{
+        markRecoveringIfDamaged(f);
+      }
     }
   });
-  cleanupBattleEffects(participants);
   activeTraitBattle=null;
 
   const resultText = buildBattleResultText(boss, participants, totalDamage, result, rewardMoney, rewardDrop, battleLog);
@@ -4934,6 +5011,7 @@ function fish(){
 
     checkSpecialTitles();
     saveGame();
+    if(currentUser) saveCloudData();
     print(color(lineFish(caught), caught.grade)+objParticle(caught.name)+" 낚았습니다.");
     announceEternalCatch(caught);
     printAchievementRewards(newAchievements);
@@ -4995,10 +5073,12 @@ function buildBucketText(){
   list.forEach((item,i)=>{
     const f = item.fish;
     const combat = f.combat || {};
+    const status = getCombatStatusText(f);
     let statText = "";
     if(bucketSortOrder.startsWith("공격력")) statText = " [공격력 " + Number(combat.attack || 0).toLocaleString() + "]";
     if(bucketSortOrder.startsWith("체력")) statText = " [체력 " + Number(combat.maxHp ?? combat.hp ?? 0).toLocaleString() + "]";
-    s+=fullWidthNumber(i+1)+"│"+color(lineFish(f), f.grade)+statText+(f.locked?" [잠금]":"")+"\n";
+    const statusText = status !== "정상" ? " [상태 " + status + "]" : "";
+    s+=fullWidthNumber(i+1)+"│"+color(lineFish(f), f.grade)+statText+statusText+(f.locked?" [잠금]":"")+"\n";
     if(i!==list.length-1) s+="────┼────────────────────\n";
   });
   s+="────┴────────────────────";
@@ -5051,6 +5131,7 @@ async function showOtherBucket(nickname){
 
 async function showBucket(){
   if(currentUser) await refreshMyCloudData();
+  recoverStunnedFish();
 
   if(bucket.length===0) return print("양동이가 비어있습니다.");
   const lockedCount = bucket.filter(f=>f.locked).length;
@@ -7062,6 +7143,7 @@ if(!currentUser){
       }
       applyGameState(data.gameState);
       cloudRevision = Number(data.cloudRevision || 0);
+      cloudSyncedSeq = localSaveSeq;
       migrateCombatStatsToCurrentVersion();
       updateWallet();
 
