@@ -200,7 +200,7 @@ let cloudSaveChain=Promise.resolve();
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
-const GAME_VERSION = "2026-06-25-notice-off-extra-bugfix-v1";
+const GAME_VERSION = "2026-06-25-pvp-log-cleanup-v1";
 const UPDATE_NOTICE_TITLE = "📢 업데이트 안내";
 const UPDATE_NOTICES = [
   {
@@ -5772,7 +5772,8 @@ function simulatePvpBattle({leftName,leftTitle,leftTeam,rightName,rightTitle,rig
     if(actual>0&&!pvpState(target).skipLightGain&&hasFish(defSide,"빛나는 마음"))state[defSide].lightPool+=Math.floor(actual*0.25);
     delete pvpState(target).skipLightGain;
     if(target.name==="무한한 시간"&&target.combat.hp<=0&&!state[defSide].timeUsed)state[defSide].timePending=true;
-    let s=inc.extraLog+(reason||"피해")+"\n"+inc.dmg.toLocaleString()+" 피해\n\n"+pvpFishLabel(target)+"\n"+pvpHpBar(target.combat.hp,target.combat.maxHp)+"\n\n";
+    const reasonLine = reason === "" ? "" : (reason || "피해") + "\n";
+    let s=inc.extraLog+reasonLine+inc.dmg.toLocaleString()+" 피해\n\n"+pvpFishLabel(target)+"\n"+pvpHpBar(target.combat.hp,target.combat.maxHp)+"\n\n";
     if(attacker&&actual>0){
       const st=pvpState(target);
       if(st.lastAttackerId===attacker.id&&target.name==="흑룡"){
@@ -5946,14 +5947,14 @@ function simulatePvpBattle({leftName,leftTitle,leftTeam,rightName,rightTitle,rig
       if(crit)dmg=Math.floor(dmg*av.critDmg/100);
       dmg=Math.max(1,Math.floor(dmg*av.mult+av.extra));
       if(state[enemySide].period)dmg=Math.floor(dmg*1.3);
-      sideLog.push(pvpFishLabel(attacker)+" 공격!\n"+(crit?"치명타!\n":""));
+      sideLog.push(pvpFishLabel(attacker)+" 공격!\n"+(crit?"치명타!\n\n":"\n"));
       if(hasFish(enemySide,"영롱한 다이아몬드")&&!state[enemySide].diamondUsed){
         state[enemySide].diamondUsed=true;
         const targets=livingSide(enemySide);
         const split=Math.max(1,Math.floor(dmg*0.7/targets.length));
         sideLog.push(traitUseByFish(livingSide(enemySide).find(f=>f.name==="영롱한 다이아몬드"), "피해를 30% 줄이고 분산합니다.")+"\n\n");
         targets.forEach(t=>sideLog.push(applyPvpDamage(enemySide,t,split,attacker,side,pvpFishLabel(attacker)+"의 굴절 공격")));
-      }else sideLog.push(applyPvpDamage(enemySide,target,dmg,attacker,side,pvpFishLabel(attacker)+"의 공격"));
+      }else sideLog.push(applyPvpDamage(enemySide,target,dmg,attacker,side,""));
       recordOutcome(side,crit?"crit":"hit",enemySide,sideLog);
       if(attacker.combat&&attacker.combat.hp>0) afterHit(side,attacker,enemySide,target,sideLog);
       if(hasFish(enemySide,"수상한 기운 👁️")&&(!state[enemySide].observedId||turn>state[enemySide].observedUntil)){
