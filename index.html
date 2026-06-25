@@ -200,9 +200,27 @@ let cloudSaveChain=Promise.resolve();
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
-const GAME_VERSION = "2026-06-23-log-spacing-v1";
+const GAME_VERSION = "2026-06-25-notice-off-extra-bugfix-v1";
 const UPDATE_NOTICE_TITLE = "📢 업데이트 안내";
 const UPDATE_NOTICES = [
+  {
+    id: "2026-06-25-battle-pvp-bugfix-1",
+    title: "보스전/PVP 전투 버그 수정",
+    lines: [
+      "수르트가 프레이르와의 결투 중 쓰러진 뒤에도 반격할 수 있던 문제를 수정했습니다.",
+      "PVP에서 흑룡의 역린 반사 피해가 사망 방지, 시간 되감기 같은 방어 효과를 건너뛰던 문제를 수정했습니다.",
+      "PVP에서 반사 피해로 쓰러진 공격자가 추가 공격 같은 후속 고유효과를 이어서 발동할 수 있던 문제를 수정했습니다."
+    ]
+  },
+  {
+    id: "2026-06-25-nidhogg-achievement-fix-1",
+    title: "업적/니드호그 전투 수정",
+    lines: [
+      "업적에서 초월 낚싯대와 궁극 낚싯대를 제거했습니다.",
+      "제거된 업적이 저장 데이터에 남아 있어도 업적 달성률에는 포함되지 않도록 수정했습니다.",
+      "니드호그의 뿌리 연결 전투 중 쓰러진 아군이 다음 턴에 다시 행동할 수 있던 문제를 수정했습니다."
+    ]
+  },
   {
     id: "2026-06-23-log-spacing-1",
     title: "전투 로그 가독성 수정",
@@ -1010,7 +1028,7 @@ async function deleteAccount(){
 
 function getUnreadUpdateNotices(){
   seenUpdateNoticeIds = normalizeUpdateNoticeIds(seenUpdateNoticeIds, "");
-  return UPDATE_NOTICES.filter(n => !seenUpdateNoticeIds.includes(n.id));
+  return [];
 }
 
 function buildUpdateNoticeText(list){
@@ -1048,25 +1066,7 @@ async function markUpdateNoticesRead(list){
 }
 
 async function showUpdateNoticeIfNeeded(){
-  const unread = getUnreadUpdateNotices();
-  if(unread.length === 0) return;
-
-  const id = "btn_" + Math.random().toString(36).slice(2);
-  const title = UPDATE_NOTICE_TITLE;
-  const summary = "새로운 업데이트가 " + unread.length + "개 있습니다.";
-  const modalContent = buildUpdateNoticeText(unread);
-
-  appendLogHtml(title + "\n\n" + summary + "\n\n");
-  const updateButton = document.createElement("button");
-  updateButton.className = "openBtn";
-  updateButton.id = id;
-  updateButton.textContent = "업데이트 전체보기";
-  updateButton.addEventListener("click", async () => {
-    openModal(title, modalContent);
-    await markUpdateNoticesRead(unread);
-  });
-  log.append(updateButton, document.createTextNode("\n\n"));
-  updateWallet();
+  return;
 }
 
 function buildNotificationText(list){
@@ -1686,8 +1686,6 @@ const achievementList = [
   {name:"거장", desc:"10,000회 낚시", reward:2000000000000, check:()=> totalFishingCount >= 10000},
 
   {name:"천 번의 담금질", desc:"낚싯대 Lv.1000 달성", reward:0, check:()=> rodLevel >= 1000},
-  {name:"초월 낚싯대", desc:"낚싯대 Lv.1200 달성", reward:0, check:()=> rodLevel >= 1200},
-  {name:"궁극 낚싯대", desc:"낚싯대 Lv.1400 달성", reward:0, check:()=> rodLevel >= 1400},
   {name:"행운아", desc:"영원 등급 1마리 수집", reward:7777777, check:()=> (gradeCounts["영원"]||0) >= 1},
   {name:"드래곤 헌터", desc:"용 계열 9종 도감 등록", reward:10000000000, check:()=> {
     const dragons = [
@@ -1756,12 +1754,18 @@ function updateAchievements(){
   return newly;
 }
 
+function getCurrentCompletedAchievements(){
+  const valid = new Set(achievementList.map(a => a.name));
+  return completedAchievements.filter(name => valid.has(name));
+}
+
 function buildAchievementText(){
+  const currentCompleted = getCurrentCompletedAchievements();
   let s = "업적\n\n";
-  s += "달성률 : " + completedAchievements.length + " / " + achievementList.length + "\n\n";
+  s += "달성률 : " + currentCompleted.length + " / " + achievementList.length + "\n\n";
 
   achievementList.forEach((a,i)=>{
-    const done = completedAchievements.includes(a.name);
+    const done = currentCompleted.includes(a.name);
     s += fullWidthNumber(i+1) + "│" + (done ? "[달성] " : "[미달성] ") + a.name + "\n";
     s += "    조건 : " + a.desc + "\n";
     s += "    보상 : " + formatMoney(a.reward) + (done ? " [수령 완료]" : "") + "\n\n";
@@ -1774,9 +1778,10 @@ function showAchievements(){
   const newly = updateAchievements();
   const newSpecialTitles = checkSpecialTitles();
   if(newly.length > 0 || newSpecialTitles.length > 0) saveGame();
+  const currentCompleted = getCurrentCompletedAchievements();
 
   const summary =
-    "업적 달성률 : " + completedAchievements.length + " / " + achievementList.length + "\n\n" +
+    "업적 달성률 : " + currentCompleted.length + " / " + achievementList.length + "\n\n" +
     "달성한 업적은 자동으로 보상이 지급됩니다.";
 
   printPreview("업적", summary, "업적 전체보기", buildAchievementText());
@@ -1811,8 +1816,6 @@ function getOwnedTitles(){
     "중독자",
     "거장",
     "천 번의 담금질",
-    "초월 낚싯대",
-    "궁극 낚싯대",
     "행운아",
     "드래곤 헌터",
     "부자",
@@ -2972,6 +2975,18 @@ function stunFish(f){
   const c = ensureCombatStats(f);
   c.hp = 0;
   c.status = "회복 중";
+  if(activeTraitBattle && activeTraitBattle.participants && activeTraitBattle.participants.includes(f)){
+    c.battleDown = true;
+    delete c.rootLinkedPeers;
+    const boss = activeTraitBattle.boss;
+    if(boss && Array.isArray(boss._rootLinks)){
+      boss._rootLinks = boss._rootLinks.filter(x => x !== f);
+      boss._rootLinks.forEach(linked => {
+        const lc = ensureCombatStats(linked);
+        if(Array.isArray(lc.rootLinkedPeers)) lc.rootLinkedPeers = lc.rootLinkedPeers.filter(x => x !== f);
+      });
+    }
+  }
   c.recoveryStartAt = Date.now();
   c.recoveryStartHp = 0;
   c.stunUntil = Date.now() + getStunMinutes(f.grade) * 60 * 1000;
@@ -3034,12 +3049,18 @@ function traitState(f){
   return c._traitBattle;
 }
 
+function isBattleActionableFish(f){
+  if(!f) return false;
+  const c = ensureCombatStats(f);
+  return c.hp > 0 && c.status !== "기절" && !c.battleDown && !c.devouredByFenrir && !(c._traitBattle && c._traitBattle.ashRemnant);
+}
+
 function traitFish(participants, name, aliveOnly=true){
-  return (participants || []).find(f => f && f.name === name && (!aliveOnly || ensureCombatStats(f).hp > 0)) || null;
+  return (participants || []).find(f => f && f.name === name && (!aliveOnly || isBattleActionableFish(f))) || null;
 }
 
 function traitFishes(participants, name, aliveOnly=true){
-  return (participants || []).filter(f => f && f.name === name && (!aliveOnly || ensureCombatStats(f).hp > 0));
+  return (participants || []).filter(f => f && f.name === name && (!aliveOnly || isBattleActionableFish(f)));
 }
 
 function getBurningHeartStageByCombat(c){
@@ -3064,7 +3085,7 @@ function snapshotFishTraitState(f){
   const c = ensureCombatStats(f);
   return {
     hp:Number(c.hp || 0), maxHp:Number(c.maxHp || 1), status:c.status,
-    stunUntil:c.stunUntil,
+    stunUntil:c.stunUntil, battleDown:!!c.battleDown,
     burnStacks:Number(c.burnStacks || 0), poisonStacks:Number(c.poisonStacks || 0),
     azhiCurses:c.azhiCurses ? {...c.azhiCurses} : null,
     ratatoskrRedirect:c.ratatoskrRedirect,
@@ -3079,6 +3100,7 @@ function restoreFishTraitState(f, snap){
   c.maxHp = Math.max(1, Number(snap.maxHp || c.maxHp));
   c.hp = Math.max(0, Math.min(c.maxHp, Number(snap.hp ?? 0)));
   c.status = snap.status || "정상";
+  if(snap.battleDown) c.battleDown=true; else delete c.battleDown;
   if(snap.stunUntil !== undefined) c.stunUntil=snap.stunUntil; else delete c.stunUntil;
   if(snap.burnStacks) c.burnStacks=snap.burnStacks; else delete c.burnStacks;
   if(snap.poisonStacks) c.poisonStacks=snap.poisonStacks; else delete c.poisonStacks;
@@ -3473,7 +3495,7 @@ function tryTimeRewindAfterWipe(battleLog){
 
 function finishTraitTurn(boss,battleLog){
   const ctx=activeTraitBattle;if(!ctx)return;
-  if(ctx.participants.some(f=>{const c=ensureCombatStats(f);return c.hp>0&&c.hp/c.maxHp<=0.15;}))advanceWish("low",battleLog);
+  if(ctx.participants.some(f=>{const c=ensureCombatStats(f);return isBattleActionableFish(f)&&c.maxHp>0&&c.hp/c.maxHp<=0.15;}))advanceWish("low",battleLog);
   startPeriodTraitIfNeeded(boss,battleLog);
 }
 
@@ -3513,8 +3535,7 @@ function getBossAttackValue(boss, bossAttackMultiplier=1){
 
 function getAliveTargets(targets){
   return targets.filter(f => {
-    const c = ensureCombatStats(f);
-    return c.hp > 0 && c.status !== "기절" && !c.devouredByFenrir && !traitState(f).ashRemnant;
+    return isBattleActionableFish(f);
   });
 }
 
@@ -3578,14 +3599,14 @@ function applyDamageToFish(f, damage, battleLog, prefix, meta={}){
     battleLog.push(color(lineFish(f), f.grade) + "\n체력이 0이 되어 회복 중입니다.");
   }
 
-  const peers = Array.isArray(c.rootLinkedPeers) ? c.rootLinkedPeers.filter(x => x !== f && ensureCombatStats(x).hp > 0) : [];
+  const peers = Array.isArray(c.rootLinkedPeers) ? c.rootLinkedPeers.filter(x => x !== f && isBattleActionableFish(x)) : [];
   if(actualDamage > 0 && peers.length > 0 && !c._receivingRootShare){
     const shareEach = Math.floor(actualDamage * 0.5 / peers.length);
     peers.forEach(peer => {
       const pc = ensureCombatStats(peer);
       pc._receivingRootShare = true;
       applyDamageToFish(peer,shareEach,battleLog,"뿌리의 연결\n",{isShared:true});
-      if(pc.hp <= 0) delete pc.rootLinkedPeers;
+      if(pc.hp <= 0 || pc.battleDown) delete pc.rootLinkedPeers;
       delete pc._receivingRootShare;
     });
   }
@@ -3649,7 +3670,7 @@ function bossAttackSpecificTarget(boss, f, battleLog, bossAttackMultiplier=1, sk
     if(alternatives.length)f=alternatives[Math.floor(Math.random()*alternatives.length)];
   }
   const c = ensureCombatStats(f);
-  if(c.hp <= 0 || c.status === "기절" || c.devouredByFenrir) return false;
+  if(!isBattleActionableFish(f)) return false;
 
   const dodgeRoll = Math.random() * 100 < getEffectiveFishDodge(f, boss);
   if(dodgeRoll && !ignoreDodge){
@@ -3681,7 +3702,7 @@ function bossAllTargetAttack(boss, targets, battleLog, bossAttackMultiplier=1, s
 
   targets.forEach(f => {
     const c = ensureCombatStats(f);
-    if(c.hp <= 0 || c.status === "기절" || traitState(f).ashRemnant) return;
+    if(!isBattleActionableFish(f)) return;
 
     const dodgeRoll = Math.random() * 100 < getEffectiveFishDodge(f, boss);
     if(dodgeRoll){
@@ -3829,7 +3850,7 @@ function applyPhoenixImmortalityIfNeeded(boss, bossHp, battleLog){
 function applyBossStartTurnEffects(participants, battleLog){
   participants.forEach(f => {
     const c = ensureCombatStats(f);
-    if(c.hp <= 0 || c.status === "기절") return;
+    if(!isBattleActionableFish(f)) return;
 
     const poison = Math.min(3, Number(c.poisonStacks || 0));
     if(poison <= 0) return;
@@ -3947,7 +3968,7 @@ function runCerberusDeadWeight(boss, participants, battleLog){
 }
 
 function refreshRootLinks(boss, participants, battleLog){
-  let links = (boss._rootLinks || []).filter(f => ensureCombatStats(f).hp > 0);
+  let links = (boss._rootLinks || []).filter(f => isBattleActionableFish(f));
   const available = getAliveTargets(participants).filter(f => !links.includes(f));
   if(links.length === 0){
     while(links.length < 2 && available.length){
@@ -4208,6 +4229,7 @@ function cleanupBattleEffects(participants){
     delete c.poisonStacks;
     delete c.devouredByFenrir;
     delete c.rootLinkedPeers;
+    delete c.battleDown;
     delete c.ratatoskrRedirect;
     delete c.azhiCurses;
     delete c.existence;
@@ -4310,7 +4332,7 @@ function runBossBattle(){
   battleLog.push("전투 시작\n\n" + participants.map(f => color(lineFish(f), f.grade) + "\n" + hpBar(ensureCombatStats(f).hp, ensureCombatStats(f).maxHp)).join("\n\n"));
 
   let turn = 1;
-  while(bossHp > 0 && participants.some(f => ensureCombatStats(f).hp > 0 && ensureCombatStats(f).status !== "기절") && turn <= 200){
+  while(bossHp > 0 && participants.some(f => isBattleActionableFish(f)) && turn <= 200){
     boss._fishDisabledThisTurn = !!boss._fishDisabledNextTurn;
     boss._fishDisabledNextTurn = false;
     boss._knotsBrokenThisTurn = 0;
@@ -4359,17 +4381,17 @@ function runBossBattle(){
 
     applyBossStartTurnEffects(participants, battleLog);
     tryTimeRewindAfterWipe(battleLog);
-    if(!participants.some(f => ensureCombatStats(f).hp > 0 && ensureCombatStats(f).status !== "기절")) break;
+    if(!participants.some(f => isBattleActionableFish(f))) break;
 
     const blankPageFish=turn%4===0?traitFish(participants,"잃어버린 두 번째 편지 조각 ✉️"):null;
     if(!blankPageFish) prepareSurtrTurn(boss, participants, battleLog);
-    if(!participants.some(f => ensureCombatStats(f).hp > 0 && ensureCombatStats(f).status !== "기절")) break;
+    if(!participants.some(f => isBattleActionableFish(f))) break;
 
     battleLog.push('<span style="color:#58a6ff;font-weight:700">내 턴</span>');
 
     for(const f of participants){
       const c = ensureCombatStats(f);
-      if(c.hp <= 0 || c.status === "기절") continue;
+      if(!isBattleActionableFish(f)) continue;
       if(bossHp <= 0) break;
 
       if(c.devouredByFenrir){
@@ -4482,7 +4504,7 @@ function runBossBattle(){
         bossHp = applyPhoenixImmortalityIfNeeded(boss, bossHp, battleLog);
         boss._currentHp = bossHp;
 
-        if(duelAttack){
+        if(duelAttack && bossHp > 0){
           bossAttackSpecificTarget(boss, f, battleLog, 1.8, "프레이르와의 결투", true);
         }
       } else {
@@ -4504,6 +4526,10 @@ function runBossBattle(){
 
     bossHp=Math.max(0,Number(boss._currentHp));
     if(bossHp<=0) break;
+    if(!participants.some(f => isBattleActionableFish(f))){
+      tryTimeRewindAfterWipe(battleLog);
+      if(!participants.some(f => isBattleActionableFish(f))) break;
+    }
     bossHp = applyBossEndTurnPassive(boss, bossHp, battleLog);
     boss._currentHp = bossHp;
     battleLog.push('<span style="color:#ff7b72;font-weight:700">보스 턴</span>');
@@ -5591,7 +5617,7 @@ function pvpTeamLine(team){
 }
 
 function pvpAlive(team){
-  return team.find(f => f && f.combat && f.combat.hp > 0);
+  return team.find(f => f && f.combat && f.combat.hp > 0 && !f.combat._pvp?.gone);
 }
 
 function pvpFishLabel(f){
@@ -5751,10 +5777,11 @@ function simulatePvpBattle({leftName,leftTitle,leftTeam,rightName,rightTitle,rig
       const st=pvpState(target);
       if(st.lastAttackerId===attacker.id&&target.name==="흑룡"){
         const reflect=Math.floor(actual*0.3);
-        attacker.combat.hp=Math.max(0,attacker.combat.hp-reflect);
-        state[defSide].damage+=reflect;
         st.scaleEmpowered=true;
-        s+=traitUseByFish(target, reflect.toLocaleString()+" 피해 반사 · 다음 공격 강화")+"\n\n";
+        if(reflect>0){
+          s+=applyPvpDamage(atkSide,attacker,reflect,null,defSide,traitUseByFish(target, "역린이 피해를 반사했습니다."));
+        }
+        s+=traitUseByFish(target, "다음 공격이 강화됩니다.")+"\n\n";
       }
       st.lastAttackerId=attacker.id;
     }
@@ -5813,6 +5840,7 @@ function simulatePvpBattle({leftName,leftTitle,leftTeam,rightName,rightTitle,rig
     }
   }
   function afterHit(side,f,enemySide,target,logParts){
+    if(!f||!f.combat||f.combat.hp<=0)return;
     if(f.name==="푸른 눈의 백염룡"&&target&&target.combat.hp>0){
       target.combat.whiteFlame=Number(target.combat.whiteFlame||0)+1;
       logParts.push(registerPvpStatus(enemySide));
@@ -5927,7 +5955,7 @@ function simulatePvpBattle({leftName,leftTitle,leftTeam,rightName,rightTitle,rig
         targets.forEach(t=>sideLog.push(applyPvpDamage(enemySide,t,split,attacker,side,pvpFishLabel(attacker)+"의 굴절 공격")));
       }else sideLog.push(applyPvpDamage(enemySide,target,dmg,attacker,side,pvpFishLabel(attacker)+"의 공격"));
       recordOutcome(side,crit?"crit":"hit",enemySide,sideLog);
-      afterHit(side,attacker,enemySide,target,sideLog);
+      if(attacker.combat&&attacker.combat.hp>0) afterHit(side,attacker,enemySide,target,sideLog);
       if(hasFish(enemySide,"수상한 기운 👁️")&&(!state[enemySide].observedId||turn>state[enemySide].observedUntil)){
         state[enemySide].observedId=attacker.id;state[enemySide].observedUntil=turn+3;
         sideLog.push(traitUseByFish(livingSide(enemySide).find(f=>f.name==="수상한 기운 👁️"), pvpFishLabel(attacker)+"의 공격을 3턴 동안 관측합니다.")+"\n\n");
@@ -6527,7 +6555,7 @@ function buildGameInfoText(){
 현재 강화 가능 레벨 : ${getCurrentPlayableMaxRod()}
 낚시 횟수 : ${totalFishingCount.toLocaleString()}회
 현재 칭호 : ${getCurrentTitle() || "없음"}
-업적 달성률 : ${completedAchievements.length}/${achievementList.length}
+업적 달성률 : ${getCurrentCompletedAchievements().length}/${achievementList.length}
 
 [강화]
 
