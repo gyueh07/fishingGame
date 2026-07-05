@@ -200,7 +200,7 @@ let cloudSaveChain=Promise.resolve();
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
-const GAME_VERSION = "2026-06-25-damaged-recovery-status-v1";
+const GAME_VERSION = "2026-07-05-pvp-team-number-v1";
 const UPDATE_NOTICE_TITLE = "📢 업데이트 안내";
 const UPDATE_NOTICES = [
   {
@@ -1383,6 +1383,7 @@ function subjectText(word){
 }
 
 const battleDisplayNumbers = new WeakMap();
+let activePvpFishLabeler = null;
 
 function setBattleDisplayNumbers(fishes){
   const counts = {};
@@ -3195,7 +3196,10 @@ function traitUseText(name, body=""){
 function traitUseByFish(f, body="", titleOverride=""){
   const trait = getFishTrait(f);
   const title = titleOverride || (trait ? trait.name : "특성");
-  if(f) return traitUseText(color(lineFish(f), f.grade) + "의 " + title, body);
+  if(f){
+    const fishLabel = activePvpFishLabeler ? activePvpFishLabeler(f) : color(lineFish(f), f.grade);
+    return traitUseText(fishLabel + "의 " + title, body);
+  }
   return traitUseText(title, body);
 }
 
@@ -5694,7 +5698,7 @@ function pvpDisplayName(name,title){
 }
 
 function pvpTeamLine(team){
-  return team.map((f,i)=>(i+1)+". "+color(lineFish(f), f.grade)).join("\n");
+  return team.map((f,i)=>(i+1)+". "+pvpFishLabel(f)).join("\n");
 }
 
 function pvpAlive(team){
@@ -5702,7 +5706,7 @@ function pvpAlive(team){
 }
 
 function pvpFishLabel(f){
-  return color(lineFish(f), f.grade);
+  return activePvpFishLabeler ? activePvpFishLabeler(f) : color(lineFish(f), f.grade);
 }
 
 function pvpSubjectLabel(f){
@@ -5722,7 +5726,18 @@ function simulatePvpBattle({leftName,leftTitle,leftTeam,rightName,rightTitle,rig
   const left = (leftTeam || []).map(f => JSON.parse(JSON.stringify(f))).slice(0,3);
   const right = (rightTeam || []).map(f => JSON.parse(JSON.stringify(f))).slice(0,3);
   const allPvpFishes = left.concat(right);
-  setBattleDisplayNumbers(allPvpFishes);
+  setBattleDisplayNumbers(left);
+  setBattleDisplayNumbers(right);
+  const pvpSideByFish = new WeakMap();
+  left.forEach(f => pvpSideByFish.set(f, "left"));
+  right.forEach(f => pvpSideByFish.set(f, "right"));
+  const viewerSide = currentUser === rightName ? "right" : "left";
+  activePvpFishLabeler = f => {
+    if(!f) return "";
+    const side = pvpSideByFish.get(f);
+    const marker = side ? (side === viewerSide ? " (아군)" : " (적)") : "";
+    return color(lineFish(f) + marker, f.grade);
+  };
   const state = {
     left:{team:left,damage:0,lightPool:0,rewriteUsed:false,deletedAttackerId:"",deletedAttackerUntil:0,deletedAttackerUsed:false,sealNext:false,timePending:false,timeUsed:false,period:false,periodSentences:0,observedId:"",observedUntil:0,history:[],lastPair:""},
     right:{team:right,damage:0,lightPool:0,rewriteUsed:false,deletedAttackerId:"",deletedAttackerUntil:0,deletedAttackerUsed:false,sealNext:false,timePending:false,timeUsed:false,period:false,periodSentences:0,observedId:"",observedUntil:0,history:[],lastPair:""}
@@ -6105,11 +6120,19 @@ function simulatePvpBattle({leftName,leftTitle,leftTeam,rightName,rightTitle,rig
 
   logText += "전투 종료\n\n" + summary;
   clearBattleDisplayNumbers(allPvpFishes);
+  activePvpFishLabeler = null;
   return {summary, fullLog:logText};
 }
 
 function printPvpResultPreview(summary, fullLog){
   printPreview("대전 결과", summary, "대전 전체보기", fullLog);
+}
+
+function swapPvpPerspectiveLog(fullLog){
+  return String(fullLog || "")
+    .replaceAll("(아군)", "__PVP_ALLY__")
+    .replaceAll("(적)", "(아군)")
+    .replaceAll("__PVP_ALLY__", "(적)");
 }
 
 async function requestPvp(nickname){
@@ -6495,12 +6518,15 @@ async function finishPvpReady(){
       rightTitle: claimedRoom.toTitle || "",
       rightTeam: claimedRoom[rightName + "_team"] || []
     });
+    const opponentLog = swapPvpPerspectiveLog(result.fullLog);
 
     await roomRef.set({
       status:"finished",
       finishedAtMillis:Date.now(),
       resultSummary:result.summary,
       resultLog:result.fullLog,
+      resultLogByResolver:result.fullLog,
+      resultLogByOpponent:opponentLog,
       updatedAtMillis:Date.now()
     }, {merge:true});
 
@@ -6513,7 +6539,7 @@ async function finishPvpReady(){
       type:"pvpResult",
       to:opp,
       summary:result.summary,
-      fullLog:result.fullLog,
+      fullLog:opponentLog,
       createdAtMillis:Date.now(),
       createdAt:firebase.firestore.FieldValue.serverTimestamp()
     });
