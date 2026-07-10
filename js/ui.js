@@ -35,7 +35,8 @@
     activeView:"fishingView", bucketKey:"", bossKey:"", collectionKey:"", previousBucketCount:0,
     initialized:false, toastTimer:null, trainingSyncKey:"", trainingBucketRef:null, timingActive:false, timingStartedAt:0, timingDuration:1900,
     timingTarget:.5, timingPosition:0, timingRaf:0, timingTimeout:0,
-    battleReplayToken:0, battleReplaySpeed:2, battleReplaySkip:false, lastBattleReplay:null, bossPartySortOrder:"전투력", catchCelebrationTimer:0
+    battleReplayToken:0, battleReplaySpeed:2, battleReplaySkip:false, lastBattleReplay:null, bossPartySortOrder:"전투력", catchCelebrationTimer:0,
+    fusionMaterialIds:[],fusionAnimationResolve:null,presetEditorType:"boss",presetEditorIds:[]
   };
 
   function saveFeedbackSettings(){
@@ -78,12 +79,17 @@
     else if(type==="crit")tones.push({frequency:1180,endFrequency:420,duration:.16,type:"sawtooth",gain:.035},{frequency:90,duration:.2,delay:.04,type:"square",gain:.03});
     else if(type==="crazy")tones.push({frequency:70,endFrequency:45,duration:.6,type:"sawtooth",gain:.04},{frequency:440,endFrequency:110,duration:.48,delay:.08,type:"square",gain:.025});
     else if(type==="victory")tones.push({frequency:523,duration:.18,gain:.035},{frequency:659,duration:.2,delay:.12,gain:.04},{frequency:784,duration:.22,delay:.24,gain:.04},{frequency:1046,duration:.36,delay:.38,gain:.035});
+    else if(type==="fusion")tones.push({frequency:260,endFrequency:720,duration:.42,type:"triangle",gain:.032},{frequency:740,duration:.16,delay:.38,gain:.04},{frequency:1110,duration:.25,delay:.48,gain:.035});
+    else if(type==="evolution"){
+      const stage=Math.max(1,Math.min(3,Number(detail)||1)),base=220+stage*80;
+      tones.push({frequency:70+stage*15,endFrequency:45,duration:.65,type:"sawtooth",gain:.035},{frequency:base,endFrequency:base*2,duration:.5,delay:.18,type:"triangle",gain:.04},{frequency:base*2.5,duration:.35,delay:.62,gain:.04});
+    }
     tones.forEach(tone=>scheduleTone(ctx,tone));
   }
 
   function gameVibrate(kind){
     if(!feedbackSettings.vibration||typeof navigator.vibrate!=="function")return;
-    const patterns={bite:[35,35,55],crit:[30,20,85],victory:[45,35,45,35,110]};
+    const patterns={bite:[35,35,55],crit:[30,20,85],victory:[45,35,45,35,110],fusion:[30,30,65],evolution:[70,35,90,35,140]};
     navigator.vibrate(patterns[kind]||35);
   }
 
@@ -96,6 +102,14 @@
     return div.textContent.replace(/─+/g, " ").replace(/\s+/g, " ").trim();
   }
   function gradeClass(grade) { return "grade-" + (gradeClasses[grade] || "normal"); }
+  function fishEvolutionClass(fish){
+    const stage=Math.max(0,Math.min(3,Number(fish?.fusion?.evolutionStage??fish?.evolutionStage??0)));
+    return stage?`fish-evolution-stage-${stage}`:"";
+  }
+  function fishEvolutionBadge(fish){
+    const stage=Math.max(0,Math.min(3,Number(fish?.fusion?.evolutionStage??fish?.evolutionStage??0)));
+    return stage?`<i class="fish-evolution-badge">${stage===3?"FINAL":`EV${stage}`}</i>`:"";
+  }
   function fishIcon(fish) {
     const name = String(fish?.name || "");
     if (specialFishEmojis[name]) return specialFishEmojis[name];
@@ -164,6 +178,28 @@
     return "normal";
   }
 
+  function replaySummonIcon(name){
+    const value=String(name||"");
+    if(value.includes("용"))return "🐲";
+    if(value.includes("복제"))return "👤";
+    if(value.includes("시간의 잔상"))return "⏳";
+    if(value.includes("은빛 문"))return "🚪";
+    return "🌀";
+  }
+
+  function renderReplaySummons(summons,entry=""){
+    const host=$("#replayBossSummons");
+    if(!host)return;
+    const list=Array.isArray(summons)?summons:[],counts={};
+    list.forEach(s=>{counts[s.name]=(counts[s.name]||0)+1;});
+    host.classList.toggle("show",list.length>0);
+    host.innerHTML=list.length?`<small class="replay-summon-title">BOSS SUMMONS · ${list.length}</small><div>${list.map(s=>{
+      const label=counts[s.name]>1?`${s.name} ${Number(s.order||1)}`:s.name;
+      const targeted=String(entry||"").includes(label)||String(entry||"").includes(s.name);
+      return `<article class="replay-summon ${targeted?"targeted":""}"><span>${replaySummonIcon(s.name)}</span><div><b>${safe(label)}</b><small>⚔ ${compactNumber(s.attack)}</small><div class="replay-hp summon-hp"><i style="width:${hpPercent(s.hp,s.maxHp)}%"></i></div><em>${compactNumber(s.hp)} / ${compactNumber(s.maxHp)}</em></div></article>`;
+    }).join("")}</div>`:"";
+  }
+
   function updateReplayFrame(frame){
     const arena=$("#bossBattleArena"),action=$("#battleActionCard");
     if(!arena||!action||!frame)return;
@@ -173,7 +209,15 @@
     const bossName=arena.dataset.bossName||"";
     const bossAttack=kind!=="ally"&&(/보스 턴/.test(text)||(bossName&&text.includes(bossName+"의")));
     const playerAttack=!bossAttack&&(/ 공격|피해/.test(text));
-    const attackerIndex=(playerAttack||kind==="ally")?(frame.fish||[]).findIndex(fish=>text.includes(fish.displayName||fish.name)||text.includes(fish.name)):-1;
+    let attackerIndex=-1;
+    if(playerAttack||kind==="ally"){
+      const fishes=frame.fish||[];
+      attackerIndex=fishes.findIndex(fish=>fish.battleLabel&&text.includes(fish.battleLabel));
+      if(attackerIndex<0){
+        const matches=fishes.map((fish,index)=>({index,label:String(fish.displayName||fish.name||"")})).filter(item=>item.label&&text.includes(item.label)).sort((a,b)=>b.label.length-a.label.length);
+        attackerIndex=matches.length?matches[0].index:-1;
+      }
+    }
     const attacker=attackerIndex>=0?frame.fish[attackerIndex]:null;
     if(kind!=="normal")arena.classList.add("event-"+kind);
     else if(bossAttack)arena.classList.add("hit-player");
@@ -200,10 +244,11 @@
       if(bar)bar.style.width=hpPercent(fish.hp,fish.maxHp)+"%";
       if(hp)hp.textContent=compactNumber(fish.hp)+" / "+compactNumber(fish.maxHp);
     });
+    renderReplaySummons(frame.summons, text);
 
     action.className="battle-action-card "+(kind!=="normal"?"is-"+kind:"");
     const bossEventLabel=kind==="crazy"?"CRAZY ULTIMATE":kind==="passive"?"BOSS PASSIVE":"BOSS SKILL";
-    const actorBanner=attacker?`<div class="battle-attacker-banner ${kind==="ally"?"ally":""}"><span>${fishIcon(attacker)}</span><div><small>${kind==="ally"?"ALLY SKILL":"PLAYER ATTACK"}</small><b>${safe(attacker.name)}</b></div></div>`:["skill","crazy","passive"].includes(kind)?`<div class="battle-attacker-banner boss"><span>${safe(arena.dataset.bossSymbol||"🐲")}</span><div><small>${bossEventLabel}</small><b>${safe(bossName)}</b></div></div>`:bossAttack?`<div class="battle-attacker-banner boss"><span>${safe(arena.dataset.bossSymbol||"🐲")}</span><div><small>BOSS ATTACK</small><b>${safe(bossName)}</b></div></div>`:"";
+    const actorBanner=attacker?`<div class="battle-attacker-banner ${kind==="ally"?"ally":""}"><span>${fishIcon(attacker)}</span><div><small>${kind==="ally"?"ALLY SKILL":"PLAYER ATTACK"}</small><b>${safe(attacker.battleLabel||attacker.name)}</b></div></div>`:["skill","crazy","passive"].includes(kind)?`<div class="battle-attacker-banner boss"><span>${safe(arena.dataset.bossSymbol||"🐲")}</span><div><small>${bossEventLabel}</small><b>${safe(bossName)}</b></div></div>`:bossAttack?`<div class="battle-attacker-banner boss"><span>${safe(arena.dataset.bossSymbol||"🐲")}</span><div><small>BOSS ATTACK</small><b>${safe(bossName)}</b></div></div>`:"";
     action.innerHTML=actorBanner+`<div class="battle-action-text">${legacyTextHtml(frame.entry)}</div>`;
   }
 
@@ -235,8 +280,12 @@
     state.lastBattleReplay=replay;
     state.battleReplaySpeed=2;
     const first=replay.frames?.[0]||{bossHp:replay.boss.maxHp,bossMaxHp:replay.boss.maxHp,fish:[]};
-    const party=(first.fish||[]).map((fish,index)=>`<article class="replay-fish ${gradeClass(fish.grade)}" data-replay-fish-index="${index}"><span>${fishIcon(fish)}</span><div><b>${safe(fish.name)}</b><div class="replay-hp"><i data-replay-fish-bar="${index}" style="width:${hpPercent(fish.hp,fish.maxHp)}%"></i></div><small data-replay-fish-hp="${index}">${compactNumber(fish.hp)} / ${compactNumber(fish.maxHp)}</small></div></article>`).join("");
-    openUiModal(`${replay.boss.name} · ${replay.boss.difficulty}`,`<div class="boss-battle-replay"><header class="battle-replay-head"><div><small>LIVE BOSS RAID</small><b id="battleTurnLabel">BATTLE START</b></div><div class="battle-speed"><button data-battle-speed="1">×1</button><button class="active" data-battle-speed="2">×2</button><button data-battle-speed="4">×4</button><button data-battle-skip>건너뛰기</button></div></header><section id="bossBattleArena" class="boss-battle-arena" data-boss-name="${safe(replay.boss.name)}" data-boss-symbol="${safe(bossSymbols[replay.boss.id]||"🐲")}"><div class="grade-attack-layer" aria-hidden="true"></div><div class="replay-boss ${gradeClass(replay.boss.grade)}"><div class="replay-boss-symbol">${bossSymbols[replay.boss.id]||"🐲"}</div><div><small>${safe(replay.boss.grade)} · ${safe(replay.boss.difficulty)}</small><h2>${safe(replay.boss.name)}</h2><div class="replay-hp boss-hp"><i id="replayBossHpBar" style="width:${hpPercent(first.bossHp,first.bossMaxHp)}%"></i></div><b id="replayBossHpText">${compactNumber(first.bossHp)} / ${compactNumber(first.bossMaxHp)}</b></div></div><div class="battle-versus">VS</div><div class="replay-party">${party}</div><div id="battleActionCard" class="battle-action-card">전투가 시작됩니다.</div></section></div>`);
+    const party=(first.fish||[]).map((fish,index)=>`<article class="replay-fish ${gradeClass(fish.grade)} ${fishEvolutionClass(fish)}" data-replay-fish-index="${index}"><span>${fishIcon(fish)}</span><div><b>${safe(fish.name)} ${fishEvolutionBadge(fish)}</b><div class="replay-hp"><i data-replay-fish-bar="${index}" style="width:${hpPercent(fish.hp,fish.maxHp)}%"></i></div><small data-replay-fish-hp="${index}">${compactNumber(fish.hp)} / ${compactNumber(fish.maxHp)}</small></div></article>`).join("");
+    const borderId=isProfileCosmeticUnlocked("border",profileCosmetics.border)?profileCosmetics.border:"",auraId=isProfileCosmeticUnlocked("aura",profileCosmetics.aura)?profileCosmetics.aura:"";
+    const borderBoss=bossList.find(boss=>boss.id===borderId),auraBoss=bossList.find(boss=>boss.id===auraId),captainName=currentUser||"게스트 선장",captainTitle=currentUser?getCurrentTitle():"";
+    const captainAvatar=borderBoss?bossSymbols[borderBoss.id]||"✦":"⚓",captainClasses=`profile-preview battle-player-avatar ${borderBoss?"has-profile-border":""} ${auraBoss?"has-profile-aura":""}`;
+    const captainStyle=`--profile-border-color:${borderBoss?.color||"#4ee4ce"};--profile-aura-color:${auraBoss?.color||"#4ee4ce"}`;
+    openUiModal(`${replay.boss.name} · ${replay.boss.difficulty}`,`<div class="boss-battle-replay"><header class="battle-replay-head"><div><small>LIVE BOSS RAID</small><b id="battleTurnLabel">BATTLE START</b></div><div class="battle-speed"><button data-battle-speed="1">×1</button><button class="active" data-battle-speed="2">×2</button><button data-battle-speed="4">×4</button><button data-battle-skip>건너뛰기</button></div></header><section id="bossBattleArena" class="boss-battle-arena" data-boss-name="${safe(replay.boss.name)}" data-boss-symbol="${safe(bossSymbols[replay.boss.id]||"🐲")}"><div class="grade-attack-layer" aria-hidden="true"></div><div class="replay-boss-zone"><div class="replay-boss ${gradeClass(replay.boss.grade)}"><div class="replay-boss-symbol">${bossSymbols[replay.boss.id]||"🐲"}</div><div><small>${safe(replay.boss.grade)} · ${safe(replay.boss.difficulty)}</small><h2>${safe(replay.boss.name)}</h2><div class="replay-hp boss-hp"><i id="replayBossHpBar" style="width:${hpPercent(first.bossHp,first.bossMaxHp)}%"></i></div><b id="replayBossHpText">${compactNumber(first.bossHp)} / ${compactNumber(first.bossMaxHp)}</b></div></div><div id="replayBossSummons" class="replay-boss-summons"></div></div><div class="battle-versus">VS</div><div class="replay-player-zone"><div class="battle-player-card"><div class="${captainClasses}" style="${captainStyle}" data-aura-symbol="${safe(auraBoss?bossSymbols[auraBoss.id]||"✦":"")}"><span>${captainAvatar}</span></div><div><small>MY CAPTAIN · PARTY ${(first.fish||[]).length}</small><b>${safe(captainName)}</b><em>${safe(captainTitle?`[${captainTitle}]`:"칭호 없음")}</em></div></div><div class="replay-party">${party}</div></div><div id="battleActionCard" class="battle-action-card">전투가 시작됩니다.</div></section></div>`);
     playBossBattleReplay(replay);
   }
 
@@ -248,10 +297,14 @@
       {key:"2",name:"해신룡",grade:"영원",hp:3600000000,maxHp:3600000000,status:"정상"},
       {key:"3",name:"휘몰아치는 마음",grade:"초월",hp:2900000000,maxHp:2900000000,status:"정상"}
     ];
-    const frame=(entry,turn,bossHp,damageIndex=-1)=>({entry,turn,bossHp,bossMaxHp:boss.maxHp,fish:fish.map((item,index)=>({...item,hp:index===damageIndex?Math.floor(item.hp*.55):item.hp}))});
+    const demoParams=new URLSearchParams(location.search),showSummons=demoParams.has("summonDemo"),showVoidSummons=demoParams.has("voidSummonDemo");
+    const demoSummons=showVoidSummons
+      ? [{key:"demo-time-echo",name:"시간의 잔상",order:1,hp:875000000,maxHp:875000000,attack:14400000},{key:"demo-gate-watcher",name:"은빛 문의 감시자",order:1,hp:9000000000,maxHp:9000000000,attack:43500000}]
+      : [1,2,3].map(order=>({key:"demo-dragon-"+order,name:"새끼 용",order,hp:900000000,maxHp:900000000,attack:120000000}));
+    const frame=(entry,turn,bossHp,damageIndex=-1,summons=[])=>({entry,turn,bossHp,bossMaxHp:boss.maxHp,summons,fish:fish.map((item,index)=>({...item,battleLabel:`[${item.grade}] ${item.name}`,hp:index===damageIndex?Math.floor(item.hp*.55):item.hp}))});
     const frames=[
-      frame("전투 시작",0,boss.maxHp),frame("턴 1",1,boss.maxHp),frame('<span class="battle-event battle-event--skill"><span class="battle-event__eyebrow">BOSS SKILL</span><b><span style="color:#d053ff">아자토스</span> · 맹목의 핵동</b><span class="battle-event__body">회피 불가 전체 공격이 발동했습니다.</span></span>',1,62000000000),
-      frame("아자토스의 맹목의 핵동\n파티 전체가 피해를 받았습니다.",1,62000000000,1),frame('<span class="battle-event battle-event--passive"><span class="battle-event__eyebrow">PASSIVE SHIFT</span><b><span style="color:#d053ff">아자토스</span> · 두 번째 각성</b><span class="battle-event__body">회피를 무시하고 치명타율을 감소시킵니다.</span></span>',2,34000000000),frame('<span class="battle-event battle-event--ally"><span class="battle-event__eyebrow">ALLY SKILL</span><b>바다를 삼킨 태양 · 태양 폭발</b><span class="battle-event__body">태양 주기가 완성되어 전장을 밝힙니다.</span></span>',3,34000000000),frame("바다를 삼킨 태양 공격\n치명타!\n16,000,000,000 피해",3,18000000000),
+      frame("전투 시작",0,boss.maxHp),frame("턴 1",1,boss.maxHp),frame('<span class="battle-event battle-event--skill"><span class="battle-event__eyebrow">BOSS SKILL</span><b><span style="color:#d053ff">아자토스</span> · 맹목의 핵동</b><span class="battle-event__body">회피 불가 전체 공격이 발동했습니다.</span></span>',1,62000000000,-1,showSummons?demoSummons:[]),
+      frame("아자토스의 맹목의 핵동\n파티 전체가 피해를 받았습니다.",1,62000000000,1,showSummons?demoSummons:[]),frame('<span class="battle-event battle-event--passive"><span class="battle-event__eyebrow">PASSIVE SHIFT</span><b><span style="color:#d053ff">아자토스</span> · 두 번째 각성</b><span class="battle-event__body">회피를 무시하고 치명타율을 감소시킵니다.</span></span>',2,34000000000,-1,showSummons?demoSummons:[]),frame('<span class="battle-event battle-event--ally"><span class="battle-event__eyebrow">ALLY SKILL</span><b>바다를 삼킨 태양 · 태양 폭발</b><span class="battle-event__body">태양 주기가 완성되어 전장을 밝힙니다.</span></span>',3,34000000000,-1,showSummons?demoSummons:[]),frame("[공허] 바다를 삼킨 태양 공격\n치명타!\n16,000,000,000 피해",3,18000000000,-1,showSummons?demoSummons:[]),
       frame('<span class="battle-event battle-event--crazy"><span class="battle-event__eyebrow">CRAZY ULTIMATE</span><b><span style="color:#d053ff">아자토스</span> · 잠든 신의 개안</b><span class="battle-event__body">전투당 한 번만 사용하는 궁극기가 발동했습니다.</span></span>',3,18000000000),frame("아자토스를 쓰러뜨렸습니다.",4,0)
     ];
     const healthReport=[
@@ -266,6 +319,16 @@
     if(location.hostname!=="127.0.0.1"||!new URLSearchParams(location.search).has("cosmeticDemo"))return;
     ["kraken","hydra"].forEach(id=>{bossProgress.defeated[id]=true;bossProgress.difficultyClears[id]={normal:true,hard:true,crazy:true};});
     profileCosmetics={border:"kraken",aura:"hydra",background:"영웅",attackEffect:"영웅"};
+  }
+
+  function applyLocalFusionDemo(){
+    if(location.hostname!=="127.0.0.1")return;
+    const params=new URLSearchParams(location.search);
+    if(!params.has("fusionDemo")&&!params.has("presetDemo"))return;
+    const makeDemoFish=(id,name,grade,attack,hp,price,stage=0,count=0)=>({id,name,grade,size:null,price,locked:false,time:"로컬 UI 검사",combat:{attack,hp,maxHp:hp,dodge:18,critRate:32,critDamage:260,_baseAttack:attack,_baseMaxHp:hp,_baseCritDamage:260,status:"정상",combatVersion:14,stars:{attack:1,hp:1,dodge:0,critRate:1,critDamage:1}},fusion:count||stage?{count,evolutionStage:stage,permanentAttack:attack,permanentMaxHp:hp,totalAttackGain:0,totalHpGain:0,totalGoldSpent:0}:undefined});
+    bucket=[makeDemoFish("demo-main","해신룡","영원",1000000,5000000,1000000000,0,2),makeDemoFish("demo-mat-1","해신룡","영원",600000,3000000,1000000000),makeDemoFish("demo-mat-2","해신룡","영원",750000,3600000,1000000000),makeDemoFish("demo-mat-3","해신룡","영원",920000,4100000,1000000000),makeDemoFish("demo-evo","바다를 삼킨 태양","공허",2400000,12000000,5000000000,3,18),makeDemoFish("demo-party","휘몰아치는 마음","초월",480000,2400000,500000000)];
+    money=1000000000000;fusionMainFishId="demo-main";partyPresets={boss:["demo-evo"],pvp:["demo-party"]};
+    setTimeout(()=>params.has("presetDemo")?openPresets():openFusionLab(),80);
   }
 
   function installOutputBridge() {
@@ -473,14 +536,14 @@
     $("#recentCatchEmpty").hidden = recent.length > 0;
     $("#recentCatchGrid").hidden = recent.length === 0;
     $("#recentCatchGrid").innerHTML = recent.map(({fish, originalIndex}, index) => `
-      <button type="button" class="recent-catch-item ${gradeClass(fish.grade)}" data-recent-bucket-index="${originalIndex}" data-tooltip="${safe(fish.time || "최근 획득")}" aria-label="${safe(fish.name)} 상세정보 보기">
+      <button type="button" class="recent-catch-item ${gradeClass(fish.grade)} ${fishEvolutionClass(fish)}" data-recent-bucket-index="${originalIndex}" data-tooltip="${safe(fish.time || "최근 획득")}" aria-label="${safe(fish.name)} 상세정보 보기">
         <span>${fishIcon(fish)}</span><div><b>${safe(fish.name)}</b><small>${safe(fish.grade)} · 상세정보 보기</small></div><em>${index + 1}회 전</em>
       </button>`).join("");
   }
 
   function bucketRenderKey() {
     if(state.activeView==="bucketView")bucket.forEach(f=>{if(f&&f.grade!=="쓰레기")updateRecoveringFishHp(f);});
-    return `${bucket.length}|${bucketSortOrder}|${bucket.map(f => {const c=f.combat||{};const hpRate=Math.floor(Number(c.hp||0)/Math.max(1,Number(c.maxHp||1))*100);return `${f.id}:${f.locked?1:0}:${c.status||""}:${hpRate}`;}).join("|")}`;
+    return `${bucket.length}|${bucketSortOrder}|${fusionMainFishId}|${bucket.map(f => {const c=f.combat||{};const hpRate=Math.floor(Number(c.hp||0)/Math.max(1,Number(c.maxHp||1))*100);return `${f.id}:${f.locked?1:0}:${c.status||""}:${hpRate}:${f.fusion?.count||0}:${f.fusion?.evolutionStage||0}`;}).join("|")}`;
   }
   function renderBucket(force = false) {
     const key = bucketRenderKey();
@@ -496,11 +559,12 @@
     const list = sortedBucketList();
     grid.innerHTML = list.map((entry, index) => {
       const fish = entry.fish, combat = ensureCombatStats(fish), no = index + 1, healthPercent=Math.floor(hpPercent(combat.hp,combat.maxHp)),recoveryLeft=Math.max(0,Number(combat.stunUntil||0)-Date.now()),knockedOut=!!combat.knockedOut||combat.status==="기절"||combat.hp<=0;
-      return `<article class="fish-card ${gradeClass(fish.grade)}">
-        <div class="fish-card-top"><span class="fish-card-icon">${fishIcon(fish)}</span><span class="fish-card-index">NO.${no}${fish.locked ? " · 🔒" : ""}</span></div>
-        <span class="fish-card-grade">${safe(fish.grade)}</span><h3>${safe(fish.name)}</h3><p>${fish.size === null ? "특별 개체" : `${formatSize(fish.size)}cm`}</p>
+      const isFusionMain=fish.id===fusionMainFishId,stage=getFishEvolutionStage(fish),fusionCount=getFishFusionCount(fish);
+      return `<article class="fish-card ${gradeClass(fish.grade)} ${fishEvolutionClass(fish)} ${isFusionMain?"fusion-main":""}">
+        <div class="fish-card-top"><span class="fish-card-icon">${fishIcon(fish)}</span><span class="fish-card-index">NO.${no}${fish.locked ? " · 🔒" : ""}${isFusionMain?" · 🧬 본체":""}</span></div>
+        <span class="fish-card-grade">${safe(fish.grade)}${stage?` · ${safe(getFishEvolutionLabel(fish))}`:""}</span><h3>${safe(fish.name)} ${fishEvolutionBadge(fish)}</h3><p>${fish.size === null ? "특별 개체" : `${formatSize(fish.size)}cm`}${fusionCount?` · 합성 ${fusionCount}회`:""}</p>
         <div class="fish-stats"><div><small>공격력 ${combatStars(combat,"attack")}</small><b>${compactNumber(combat.attack)}</b></div><div><small>체력 ${combatStars(combat,"hp")} · ${healthPercent}%</small><b>${compactNumber(combat.hp)} / ${compactNumber(combat.maxHp)}</b><span class="bucket-hp-track"><i style="width:${healthPercent}%"></i></span>${recoveryLeft>0?`<em class="bucket-recovery ${knockedOut?"knocked-out":""}" data-recovery-until="${Number(combat.stunUntil||0)}" data-recovery-kind="${knockedOut?"knockout":"recovery"}">${knockedOut?"💫 기절":"❤️‍🩹 회복"} ${safe(formatRemain(recoveryLeft))}</em>`:""}</div></div>
-        <div class="fish-actions"><button data-fish-action="info" data-number="${no}" data-tooltip="능력치와 특성을 확인합니다">상세</button><button data-fish-action="lock" data-number="${no}" data-tooltip="${fish.locked ? "잠금을 해제합니다" : "판매되지 않도록 잠급니다"}">${fish.locked ? "잠금 해제" : "잠금"}</button><button class="sell" data-fish-action="sell" data-number="${no}" data-tooltip="현재 시세로 판매합니다" ${fish.locked ? "disabled" : ""}>판매</button></div>
+        <div class="fish-actions"><button data-fish-action="info" data-number="${no}" data-tooltip="능력치와 특성을 확인합니다">상세</button>${fish.grade!=="쓰레기"?`<button data-fish-action="fusionMain" data-number="${no}" data-tooltip="이 물고기를 합성 본체로 설정합니다">${isFusionMain?"본체 ✓":"본체 설정"}</button>`:""}<button data-fish-action="lock" data-number="${no}" data-tooltip="${fish.locked ? "잠금을 해제합니다" : "판매되지 않도록 잠급니다"}">${fish.locked ? "잠금 해제" : "잠금"}</button><button class="sell" data-fish-action="sell" data-number="${no}" data-tooltip="현재 시세로 판매합니다" ${fish.locked ? "disabled" : ""}>판매</button></div>
       </article>`;
     }).join("");
   }
@@ -510,9 +574,10 @@
     if (!fish) return showToast("존재하지 않는 물고기입니다.");
     const displayNumber = getDisplayNumberByBucketIndex(idx);
     const c = ensureCombatStats(fish), trait = getFishTrait(fish);
-    openUiModal(fish.name, `<div class="game-dialog"><div class="dialog-summary ${gradeClass(fish.grade)}"><div><small>${safe(fish.grade)} · 양동이 ${displayNumber}번</small><b>${safe(fish.name)}</b></div><span>${fishIcon(fish)}</span></div>
+    const fusionCount=getFishFusionCount(fish),stage=getFishEvolutionStage(fish);
+    openUiModal(fish.name, `<div class="game-dialog"><div class="dialog-summary fish-detail-summary ${gradeClass(fish.grade)} ${fishEvolutionClass(fish)}"><div><small>${safe(fish.grade)} · 양동이 ${displayNumber}번${stage?` · ${safe(getFishEvolutionLabel(fish))}`:""}</small><b>${safe(fish.name)} ${fishEvolutionBadge(fish)}</b>${fish.grade!=="쓰레기"?`<p>합성 ${fusionCount}회 · 공격력/체력 20% 고정 전이</p>`:""}</div><span>${fishIcon(fish)}</span></div>
       <div class="dialog-card-grid"><article class="dialog-card"><small>공격력 ${combatStars(c,"attack")}</small><strong>${Number(c.attack).toLocaleString()}</strong></article><article class="dialog-card"><small>체력 ${combatStars(c,"hp")}</small><strong>${Number(c.hp).toLocaleString()} / ${Number(c.maxHp).toLocaleString()}</strong></article><article class="dialog-card"><small>회피율 ${combatStars(c,"dodge")}</small><strong>${Number(c.dodge).toFixed(1)}%</strong></article><article class="dialog-card"><small>치명타 확률 ${combatStars(c,"critRate")}</small><strong>${Number(c.critRate).toFixed(1)}%</strong></article><article class="dialog-card"><small>치명타 피해 ${combatStars(c,"critDamage")}</small><strong>${Number(c.critDamage).toFixed(0)}%</strong></article></div>
-      ${trait ? `<article class="dialog-card ${gradeClass(fish.grade)}"><small>고유 특성</small><h3>${safe(trait.name)}</h3><p>${safe(trait.desc)}</p></article>` : ""}</div>`);
+      ${trait ? `<article class="dialog-card ${gradeClass(fish.grade)}"><small>고유 특성</small><h3>${safe(trait.name)}</h3><p>${safe(trait.desc)}</p></article>` : ""}${fish.grade!=="쓰레기"?`<div class="dialog-actions"><button class="primary" data-fusion-main-id="${safe(fish.id)}">합성 본체로 설정</button><button data-ui-action="fusion">합성·진화 열기</button></div>`:""}</div>`);
   }
   function openFishDetail(displayNumber) {
     openFishDetailByBucketIndex(getBucketIndexByDisplayNumber(Number(displayNumber)));
@@ -579,7 +644,7 @@
     }).slice(0,60);
     const fishCards = list.map(entry => {
       const fish = entry.fish, no = getDisplayNumberByBucketIndex(entry.originalIndex), selected = bossPrepIndexes.includes(entry.originalIndex), c = ensureCombatStats(fish), knockedOut=!!c.knockedOut||c.status==="기절"||c.hp<=0;
-      return `<article class="boss-party-fish ${gradeClass(fish.grade)} ${selected ? "selected" : ""} ${knockedOut?"knocked-out":""}"><span>${fishIcon(fish)}</span><div><b>${safe(fish.name)}</b><small>⚔ ${compactNumber(c.attack)} ${combatStars(c,"attack")} · ❤️ ${compactNumber(c.hp)} / ${compactNumber(c.maxHp)} ${combatStars(c,"hp")}${knockedOut?" · 기절":""}</small></div><button data-boss-prep-number="${no}" data-selected="${selected ? 1 : 0}" ${knockedOut?"disabled":""}>${knockedOut?"기절":selected?"해제":"참가"}</button></article>`;
+      return `<article class="boss-party-fish ${gradeClass(fish.grade)} ${fishEvolutionClass(fish)} ${selected ? "selected" : ""} ${knockedOut?"knocked-out":""}"><span>${fishIcon(fish)}</span><div><b>${safe(fish.name)} ${fishEvolutionBadge(fish)}</b><small>⚔ ${compactNumber(c.attack)} ${combatStars(c,"attack")} · ❤️ ${compactNumber(c.hp)} / ${compactNumber(c.maxHp)} ${combatStars(c,"hp")}${knockedOut?" · 기절":""}</small></div><button data-boss-prep-number="${no}" data-selected="${selected ? 1 : 0}" ${knockedOut?"disabled":""}>${knockedOut?"기절":selected?"해제":"참가"}</button></article>`;
     }).join("");
     const cooldown = getBossCooldownLeft(boss.id,difficultyId);
     const difficultyButtons=BOSS_DIFFICULTY_ORDER.map(id=>{const config=getBossDifficultyConfig(id),open=isBossDifficultyUnlocked(baseBoss,id),done=isBossDifficultyCleared(baseBoss,id);return `<button data-boss-difficulty="${id}" class="${id===difficultyId?"active":""}" ${open?"":"disabled"}>${config.name}${done?" ✓":open?"":" 🔒"}</button>`;}).join("");
@@ -665,13 +730,21 @@
     try {
       if (currentUser) await saveCloudData();
       const [moneySnap, levelSnap] = await Promise.all([db.collection("users").orderBy("money","desc").limit(20).get(), db.collection("users").orderBy("rodLevel","desc").limit(20).get()]);
-      const section = (docs,type) => docs.map((doc,index) => { const u=doc.data(); const value=type==="money"?formatMoney(u.money||0):`Lv.${u.rodLevel||1}`; return `<article class="dialog-card"><small>RANK ${index+1}</small><h3>${safe(formatUserName(u.nickname||"낚시꾼",u.title||""))}</h3><strong>${value}</strong></article>`; }).join("");
-      openUiModal("랭킹", `<div class="game-dialog"><div class="dialog-summary"><div><small>ONLINE RANKING</small><b>FishingLife TOP 20</b></div><span>🏆</span></div><h3>지갑 랭킹</h3><div class="dialog-card-grid">${section(moneySnap.docs,"money")}</div><h3>낚싯대 랭킹</h3><div class="dialog-card-grid">${section(levelSnap.docs,"level")}</div></div>`);
+      const section = (docs,type) => docs.map((doc,index) => {
+        const u=doc.data(),cosmetics=normalizeProfileCosmetics(u.gameState?.profileCosmetics),borderBoss=bossList.find(boss=>boss.id===cosmetics.border),auraBoss=bossList.find(boss=>boss.id===cosmetics.aura),background=cosmeticGrades[cosmetics.background];
+        const value=type==="money"?formatMoney(u.money||0):`Lv.${u.rodLevel||1}`,avatar=borderBoss?bossSymbols[borderBoss.id]||"✦":"⚓",medal=index===0?"🥇":index===1?"🥈":index===2?"🥉":"";
+        const avatarClass=`profile-preview ranking-avatar ${borderBoss?"has-profile-border":""} ${auraBoss?"has-profile-aura":""}`;
+        const avatarStyle=`--profile-border-color:${borderBoss?.color||"#4ee4ce"};--profile-aura-color:${auraBoss?.color||"#4ee4ce"}`;
+        const rowStyle=background?`--ranking-profile-color:${background.primary};--ranking-profile-secondary:${background.secondary}`:"";
+        return `<article class="ranking-row ${background?"has-profile-background":""} ${u.nickname===currentUser?"is-me":""}" style="${rowStyle}"><strong class="ranking-position">${medal||`#${index+1}`}</strong><div class="${avatarClass}" style="${avatarStyle}" data-aura-symbol="${safe(auraBoss?bossSymbols[auraBoss.id]||"✦":"")}"><span>${avatar}</span></div><div class="ranking-user"><small>${safe(u.title?`[${u.title}]`:"칭호 없음")}</small><b>${safe(u.nickname||"낚시꾼")}${u.nickname===currentUser?" · 나":""}</b><em>${type==="money"?"누적 자산 순위":"낚싯대 성장 순위"}</em></div><strong class="ranking-value">${value}</strong></article>`;
+      }).join("");
+      openUiModal("랭킹", `<div class="game-dialog ranking-dialog"><div class="dialog-summary"><div><small>ONLINE RANKING</small><b>FishingLife TOP 20</b><p>프로필과 기록을 한 줄에 한 명씩 표시합니다.</p></div><span>🏆</span></div><h3>지갑 랭킹</h3><div class="ranking-list">${section(moneySnap.docs,"money")}</div><h3>낚싯대 랭킹</h3><div class="ranking-list">${section(levelSnap.docs,"level")}</div></div>`);
     } catch (error) { console.error(error); showToast("랭킹을 불러오지 못했습니다."); closeModal(); }
   }
 
   async function openPvpPanel() {
     if (!currentUser) return openUiModal("1대1 대전", `<div class="game-dialog"><div class="dialog-summary"><div><small>ONLINE PVP</small><b>로그인이 필요합니다.</b></div><span>⚔️</span></div></div>`);
+    recoverStunnedFish();
     const active = await getMyActivePvp();
     if (!active) return openUiModal("1대1 대전", `<div class="game-dialog"><div class="dialog-summary"><div><small>ONLINE PVP</small><b>새로운 상대에게 도전하세요</b></div><span>⚔️</span></div><div class="dialog-form"><label for="pvpNickname">상대 닉네임</label><input id="pvpNickname" maxlength="12" placeholder="닉네임"><button data-pvp-request>대전 신청</button></div></div>`);
     if (active.status === "requested") {
@@ -679,12 +752,79 @@
       return openUiModal("1대1 대전", `<div class="game-dialog"><div class="dialog-summary"><div><small>대전 신청 ${incoming ? "도착" : "전송 완료"}</small><b>VS ${safe(active.opponent || "상대")}</b></div><span>⚔️</span></div><div class="dialog-actions">${incoming ? `<button class="primary" data-pvp-accept>수락</button><button data-pvp-reject>거절</button>` : ""}<button data-pvp-cancel>대전 취소</button></div></div>`);
     }
     const list = sortedBucketList().filter(entry => entry.fish.grade !== "쓰레기").slice(0,40);
-    const fishCards = list.map(entry => { const selected=pvpPrepIndexes.includes(entry.originalIndex),f=entry.fish,c=ensureCombatStats(f),no=getDisplayNumberByBucketIndex(entry.originalIndex); return `<article class="boss-party-fish ${gradeClass(f.grade)} ${selected ? "selected" : ""}"><span>${fishIcon(f)}</span><div><b>${safe(f.name)}</b><small>⚔ ${compactNumber(c.attack)} · ❤️ ${compactNumber(c.maxHp)}</small></div><button data-pvp-fish="${no}" data-selected="${selected?1:0}">${selected?"해제":"참가"}</button></article>`; }).join("");
+    const fishCards = list.map(entry => { const selected=pvpPrepIndexes.includes(entry.originalIndex),f=entry.fish,c=ensureCombatStats(f),no=getDisplayNumberByBucketIndex(entry.originalIndex),knockedOut=!!c.knockedOut||c.status==="기절"||c.hp<=0; return `<article class="boss-party-fish ${gradeClass(f.grade)} ${fishEvolutionClass(f)} ${selected ? "selected" : ""} ${knockedOut?"knocked-out":""}"><span>${fishIcon(f)}</span><div><b>${safe(f.name)} ${fishEvolutionBadge(f)}</b><small>⚔ ${compactNumber(c.attack)} · ❤️ ${compactNumber(c.hp)} / ${compactNumber(c.maxHp)}${knockedOut?" · 기절":""}</small></div><button data-pvp-fish="${no}" data-selected="${selected?1:0}" ${knockedOut?"disabled":""}>${knockedOut?"기절":selected?"해제":"참가"}</button></article>`; }).join("");
     openUiModal("1대1 대전", `<div class="game-dialog"><div class="dialog-summary"><div><small>VS ${safe(active.opponent || "상대")}</small><b>출전 파티 ${pvpPrepIndexes.length} / 3</b></div><span>⚔️</span></div><div class="boss-party-list">${fishCards}</div><div class="dialog-actions"><button class="primary" data-pvp-ready>준비 완료</button><button data-pvp-cancel>대전 취소</button></div></div>`);
   }
 
-  function openPresets() {
-    openUiModal("파티 프리셋", `<div class="game-dialog"><div class="dialog-summary"><div><small>PARTY PRESET</small><b>보스 ${partyPresets.boss.length}마리 · PVP ${partyPresets.pvp.length}마리</b></div><span>🧭</span></div><div class="dialog-card-grid"><article class="dialog-card"><small>BOSS PARTY</small><h3>보스전 프리셋</h3><p>현재 준비한 보스 파티를 저장하거나 불러옵니다.</p><div class="dialog-actions"><button data-game-command="파티저장 보스">저장</button><button data-game-command="파티불러오기 보스">불러오기</button><button data-game-command="파티해제 보스">삭제</button></div></article><article class="dialog-card"><small>PVP PARTY</small><h3>대전 프리셋</h3><p>현재 준비한 PVP 파티를 저장하거나 불러옵니다.</p><div class="dialog-actions"><button data-game-command="파티저장 pvp">저장</button><button data-game-command="파티불러오기 pvp">불러오기</button><button data-game-command="파티해제 pvp">삭제</button></div></article></div></div>`);
+  function fusionProgressHtml(fish){
+    const count=getFishFusionCount(fish),stage=getFishEvolutionStage(fish),progress=Math.min(100,count/15*100);
+    return `<div class="fusion-progress"><div class="fusion-progress-head"><span>합성 진행도</span><b>${count.toLocaleString()}회${stage===3?" · 최종 진화 완료":""}</b></div><div class="fusion-progress-track"><i style="width:${progress}%"></i><span style="left:20%" class="${count>=3?"reached":""}">3</span><span style="left:46.666%" class="${count>=7?"reached":""}">7</span><span style="left:100%" class="${count>=15?"reached":""}">15</span></div><div class="fusion-stage-row"><small class="${stage>=1?"done":""}">1차 진화</small><small class="${stage>=2?"done":""}">2차 진화</small><small class="${stage>=3?"done":""}">최종 진화</small></div></div>`;
+  }
+
+  function openFusionMainPicker(){
+    ensureAllFishIds();
+    const fishes=sortedBucketList().filter(entry=>entry.fish.grade!=="쓰레기");
+    const cards=fishes.map(entry=>{const f=entry.fish,c=ensureCombatStats(f),active=f.id===fusionMainFishId;return `<article class="selection-fish ${gradeClass(f.grade)} ${fishEvolutionClass(f)} ${active?"selected":""}"><span>${fishIcon(f)}</span><div><b>${safe(f.name)} ${fishEvolutionBadge(f)}</b><small>${safe(f.grade)} · ⚔ ${compactNumber(c.attack)} · ❤️ ${compactNumber(c.maxHp)} · 합성 ${getFishFusionCount(f)}회</small></div><button data-fusion-main-id="${safe(f.id)}">${active?"본체 ✓":"본체 설정"}</button></article>`;}).join("");
+    openUiModal("합성 본체 선택",`<div class="game-dialog fusion-dialog"><div class="dialog-summary"><div><small>FUSION MAIN</small><b>직접 키울 물고기를 선택하세요</b><p>설정한 본체와 이름이 같은 물고기만 재료로 사용할 수 있습니다.</p></div><span>🧬</span></div><div class="selection-fish-list">${cards||`<div class="fusion-empty">전투 가능한 물고기가 없습니다.</div>`}</div></div>`);
+  }
+
+  function openFusionLab(){
+    const main=getFusionMainFish();
+    if(!main)return openFusionMainPicker();
+    const stateData=ensureFishFusionState(main),combat=ensureCombatStats(main),evolution=getFishEvolutionDetails(main);
+    const candidates=getFusionMaterialCandidates(main);
+    const validIds=new Set(candidates.filter(entry=>!entry.reason).map(entry=>entry.fish.id));
+    state.fusionMaterialIds=state.fusionMaterialIds.filter(id=>validIds.has(id)).slice(0,FUSION_BATCH_LIMIT);
+    const cards=candidates.map(entry=>{const f=entry.fish,c=ensureCombatStats(f),selected=state.fusionMaterialIds.includes(f.id),disabled=!!entry.reason;return `<article class="selection-fish fusion-material ${gradeClass(f.grade)} ${fishEvolutionClass(f)} ${selected?"selected":""} ${disabled?"disabled":""}"><span>${fishIcon(f)}</span><div><b>${safe(f.name)} ${fishEvolutionBadge(f)}</b><small>⚔ ${compactNumber(c.attack)} · ❤️ ${compactNumber(c.maxHp)}${entry.reason?` · ${safe(entry.reason)}`:` · 전이 ⚔ ${compactNumber(Math.max(1,Math.floor(getFishPermanentStats(f).attack*.2)))} / ❤️ ${compactNumber(Math.max(1,Math.floor(getFishPermanentStats(f).maxHp*.2)))}`}</small></div><button data-fusion-material-id="${safe(f.id)}" ${disabled?"disabled":""}>${disabled?"사용 불가":selected?"선택 해제":"재료 선택"}</button></article>`;}).join("");
+    const preview=state.fusionMaterialIds.length?calculateFishFusionPreview(main.id,state.fusionMaterialIds):null;
+    const nextLabel=evolution.complete?"최종 진화 완료":`${evolution.nextStage===1?"1차":evolution.nextStage===2?"2차":"최종"} 진화`;
+    const previewHtml=preview?.ok?`<div class="fusion-preview-stats"><article><small>공격력</small><b>${compactNumber(preview.beforeAttack)} → ${compactNumber(preview.afterAttack)}</b><em>+${compactNumber(preview.afterAttack-preview.beforeAttack)}</em></article><article><small>최대 체력</small><b>${compactNumber(preview.beforeMaxHp)} → ${compactNumber(preview.afterMaxHp)}</b><em>+${compactNumber(preview.afterMaxHp-preview.beforeMaxHp)}</em></article><article><small>합성 횟수</small><b>${preview.countBefore} → ${preview.countAfter}</b><em>전이율 20%</em></article><article><small>합성 비용</small><b>${formatMoney(preview.cost)}</b><em>${preview.canAfford?"합성 가능":`${formatMoney(preview.cost-money)} 부족`}</em></article></div>`:`<div class="fusion-preview-empty">같은 이름의 재료를 최대 5마리 선택하면 증가량이 표시됩니다.</div>`;
+    openUiModal("합성·진화",`<div class="game-dialog fusion-dialog"><div class="fusion-lab-grid"><section class="fusion-main-panel ${gradeClass(main.grade)} ${fishEvolutionClass(main)}"><small>FUSION MAIN · ${safe(getFishEvolutionLabel(main))}</small><div class="fusion-main-icon">${fishIcon(main)}</div><h2>${safe(main.name)} ${fishEvolutionBadge(main)}</h2><p>${safe(main.grade)} · 합성 ${stateData.count}회 · 전이율 20% 고정</p><div class="fusion-main-stats"><span>⚔ ${compactNumber(combat.attack)}</span><span>❤️ ${compactNumber(combat.maxHp)}</span></div>${fusionProgressHtml(main)}<button data-fusion-change-main>본체 변경</button></section><section class="fusion-material-panel"><header><div><small>SAME FISH ONLY</small><h3>같은 물고기 재료</h3></div><b>${state.fusionMaterialIds.length} / ${FUSION_BATCH_LIMIT}</b></header><div class="selection-fish-list">${cards||`<div class="fusion-empty">합성할 수 있는 같은 물고기가 없습니다.</div>`}</div></section><section class="fusion-result-panel"><small>RESULT PREVIEW</small><h3>합성 결과</h3>${previewHtml}<div class="fusion-rule-note">재료의 영구 공격력·체력 20%만 전이 · 회피·치명타·별·특성은 전이되지 않음</div><button class="dialog-primary" data-fusion-submit ${!preview?.ok||!preview.canAfford?"disabled":""}>${preview?.ok&&!preview.canAfford?"골드 부족":"합성하기"}</button><div class="evolution-ready ${evolution.unlocked&&!evolution.complete?"ready":""}"><small>EVOLUTION</small><b>${nextLabel}</b><p>${evolution.complete?"합성은 계속할 수 있습니다.":`조건 ${evolution.count} / ${evolution.threshold}회 · 비용 ${formatMoney(evolution.cost)}`}</p><button data-evolution-submit ${evolution.complete||!evolution.unlocked||!evolution.canAfford?"disabled":""}>${evolution.complete?"진화 완료":!evolution.unlocked?"합성 횟수 부족":!evolution.canAfford?"진화 비용 부족":"진화하기"}</button></div></section></div></div>`);
+  }
+
+  function finishFusionAnimation(){
+    document.querySelector(".fusion-cinematic")?.remove();
+    if(state.fusionAnimationResolve){const resolve=state.fusionAnimationResolve;state.fusionAnimationResolve=null;resolve();}
+  }
+
+  function playFusionAnimation(kind,result){
+    finishFusionAnimation();
+    const isEvolution=kind==="evolution",stage=Number(result.stage||0),duration=window.matchMedia?.("(prefers-reduced-motion: reduce)").matches?80:isEvolution?[0,2100,2800,3800][stage]:1750;
+    const overlay=document.createElement("div");
+    overlay.className=`fusion-cinematic ${isEvolution?`evolution evolution-${stage}`:"fusion"} ${gradeClass(result.main?.grade||result.fish?.grade)}`;
+    const fish=result.main||result.fish,materials=isEvolution?"":Array.from({length:Math.min(5,result.materialNames?.length||0)},()=>`<i>${fishIcon(fish)}</i>`).join("");
+    overlay.innerHTML=`<div class="fusion-cinematic-bg"></div><button data-fusion-animation-skip>건너뛰기</button><div class="fusion-cinematic-content"><small>${isEvolution?stage===3?"FINAL EVOLUTION":`EVOLUTION STAGE ${stage}`:"FISH FUSION"}</small><div class="fusion-orbit">${materials}<strong>${fishIcon(fish)}</strong></div><h2>${safe(fish.name)}</h2><p>${isEvolution?`${safe(getFishEvolutionLabel(fish))} 성공`:`공격력 +${compactNumber(result.afterAttack-result.beforeAttack)} · 체력 +${compactNumber(result.afterMaxHp-result.beforeMaxHp)}`}</p></div>`;
+    document.body.appendChild(overlay);
+    if(isEvolution){playGameSound("evolution",stage);gameVibrate("evolution");}else{playGameSound("fusion");gameVibrate("fusion");}
+    return new Promise(resolve=>{state.fusionAnimationResolve=resolve;setTimeout(finishFusionAnimation,duration);});
+  }
+
+  async function submitFusion(){
+    const result=performFishFusion(fusionMainFishId,state.fusionMaterialIds);
+    if(!result.ok)return showToast(result.shortage?`${formatMoney(result.shortage)}이 부족합니다.`:result.message);
+    state.fusionMaterialIds=[];state.bucketKey="";renderAll(true);
+    await playFusionAnimation("fusion",result);
+    openFusionLab();
+  }
+
+  async function submitEvolution(){
+    const result=performFishEvolution(fusionMainFishId);
+    if(!result.ok)return showToast(result.shortage?`${formatMoney(result.shortage)}이 부족합니다.`:result.message);
+    state.bucketKey="";renderAll(true);
+    await playFusionAnimation("evolution",result);
+    openFusionLab();
+  }
+
+  function openPresetEditor(type="boss",reset=true){
+    type=type==="pvp"?"pvp":"boss";state.presetEditorType=type;
+    const max=type==="boss"?5:3;
+    if(reset)state.presetEditorIds=[...(partyPresets[type]||[])].filter(id=>bucket.some(f=>f&&f.id===id)).slice(0,max);
+    const cards=sortedBucketList().filter(entry=>entry.fish.grade!=="쓰레기").map(entry=>{const f=entry.fish,c=ensureCombatStats(f),selected=state.presetEditorIds.includes(f.id),knockedOut=!!c.knockedOut||c.status==="기절"||c.hp<=0;return `<article class="selection-fish preset-fish ${gradeClass(f.grade)} ${fishEvolutionClass(f)} ${selected?"selected":""}"><span>${fishIcon(f)}</span><div><b>${safe(f.name)} ${fishEvolutionBadge(f)}</b><small>${safe(f.grade)} · ⚔ ${compactNumber(c.attack)} · ❤️ ${compactNumber(c.hp)} / ${compactNumber(c.maxHp)}${knockedOut?" · 현재 기절":""}</small></div><button data-preset-fish-id="${safe(f.id)}">${selected?"선택 해제":"선택"}</button></article>`;}).join("");
+    openUiModal("파티 프리셋",`<div class="game-dialog preset-editor"><div class="dialog-summary"><div><small>BUCKET PARTY PRESET</small><b>양동이에서 직접 골라 저장하세요</b><p>저장된 물고기는 판매할 때 경고가 표시됩니다.</p></div><span>🧭</span></div><div class="preset-type-tabs"><button data-preset-type="boss" class="${type==="boss"?"active":""}">보스 프리셋 ${partyPresets.boss.length}/5</button><button data-preset-type="pvp" class="${type==="pvp"?"active":""}">PVP 프리셋 ${partyPresets.pvp.length}/3</button></div><div class="preset-editor-head"><div><small>${type==="boss"?"BOSS PARTY":"PVP PARTY"}</small><h3>${type==="boss"?"보스전 최대 5마리":"PVP 최대 3마리"}</h3></div><b>${state.presetEditorIds.length} / ${max}</b></div><div class="selection-fish-list preset-bucket-list">${cards||`<div class="fusion-empty">양동이에 전투 가능한 물고기가 없습니다.</div>`}</div><div class="dialog-actions preset-editor-actions"><button class="primary" data-preset-save ${state.presetEditorIds.length?"":"disabled"}>선택한 파티 저장</button><button data-preset-load="${type}" ${(partyPresets[type]||[]).length?"":"disabled"}>저장 파티 불러오기</button><button class="danger" data-preset-clear="${type}" ${(partyPresets[type]||[]).length?"":"disabled"}>저장 삭제</button></div></div>`);
+  }
+
+  function openPresets(){
+    openPresetEditor(state.presetEditorType||"boss",true);
   }
   function openMessageForm() {
     openUiModal("메시지 보내기", `<div class="game-dialog"><div class="dialog-summary"><div><small>DIRECT MESSAGE</small><b>친구에게 메시지를 보냅니다</b></div><span>💌</span></div><div class="dialog-form"><label for="messageNickname">받는 사람 닉네임</label><input id="messageNickname" maxlength="12" placeholder="닉네임"><label for="messageText">메시지</label><input id="messageText" maxlength="300" placeholder="보낼 내용을 입력하세요"><button data-message-send>메시지 보내기</button></div></div>`);
@@ -728,11 +868,25 @@
   }
 
   function handleUiAction(action) {
-    const map = {market:openMarket,fishCollection:openFishCollection,coreCollection:openCoreCollection,bossParty:()=>openBossParty(),ranking:openRanking,wallet:openWallet,achievements:openAchievements,titles:openTitles,cosmetics:openCosmetics,settings:openSettings,pvp:openPvpPanel,presets:openPresets,message:openMessageForm};
+    const map = {market:openMarket,fishCollection:openFishCollection,coreCollection:openCoreCollection,bossParty:()=>openBossParty(),ranking:openRanking,wallet:openWallet,achievements:openAchievements,titles:openTitles,cosmetics:openCosmetics,settings:openSettings,pvp:openPvpPanel,presets:openPresets,fusion:openFusionLab,message:openMessageForm};
     map[action]?.();
   }
 
   document.addEventListener("click", async event => {
+    if(event.target.closest("[data-fusion-animation-skip]")){finishFusionAnimation();return;}
+    const fusionMainButton=event.target.closest("[data-fusion-main-id]");
+    if(fusionMainButton){const result=setFusionMainFish(fusionMainButton.dataset.fusionMainId);if(!result.ok)return showToast(result.message);state.fusionMaterialIds=[];state.bucketKey="";renderAll(true);showToast(`${result.fish.name}을 합성 본체로 설정했습니다.`);return openFusionLab();}
+    if(event.target.closest("[data-fusion-change-main]")){state.fusionMaterialIds=[];return openFusionMainPicker();}
+    const fusionMaterialButton=event.target.closest("[data-fusion-material-id]");
+    if(fusionMaterialButton&&!fusionMaterialButton.disabled){const id=fusionMaterialButton.dataset.fusionMaterialId,pos=state.fusionMaterialIds.indexOf(id);if(pos>=0)state.fusionMaterialIds.splice(pos,1);else if(state.fusionMaterialIds.length>=FUSION_BATCH_LIMIT)return showToast("재료는 한 번에 최대 5마리까지 선택할 수 있습니다.");else state.fusionMaterialIds.push(id);return openFusionLab();}
+    if(event.target.closest("[data-fusion-submit]"))return submitFusion();
+    if(event.target.closest("[data-evolution-submit]"))return submitEvolution();
+    const presetTypeButton=event.target.closest("[data-preset-type]");if(presetTypeButton)return openPresetEditor(presetTypeButton.dataset.presetType,true);
+    const presetFishButton=event.target.closest("[data-preset-fish-id]");
+    if(presetFishButton){const id=presetFishButton.dataset.presetFishId,max=state.presetEditorType==="boss"?5:3,pos=state.presetEditorIds.indexOf(id);if(pos>=0)state.presetEditorIds.splice(pos,1);else if(state.presetEditorIds.length>=max)return showToast(`${state.presetEditorType==="boss"?"보스":"PVP"} 프리셋은 최대 ${max}마리입니다.`);else state.presetEditorIds.push(id);return openPresetEditor(state.presetEditorType,false);}
+    if(event.target.closest("[data-preset-save]")){const result=savePartyPresetIds(state.presetEditorType,state.presetEditorIds);if(!result.ok)return showToast(result.message);showToast(`${result.type==="boss"?"보스":"PVP"} 프리셋 ${result.count}마리를 저장했습니다.`);return openPresetEditor(result.type,true);}
+    const presetLoadButton=event.target.closest("[data-preset-load]");if(presetLoadButton&&!presetLoadButton.disabled){loadPartyPreset(presetLoadButton.dataset.presetLoad);showToast("저장한 파티를 불러왔습니다.");return openPresetEditor(presetLoadButton.dataset.presetLoad,true);}
+    const presetClearButton=event.target.closest("[data-preset-clear]");if(presetClearButton&&!presetClearButton.disabled){clearPartyPreset(presetClearButton.dataset.presetClear);state.presetEditorIds=[];showToast("저장한 프리셋을 삭제했습니다.");return openPresetEditor(presetClearButton.dataset.presetClear,true);}
     const feedbackToggle=event.target.closest("[data-feedback-toggle]");
     if(feedbackToggle){const key=feedbackToggle.dataset.feedbackToggle;if(key==="sound"||key==="vibration"){feedbackSettings[key]=!feedbackSettings[key];saveFeedbackSettings();if(key==="sound"&&feedbackSettings.sound)playGameSound("timing","PERFECT");openSettings();}return;}
     const cosmeticButton=event.target.closest("[data-cosmetic-type]");
@@ -751,6 +905,7 @@
     if (fishButton) {
       const no=fishButton.dataset.number, action=fishButton.dataset.fishAction;
       if(action==="info") return openFishDetail(no);
+      if(action==="fusionMain"){const idx=getBucketIndexByDisplayNumber(Number(no)),fish=bucket[idx],result=setFusionMainFish(fish?.id);if(!result.ok)return showToast(result.message);state.fusionMaterialIds=[];state.bucketKey="";renderAll(true);showToast(`${result.fish.name}을 합성 본체로 설정했습니다.`);return openFusionLab();}
       return runGameCommand(`${action==="lock" ? (fishButton.textContent.includes("해제") ? "잠금해제" : "잠금") : "판매"} ${no}`);
     }
     const bossButton = event.target.closest("[data-boss-index]"); if (bossButton && !bossButton.disabled) return openBossParty(bossButton.dataset.bossIndex);
@@ -788,6 +943,7 @@
 
   installOutputBridge();
   applyLocalCosmeticDemo();
+  applyLocalFusionDemo();
   state.previousBucketCount = bucket.length;
   renderAll(true);
   installTooltips();

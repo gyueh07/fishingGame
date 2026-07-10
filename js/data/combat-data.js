@@ -174,7 +174,7 @@ const bossList = [
     id:"yog_sothoth", name:"요그 소토스", grade:"공허", color:"#b36cff",
     hp:40000000000, attack:5800000, dodge:29, critRate:44, critDamage:500, skillRate:40,
     reward:2000000000000000, drop:"은빛 열쇠",
-    skillName:"차원 압살 / 은빛 문의 추방", skillDesc:"차원 압살 25% : 회피 불가 전체 공격력 180% 피해\n은빛 문의 추방 15% : 강한 물고기 2마리 행동 불가",
+    skillName:"차원 압살 / 은빛 문의 감시자", skillDesc:"차원 압살 25% : 회피 불가 전체 공격력 180% 피해\n은빛 문의 감시자 15% : 3턴 동안 공격하고 물고기의 공격을 대신 받는 감시자 소환",
     crazySkillName:"모든 차원의 종착점",
     desc:"모든 공간과 문의 너머에 동시에 존재하는 공허의 주인.\n전장을 서로 닿을 수 없는 차원으로 갈라 버린다."
   },

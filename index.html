@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#071b2d">
   <meta name="description" content="낚시하고 성장하며 보스와 대전하는 온라인 낚시 RPG">
   <title>FishingLife</title>
-  <link rel="stylesheet" href="./css/legacy.css?v=2.9">
-  <link rel="stylesheet" href="./css/game-ui.css?v=2.9">
+  <link rel="stylesheet" href="./css/legacy.css?v=3.2">
+  <link rel="stylesheet" href="./css/game-ui.css?v=3.2">
 </head>
 <body>
   <div class="ambient-bg" aria-hidden="true">
@@ -191,6 +191,11 @@
               <div class="growth-icon">🏋️</div><small>훈련소</small><h2>전투 훈련</h2>
               <div class="training-grid"><div><span>⚔️ 공격</span><b id="trainingAttackLevel">Lv.0</b><button data-game-command="훈련소1 강화" data-tooltip="모든 보유 물고기의 공격력을 강화합니다">강화</button></div><div><span>🛡️ 체력</span><b id="trainingHpLevel">Lv.0</b><button data-game-command="훈련소2 강화" data-tooltip="모든 보유 물고기의 체력을 강화합니다">강화</button></div><div><span>💥 치명타</span><b id="trainingCritLevel">Lv.0</b><button data-game-command="훈련소3 강화" data-tooltip="모든 보유 물고기의 치명타 피해를 강화합니다">강화</button></div></div>
             </section>
+            <section class="growth-card wide fusion-growth-card">
+              <div class="growth-icon">🧬</div><small>동일 개체 융합</small><h2>합성·진화</h2><p>본체와 이름이 같은 물고기를 흡수해 공격력과 체력의 20%를 영구 전이합니다. 누적 3·7·15회에 진화할 수 있습니다.</p>
+              <div class="fusion-growth-summary"><span>♾️ 합성 횟수 제한 없음</span><span>⚔️❤️ 전이율 20% 고정</span><span>✨ 진화 성공률 100%</span></div>
+              <div class="button-row"><button data-ui-action="fusion" data-tooltip="양동이에서 본체와 같은 물고기를 골라 합성합니다">합성·진화 열기</button></div>
+            </section>
           </div>
         </section>
 
@@ -240,12 +245,12 @@
 
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="./js/data/fish-data.js?v=2.9"></script>
-  <script src="./js/core.js?v=2.9"></script>
-  <script src="./js/data/combat-data.js?v=2.9"></script>
-  <script src="./js/combat.js?v=2.9"></script>
-  <script src="./js/gameplay.js?v=2.9"></script>
-  <script src="./js/commands.js?v=2.9"></script>
-  <script src="./js/ui.js?v=2.9"></script>
+  <script src="./js/data/fish-data.js?v=3.2"></script>
+  <script src="./js/core.js?v=3.2"></script>
+  <script src="./js/data/combat-data.js?v=3.2"></script>
+  <script src="./js/combat.js?v=3.2"></script>
+  <script src="./js/gameplay.js?v=3.2"></script>
+  <script src="./js/commands.js?v=3.2"></script>
+  <script src="./js/ui.js?v=3.2"></script>
 </body>
 </html>

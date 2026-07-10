@@ -435,6 +435,179 @@ function sortBucket(type){
   showBucket();
 }
 
+const FUSION_TRANSFER_RATE = 0.20;
+const FUSION_BATCH_LIMIT = 5;
+const EVOLUTION_THRESHOLDS = [3,7,15];
+const EVOLUTION_COST_MULTIPLIERS = [20,50,100];
+const EVOLUTION_TOTAL_MULTIPLIERS = [1,1.10,1.25,1.50];
+
+function getFusionMainFish(){
+  ensureAllFishIds();
+  return bucket.find(f=>f&&f.id===fusionMainFishId)||null;
+}
+
+function getFishEvolutionStage(f){
+  return Math.max(0,Math.min(3,Math.floor(Number(f?.fusion?.evolutionStage||0))));
+}
+
+function getFishFusionCount(f){
+  return Math.max(0,Math.floor(Number(f?.fusion?.count||0)));
+}
+
+function getFishEvolutionLabel(f){
+  return ["미진화","1차 진화","2차 진화","최종 진화"][getFishEvolutionStage(f)];
+}
+
+function ensureFishFusionState(f){
+  if(!f||f.grade==="쓰레기")return null;
+  const c=ensureCombatStats(f),saved=f.fusion&&typeof f.fusion==="object"?f.fusion:{};
+  const permanentAttack=Math.max(1,Math.floor(Number(saved.permanentAttack??c._baseAttack??c.attack??1)));
+  const permanentMaxHp=Math.max(1,Math.floor(Number(saved.permanentMaxHp??c._baseMaxHp??c.maxHp??c.hp??1)));
+  f.fusion={
+    count:Math.max(0,Math.floor(Number(saved.count||0))),
+    evolutionStage:Math.max(0,Math.min(3,Math.floor(Number(saved.evolutionStage||0)))),
+    permanentAttack,
+    permanentMaxHp,
+    totalAttackGain:Math.max(0,Math.floor(Number(saved.totalAttackGain||0))),
+    totalHpGain:Math.max(0,Math.floor(Number(saved.totalHpGain||0))),
+    totalGoldSpent:normalizeMoney(saved.totalGoldSpent||0)
+  };
+  return f.fusion;
+}
+
+function getFishPermanentStats(f){
+  const state=ensureFishFusionState(f);
+  if(!state)return {attack:0,maxHp:0};
+  return {attack:state.permanentAttack,maxHp:state.permanentMaxHp};
+}
+
+function syncFishFusionCombat(f){
+  const state=ensureFishFusionState(f);if(!state)return null;
+  const c=ensureCombatStats(f),oldMax=Math.max(1,Number(c.maxHp||1)),oldHp=Math.max(0,Number(c.hp||0));
+  const hpRatio=Math.max(0,Math.min(1,oldHp/oldMax)),recoveryRatio=c.recoveryStartHp===undefined?null:Math.max(0,Math.min(1,Number(c.recoveryStartHp||0)/oldMax));
+  const wasDown=!!c.knockedOut||c.status==="기절"||oldHp<=0,wasHealthy=c.status==="정상"&&oldHp>=oldMax;
+  c._baseAttack=state.permanentAttack;c._baseMaxHp=state.permanentMaxHp;
+  delete c._trainingHpLevel;
+  applyTrainingBonusesToCombat(c);
+  if(wasDown)c.hp=0;
+  else if(wasHealthy)c.hp=c.maxHp;
+  else c.hp=Math.max(1,Math.min(c.maxHp,Math.floor(c.maxHp*hpRatio)));
+  if(recoveryRatio!==null)c.recoveryStartHp=Math.max(wasDown?0:1,Math.floor(c.maxHp*recoveryRatio));
+  return c;
+}
+
+function setFusionMainFish(id){
+  ensureAllFishIds();
+  const fish=bucket.find(f=>f&&f.id===String(id));
+  if(!fish||fish.grade==="쓰레기")return {ok:false,message:"전투 가능한 물고기만 본체로 설정할 수 있습니다."};
+  fusionMainFishId=fish.id;
+  ensureFishFusionState(fish);
+  saveGame();
+  return {ok:true,fish};
+}
+
+function clearFusionMainFish(){
+  fusionMainFishId="";saveGame();return true;
+}
+
+function getFusionMaterialBlockReason(main,fish){
+  if(!main||!fish)return "물고기를 찾을 수 없습니다.";
+  if(fish.id===main.id)return "본체는 재료로 사용할 수 없습니다.";
+  if(fish.name!==main.name)return "이름이 같은 물고기만 합성할 수 있습니다.";
+  if(fish.grade==="쓰레기")return "쓰레기 등급은 합성할 수 없습니다.";
+  if(fish.locked)return "잠금된 물고기입니다.";
+  if(isFishInPartyPreset(fish))return "파티 프리셋에 저장된 물고기입니다.";
+  const idx=bucket.indexOf(fish);
+  if(bossPrepIndexes.includes(idx)||pvpPrepIndexes.includes(idx))return "현재 전투 파티에 편성된 물고기입니다.";
+  return "";
+}
+
+function getFusionMaterialCandidates(main=getFusionMainFish()){
+  if(!main)return [];
+  return bucket.map((fish,originalIndex)=>({fish,originalIndex,reason:fish?.name===main.name?getFusionMaterialBlockReason(main,fish):"다른 물고기"}))
+    .filter(entry=>entry.fish&&entry.fish.id!==main.id&&entry.fish.name===main.name);
+}
+
+function getFusionBatchCost(materials,currentCount){
+  return (materials||[]).reduce((total,fish,index)=>{
+    const base=Math.max(1,Number(fish?.price||0));
+    const multiplier=1+(Math.max(0,Number(currentCount||0))+index)*0.05;
+    return normalizeMoney(total+base*2*multiplier);
+  },0);
+}
+
+function calculateFishFusionPreview(mainId,materialIds){
+  ensureAllFishIds();
+  const main=bucket.find(f=>f&&f.id===String(mainId||fusionMainFishId));
+  if(!main)return {ok:false,message:"합성 본체를 먼저 설정해주세요."};
+  const ids=[...new Set((materialIds||[]).map(String))].slice(0,FUSION_BATCH_LIMIT);
+  if(ids.length===0)return {ok:false,message:"재료 물고기를 선택해주세요.",main};
+  const materials=ids.map(id=>bucket.find(f=>f&&f.id===id));
+  if(materials.some(f=>!f))return {ok:false,message:"선택한 재료를 찾을 수 없습니다.",main};
+  const blocked=materials.map(f=>getFusionMaterialBlockReason(main,f)).find(Boolean);
+  if(blocked)return {ok:false,message:blocked,main};
+  const mainState=ensureFishFusionState(main),beforeCombat=ensureCombatStats(main);
+  const attackGain=materials.reduce((sum,f)=>sum+Math.max(1,Math.floor(getFishPermanentStats(f).attack*FUSION_TRANSFER_RATE)),0);
+  const hpGain=materials.reduce((sum,f)=>sum+Math.max(1,Math.floor(getFishPermanentStats(f).maxHp*FUSION_TRANSFER_RATE)),0);
+  const cost=getFusionBatchCost(materials,mainState.count),countAfter=mainState.count+materials.length;
+  const attackTraining=1+getTrainingAttackBonus()/100,hpTraining=1+getTrainingHpBonus()/100;
+  const nextStage=Math.min(3,mainState.evolutionStage+1),threshold=EVOLUTION_THRESHOLDS[nextStage-1]||15;
+  return {ok:true,main,materials,attackGain,hpGain,cost,countBefore:mainState.count,countAfter,stage:mainState.evolutionStage,nextStage,threshold,
+    beforeAttack:Number(beforeCombat.attack||0),beforeMaxHp:Number(beforeCombat.maxHp||0),
+    afterAttack:Math.floor((mainState.permanentAttack+attackGain)*attackTraining),afterMaxHp:Math.floor((mainState.permanentMaxHp+hpGain)*hpTraining),
+    evolutionUnlocked:nextStage>mainState.evolutionStage&&countAfter>=threshold,canAfford:money>=cost};
+}
+
+function getFishEvolutionDetails(f=getFusionMainFish()){
+  if(!f)return {ok:false,message:"합성 본체를 먼저 설정해주세요."};
+  const state=ensureFishFusionState(f),nextStage=state.evolutionStage+1;
+  if(nextStage>3)return {ok:true,fish:f,stage:3,complete:true,count:state.count,cost:0,threshold:15,canAfford:true,unlocked:true};
+  const threshold=EVOLUTION_THRESHOLDS[nextStage-1],cost=normalizeMoney(Math.max(1,Number(f.price||0))*EVOLUTION_COST_MULTIPLIERS[nextStage-1]);
+  return {ok:true,fish:f,stage:state.evolutionStage,nextStage,count:state.count,threshold,cost,unlocked:state.count>=threshold,canAfford:money>=cost,complete:false};
+}
+
+function rebuildPreparedIndexesFromIds(bossIds,pvpIds){
+  bossPrepIndexes=(bossIds||[]).map(id=>bucket.findIndex(f=>f&&f.id===id)).filter(i=>i>=0).slice(0,5);
+  pvpPrepIndexes=(pvpIds||[]).map(id=>bucket.findIndex(f=>f&&f.id===id)).filter(i=>i>=0).slice(0,3);
+}
+
+function performFishFusion(mainId,materialIds){
+  const preview=calculateFishFusionPreview(mainId,materialIds);
+  if(!preview.ok)return preview;
+  if(money<preview.cost)return {ok:false,message:"골드가 부족합니다.",shortage:normalizeMoney(preview.cost-money),preview};
+  const main=preview.main,state=ensureFishFusionState(main),materialIdsSet=new Set(preview.materials.map(f=>f.id));
+  const bossIds=bossPrepIndexes.map(i=>bucket[i]?.id).filter(Boolean),pvpIds=pvpPrepIndexes.map(i=>bucket[i]?.id).filter(Boolean);
+  state.permanentAttack=Math.max(1,state.permanentAttack+preview.attackGain);
+  state.permanentMaxHp=Math.max(1,state.permanentMaxHp+preview.hpGain);
+  state.totalAttackGain+=preview.attackGain;state.totalHpGain+=preview.hpGain;state.count=preview.countAfter;state.totalGoldSpent=normalizeMoney(state.totalGoldSpent+preview.cost);
+  money=normalizeMoney(money-preview.cost);main.locked=true;
+  removeFishIdsFromPresets([...materialIdsSet]);
+  bucket=bucket.filter(f=>!f||!materialIdsSet.has(f.id));
+  rebuildPreparedIndexesFromIds(bossIds,pvpIds);
+  syncFishFusionCombat(main);
+  fusionMainFishId=main.id;
+  saveGame();
+  return {...preview,ok:true,main,materialNames:preview.materials.map(f=>f.name),stageAvailable:getFishEvolutionDetails(main).unlocked};
+}
+
+function performFishEvolution(mainId=fusionMainFishId){
+  const fish=bucket.find(f=>f&&f.id===String(mainId));
+  const details=getFishEvolutionDetails(fish);
+  if(!details.ok)return details;
+  if(details.complete)return {ok:false,message:"이미 최종 진화를 완료했습니다."};
+  if(!details.unlocked)return {ok:false,message:"합성 횟수가 부족합니다.",details};
+  if(money<details.cost)return {ok:false,message:"골드가 부족합니다.",shortage:normalizeMoney(details.cost-money),details};
+  const state=ensureFishFusionState(fish),beforeCombat=ensureCombatStats(fish),beforeAttack=Number(beforeCombat.attack||0),beforeMaxHp=Number(beforeCombat.maxHp||0);
+  const ratio=EVOLUTION_TOTAL_MULTIPLIERS[details.nextStage]/EVOLUTION_TOTAL_MULTIPLIERS[state.evolutionStage];
+  state.permanentAttack=Math.max(1,Math.floor(state.permanentAttack*ratio));
+  state.permanentMaxHp=Math.max(1,Math.floor(state.permanentMaxHp*ratio));
+  state.evolutionStage=details.nextStage;state.totalGoldSpent=normalizeMoney(state.totalGoldSpent+details.cost);
+  money=normalizeMoney(money-details.cost);fish.locked=true;
+  const combat=syncFishFusionCombat(fish);
+  saveGame();
+  return {ok:true,fish,stage:state.evolutionStage,cost:details.cost,beforeAttack,beforeMaxHp,afterAttack:combat.attack,afterMaxHp:combat.maxHp,attackGain:combat.attack-beforeAttack,hpGain:combat.maxHp-beforeMaxHp};
+}
+
 function getPresetFishList(type){
   const ids = partyPresets[type] || [];
   return ids.map(id => bucket.find(f => f && f.id === id)).filter(Boolean);
@@ -509,6 +682,18 @@ function savePartyPreset(rawType){
   print((type === "boss" ? "보스" : "PVP") + " 프리셋 저장 완료\n\n" + fishes.length + " / " + max + "마리");
 }
 
+function savePartyPresetIds(rawType,ids){
+  ensureAllFishIds();
+  const type=normalizePresetType(rawType),max=type==="boss"?5:type==="pvp"?3:0;
+  if(!type)return {ok:false,message:"프리셋 종류가 올바르지 않습니다."};
+  const owned=new Map(bucket.filter(f=>f&&f.grade!=="쓰레기").map(f=>[String(f.id),f]));
+  const selected=[...new Set((ids||[]).map(String))].filter(id=>owned.has(id)).slice(0,max);
+  if(selected.length===0)return {ok:false,message:"양동이에서 물고기를 한 마리 이상 선택해주세요."};
+  partyPresets[type]=selected;
+  saveGame();
+  return {ok:true,type,count:selected.length,max,fishes:selected.map(id=>owned.get(id))};
+}
+
 function loadPartyPreset(rawType){
   const type = normalizePresetType(rawType);
   if(!type) return print("사용법 : 파티불러오기 보스 / 파티불러오기 pvp");
@@ -517,7 +702,6 @@ function loadPartyPreset(rawType){
   if(fishes.length === 0) return print("저장된 " + (type === "boss" ? "보스" : "PVP") + " 프리셋이 없습니다.");
   const indexes = fishes.map(f => bucket.indexOf(f)).filter(i => i >= 0);
   if(type === "boss"){
-    if(!isBossMenu) return print("보스 프리셋은 보스전에 입장한 뒤 불러올 수 있습니다.");
     bossPrepIndexes = indexes.slice(0,5);
     pendingRecoveryBattleConfirm = false;
   }else{
@@ -557,6 +741,7 @@ function sellOne(n,confirmed=false){
     return print("파티 프리셋에 편성된 물고기입니다.\n\n" + color(lineFish(bucket[idx]),bucket[idx].grade) + "\n\n정말 판매할까요?\n계속하려면 확인 을 입력하세요.");
   }
   const f=bucket.splice(idx,1)[0];
+  if(f&&f.id===fusionMainFishId)fusionMainFishId="";
   pendingPresetSaleId = "";
   removeFishIdsFromPresets([f.id]);
   pvpPrepIndexes=[];
@@ -607,6 +792,7 @@ function sellAll(confirmed=false){
   const bonusTotal=total-baseTotal;
 
   bucket=keep;
+  if(!bucket.some(f=>f&&f.id===fusionMainFishId))fusionMainFishId="";
   pendingPresetSellAll = false;
   removeFishIdsFromPresets(sell.map(f => f.id));
   pvpPrepIndexes=[];
@@ -928,7 +1114,12 @@ async function isUserOnline(nickname){
 function getPvpPreparedFishes(){
   return pvpPrepIndexes
     .map(i => bucket[i])
-    .filter(f => f && f.grade !== "쓰레기");
+    .filter(f => {
+      if(!f || f.grade === "쓰레기") return false;
+      updateRecoveringFishHp(f);
+      const c=ensureCombatStats(f);
+      return c.hp>0&&!c.knockedOut&&c.status!=="기절";
+    });
 }
 
 function cloneForPvp(f, levels){
@@ -940,11 +1131,16 @@ function cloneForPvp(f, levels){
   const baseMaxHp = Number(raw._baseMaxHp ?? raw.maxHp ?? raw.hp ?? 1);
   const baseCritDamage = Number(raw._baseCritDamage ?? raw.critDamage ?? 0);
 
-  raw.attack = Math.max(0, Math.floor(baseAttack * (1 + Number(lv.attack || 0) * 0.10)));
-  raw.maxHp = Math.max(1, Math.floor(baseMaxHp * (1 + Number(lv.hp || 0) * 0.10)));
+  raw.attack = Math.max(0, Math.floor(baseAttack * (1 + getProgressiveTrainingBonus(Number(lv.attack || 0)) / 100)));
+  raw.maxHp = Math.max(1, Math.floor(baseMaxHp * (1 + getProgressiveTrainingBonus(Number(lv.hp || 0)) / 100)));
   raw.hp = raw.maxHp;
-  raw.critDamage = Math.floor(baseCritDamage + Number(lv.critDamage || 0) * 20);
+  raw.critDamage = Math.floor(baseCritDamage + getProgressiveTrainingBonus(Number(lv.critDamage || 0)));
   raw.status = "정상";
+  delete raw.knockedOut;
+  delete raw.battleDown;
+  delete raw.stunUntil;
+  delete raw.recoveryStartAt;
+  delete raw.recoveryStartHp;
 
   c.combat = raw;
   return c;
@@ -958,6 +1154,9 @@ function buildPvpTeamFromIndexes(indexes, sourceBucket, levels){
     const f = sourceBucket[idx];
 
     if(f && f.grade !== "쓰레기"){
+      updateRecoveringFishHp(f);
+      const combat=ensureCombatStats(f);
+      if(combat.hp<=0||combat.knockedOut||combat.status==="기절") return;
       team.push(cloneForPvp(f, levels));
     }
   });
@@ -1386,7 +1585,7 @@ function simulatePvpBattle({leftName,leftTitle,leftTeam,rightName,rightTitle,rig
     "대전 결과\n\n" +
     "승자 : " + winner + "\n" +
     "전투 방식 : 다중 전투\n" +
-    "총 턴 : " + Math.min(turn,200) + "\n" +
+    "총 턴 : " + Math.min(Math.max(0,turn-1),200) + "\n" +
     pvpDisplayName(leftName,leftTitle) + " 피해량 : " + state.left.damage.toLocaleString() + "\n" +
     pvpDisplayName(rightName,rightTitle) + " 피해량 : " + state.right.damage.toLocaleString();
 
@@ -1619,6 +1818,12 @@ async function preparePvpFish(n){
 
   if(idx < 0 || !f) return print("존재하지 않는 양동이 번호입니다.");
   if(f.grade === "쓰레기") return print("쓰레기는 대전에 참가할 수 없습니다.");
+  updateRecoveringFishHp(f);
+  const combat=ensureCombatStats(f);
+  if(combat.knockedOut||combat.status==="기절"||combat.hp<=0){
+    const left=Math.max(0,Number(combat.stunUntil||0)-Date.now());
+    return print("기절한 물고기는 대전에 참가할 수 없습니다."+(left>0?"\n\n남은 시간 : "+formatRemain(left):""));
+  }
 
   if(pvpPrepIndexes.includes(idx)){
     return print("이미 대전 준비된 물고기입니다.\\n\\n양동이 " + displayNo + "번\\n" + color(lineFish(f), f.grade));
@@ -2145,7 +2350,7 @@ async function sendFish(targetNickname, displayNumber){
 
       tx.set(myRef, {
         cloudRevision: Number(myData.cloudRevision || 0) + 1,
-        gameState: {...myState, bucket: myBucket, pvpPrepIndexes:[], partyPresets:myPresets},
+        gameState: {...myState, bucket: myBucket, pvpPrepIndexes:[], partyPresets:myPresets,fusionMainFishId:String(myState.fusionMainFishId||"")===String(movedFish.id)?"":String(myState.fusionMainFishId||"")},
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       }, {merge:true});
 

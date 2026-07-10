@@ -331,6 +331,11 @@ function ensureCombatStats(f){
   }
   if(!f.combat.status) f.combat.status = "정상";
 
+  if(f.fusion&&Number(f.fusion.permanentAttack)>0&&Number(f.fusion.permanentMaxHp)>0){
+    f.combat._baseAttack=Math.max(1,Math.floor(Number(f.fusion.permanentAttack)));
+    f.combat._baseMaxHp=Math.max(1,Math.floor(Number(f.fusion.permanentMaxHp)));
+  }
+
   applyTrainingBonusesToCombat(f.combat);
 
   return f.combat;
@@ -760,7 +765,10 @@ function buildBossInfoText(baseBoss = getCurrentBoss()){
     else if(boss.id === "leviathan") s += "심연의 분노\n난이도가 높을수록 더 이른 체력 구간에서 강하게 분노\n\n";
     else if(boss.id === "behemoth") s += "고대의 육체\n받는 피해 "+(difficultyId==="crazy"?40:difficultyId==="hard"?30:20)+"% 감소\n"+(difficultyId==="crazy"?"움직이는 대륙\n체력 70%·40%에서 최대 체력 6% 암석 갑옷 생성\n갑옷 파괴 후 다음 턴까지 받는 피해 20% 증가\n":"")+"\n";
     else if(boss.id === "erebos") s += "빛 소멸\n빛 게이지가 0이 되면 완전 암흑 발동\n\n";
-    else if(boss.id === "chronos") s += "시간의 잔향\n일정 턴마다 직전 공격의 잔상이 추가 공격\n"+(difficultyId==="crazy"?"겹쳐진 시간선\n체력 50% 이하부터 이전 공격이 다음 턴 35% 위력으로 재현\n":"")+"\n";
+    else if(boss.id === "chronos"){
+      const echo=getVoidSummonStats("chronos_echo",difficultyId);
+      s += "시간의 잔향\n"+(difficultyId==="crazy"?4:5)+"턴마다 시간의 잔상 소환 (다음 2턴 행동)\n잔상 체력 "+Math.round(echo.hpRate*10000)/100+"% · 공격력 "+Math.round(echo.attackRate*100)+"%\n"+(difficultyId==="crazy"?"겹쳐진 시간선\n체력 50% 이하부터 이전 공격이 다음 턴 35% 위력으로 재현\n":"")+"\n";
+    }
     else if(boss.id === "nyarlathotep") s += "천 개의 얼굴\n주기적으로 가장 강한 물고기의 힘을 복제\n"+(difficultyId==="crazy"?"가면의 행렬\n3턴마다 폭군·거울·예언자 가면 변경\n체력 40% 이하에서 가면 2개 동시 활성화\n":"")+"\n";
     else if(boss.id === "yog_sothoth") s += "무한 차원\n공간 고정, 크레이지 체력 50%에서 차원 분리\n\n";
     else if(boss.id === "azathoth") s += "혼돈의 각성\n체력 75%·50%·25%마다 전투 규칙 강화\n"+(difficultyId==="crazy"?"회복량 75% 감소 → 회피 무시·치명타율 15% 감소 → 2턴마다 추가 행동\n":"")+"\n";
@@ -1258,7 +1266,8 @@ function traitAfterDamage(f,beforeHp,actualDamage,battleLog,meta={},afterHeal=0)
   if(c.hp<=0&&f.name==="무한한 시간"&&!ctx.timeRewindUsed&&!healingBlocked)ctx.timeRewindPending=true;
   if(meta.fromBoss&&actualDamage>0){
     if(ctx.lastBossTarget===f.id&&f.name==="흑룡"){
-      const reflected=Math.floor(actualDamage*0.3);ctx.boss._currentHp=Math.max(0,Number(ctx.boss._currentHp)-reflected);ctx.traitDamage+=reflected;st.scaleEmpowered=true;
+      const reflected=Math.floor(actualDamage*0.3),beforeBossHp=Math.max(0,Number(ctx.boss._currentHp||0));
+      ctx.boss._currentHp=Math.max(0,beforeBossHp-reflected);ctx.traitDamage+=Math.min(beforeBossHp,reflected);st.scaleEmpowered=true;
       battleLog.push(traitUseByFish(f, reflected.toLocaleString()+" 피해를 반사하고 다음 공격이 강화됩니다."));
     }
     ctx.lastBossTarget=f.id;
@@ -1295,7 +1304,8 @@ function traitAttackStats(f,boss,battleLog){
 function dealTraitDamage(boss,raw,label,battleLog){
   const ctx=activeTraitBattle;if(!ctx||raw<=0||Number(boss._currentHp)<=0)return 0;
   const damage=applyBossPassiveBeforeFishAttack(boss,Math.max(1,Math.floor(raw)),battleLog);
-  boss._currentHp=Math.max(0,Number(boss._currentHp)-damage);ctx.traitDamage+=damage+Number(boss._lastDamageToSword||0);
+  const beforeBossHp=Math.max(0,Number(boss._currentHp||0)),actualBossDamage=Math.min(beforeBossHp,damage);
+  boss._currentHp=Math.max(0,beforeBossHp-damage);ctx.traitDamage+=actualBossDamage+Number(boss._lastDamageToSword||0);
   if(boss.id==="surtr" && Number(boss._lastDamageToSword||0)>0){
     let entry = label + "\n\n";
     entry += "수르트가 피해를 불꽃의 검과 나눠 받았습니다.\n\n";
@@ -1913,6 +1923,7 @@ function applyPhoenixImmortalityIfNeeded(boss, bossHp, battleLog){
   boss._crazyRevives=used+1;
   boss._revived=true;
   bossHp = Math.floor(boss.hp * reviveRates[used]);
+  boss._currentHp=bossHp;
   battleLog.push(bossBattleEvent(boss,"불사",(used+1)+"번째 부활 · 체력 "+Math.round(reviveRates[used]*100)+"%로 되살아났습니다.\n"+hpBar(bossHp,boss.hp),"passive"));
   return bossHp;
 }
@@ -1936,13 +1947,17 @@ function applyBossEndTurnPassive(boss, bossHp, battleLog){
     const heal = Math.floor(boss.hp * rate);
     const before = bossHp;
     bossHp = Math.min(boss.hp, bossHp + heal);
-    if(bossHp > before) battleLog.push(bossColor(boss.name, boss) + "가 회복했습니다.\n" + (bossHp - before).toLocaleString() + " 회복\n\n" + hpBar(bossHp, boss.hp));
+    if(bossHp > before){
+      boss._currentHp=bossHp;
+      battleLog.push(bossColor(boss.name, boss) + "가 회복했습니다.\n" + (bossHp - before).toLocaleString() + " 회복\n\n" + hpBar(bossHp, boss.hp));
+    }
   }
 
   if(boss.id==="hydra" && boss.difficulty==="crazy" && bossHp>0 && bossHp<=boss.hp*0.5 && !boss._nineHeadsRegenerated && !boss._healingSealed){
     boss._nineHeadsRegenerated=true;
     const heal=Math.floor(boss.hp*0.25);
     bossHp=Math.min(boss.hp,bossHp+heal);
+    boss._currentHp=bossHp;
     boss._crazyAttackBoost=Math.max(Number(boss._crazyAttackBoost||0),0.2);
     battleLog.push(bossBattleEvent(boss,"아홉 머리 재생","체력 25% 회복 · 공격력 20% 증가\n"+hpBar(bossHp,boss.hp),"passive"));
   }
@@ -1976,12 +1991,14 @@ function applyBossEndTurnPassive(boss, bossHp, battleLog){
 
 function spawnBabyDragons(boss, battleLog){
   if(!boss._summons) boss._summons = [];
+  const previousOrder=boss._summons.filter(s=>s.summonType==="baby_dragon"||s.name==="새끼 용").reduce((max,s)=>Math.max(max,Number(s.order||0)),0);
 
   for(let i=0;i<3;i++){
     const config=getBossDifficultyConfig(boss.difficulty);
     const babyHp = Math.floor(randomInt(100000, 300000)*config.hpMultiplier);
     const babyAttack = Math.floor(randomInt(10000, 30000)*config.attackMultiplier);
-    boss._summons.push({name:"새끼 용", hp:babyHp, maxHp:babyHp, attack:babyAttack});
+    boss._summonSeq=Number(boss._summonSeq||0)+1;
+    boss._summons.push({id:"baby_dragon_"+boss._summonSeq,summonType:"baby_dragon",name:"새끼 용",order:previousOrder+i+1,hp:babyHp,maxHp:babyHp,attack:babyAttack});
   }
 
   battleLog.push(bossColor(boss.name, boss) + "의 괴수 탄생 (15%)\n새끼 용 3마리를 소환했습니다.");
@@ -1990,6 +2007,54 @@ function spawnBabyDragons(boss, battleLog){
 function getAliveSummons(boss){
   const turn=activeTraitBattle?activeTraitBattle.turn:0;
   return (boss._summons || []).filter(x => x.hp > 0 && (!x.expiresTurn||x.expiresTurn>=turn));
+}
+
+function getVoidSummonStats(type,difficulty){
+  const table={
+    chronos_echo:{
+      normal:{hpRate:0.0075,attackRate:0.35},
+      hard:{hpRate:0.01,attackRate:0.40},
+      crazy:{hpRate:0.0125,attackRate:0.45}
+    },
+    silver_gate_watcher:{
+      normal:{hpRate:0.0125,attackRate:0.55},
+      hard:{hpRate:0.0175,attackRate:0.65},
+      crazy:{hpRate:0.0225,attackRate:0.75}
+    }
+  };
+  const byDifficulty=table[type]||table.chronos_echo;
+  return byDifficulty[difficulty]||byDifficulty.normal;
+}
+
+function summonVoidMinion(boss,battleLog,options){
+  if(!boss._summons)boss._summons=[];
+  const turn=activeTraitBattle?Number(activeTraitBattle.turn||0):0;
+  const stats=getVoidSummonStats(options.type,boss.difficulty);
+  const expiresTurn=turn+Number(options.duration||1)-1+(options.startsNextTurn?1:0);
+  const active=getAliveSummons(boss).find(s=>s.summonType===options.type);
+
+  if(active){
+    active.hp=active.maxHp;
+    active.expiresTurn=expiresTurn;
+    battleLog.push(subjectText(options.name)+" 다시 완성되었습니다.\n체력을 모두 회복하고 활동 시간이 연장됩니다.");
+    return active;
+  }
+
+  boss._summonSeq=Number(boss._summonSeq||0)+1;
+  const maxHp=Math.max(1,Math.floor(boss.hp*stats.hpRate));
+  const summon={
+    id:options.type+"_"+boss._summonSeq,
+    summonType:options.type,
+    name:options.name,
+    order:1,
+    hp:maxHp,
+    maxHp,
+    attack:Math.max(1,Math.floor(boss.attack*stats.attackRate)),
+    expiresTurn
+  };
+  boss._summons.push(summon);
+  battleLog.push(subjectText(options.name)+" 보스 옆에 나타났습니다.\n체력 "+summon.maxHp.toLocaleString()+" · 공격력 "+summon.attack.toLocaleString()+" · "+options.duration+"턴 활동");
+  return summon;
 }
 
 function fishAttackTargetText(target, boss){
@@ -2001,6 +2066,8 @@ function babyDragonActions(boss, participants, battleLog){
   const summons = getAliveSummons(boss);
   if(summons.length === 0) return;
 
+  const counts={};
+  summons.forEach(summon=>{counts[summon.name]=(counts[summon.name]||0)+1;});
   summons.forEach((dragon, i) => {
     const alive = getAliveTargets(participants);
     if(alive.length === 0) return;
@@ -2008,13 +2075,14 @@ function babyDragonActions(boss, participants, battleLog){
     const f = alive[Math.floor(Math.random() * alive.length)];
     const c = ensureCombatStats(f);
     const dodgeRoll = Math.random() * 100 < c.dodge;
+    const attacker=(dragon.name||"소환물")+(counts[dragon.name]>1?" "+Number(dragon.order||i+1):"");
 
     if(dodgeRoll){
-      battleLog.push((dragon.name||"새끼 용") + " " + (i+1) + "의 공격\n" + color(lineFish(f), f.grade) + " 회피");
+      battleLog.push(attacker + "의 공격\n" + color(lineFish(f), f.grade) + " 회피");
       return;
     }
 
-    applyDamageToFish(f, dragon.attack, battleLog, (dragon.name||"새끼 용") + " " + (i+1) + "의 공격\n");
+    applyDamageToFish(f, dragon.attack, battleLog, attacker + "의 공격\n");
   });
 }
 
@@ -2283,7 +2351,7 @@ function runCrazyBossUltimateEffect(boss,participants,battleLog){
   }else if(boss.id==="chronos"){
     const recent=(boss._chronosDamageHistory||[]).reduce((s,v)=>s+Number(v||0),0);const heal=Math.min(Math.floor(boss.hp*0.15),Math.max(Math.floor(boss.hp*0.05),recent));boss._currentHp=Math.min(boss.hp,Number(boss._currentHp)+heal);battleLog.push("지워진 시간선에서 "+heal.toLocaleString()+" 체력을 되찾았습니다.");bossSingleTargetAttack(boss,participants,battleLog,1.4,"되돌아온 공격",false);bossSingleTargetAttack(boss,participants,battleLog,1.4,"되돌아온 공격",false);
   }else if(boss.id==="nyarlathotep"){
-    const target=getStrongestAliveFish(participants);if(target){const c=ensureCombatStats(target);c.traitSealedUntil=turn+3;boss._summons.push({name:"공허 복제체 · "+target.name,hp:Math.floor(c.maxHp*0.5),maxHp:Math.floor(c.maxHp*0.5),attack:Math.floor(c.attack*1.5),expiresTurn:turn+3});battleLog.push(color(lineFish(target),target.grade)+"의 150% 공격력을 가진 복제체가 3턴 동안 등장했습니다.");}
+    const target=getStrongestAliveFish(participants);if(target){const c=ensureCombatStats(target),cloneHp=Math.floor(c.maxHp*0.5);boss._summonSeq=Number(boss._summonSeq||0)+1;c.traitSealedUntil=turn+3;boss._summons.push({id:"void_clone_"+boss._summonSeq,summonType:"void_clone",name:"공허 복제체 · "+target.name,order:1,hp:cloneHp,maxHp:cloneHp,attack:Math.floor(c.attack*1.5),expiresTurn:turn+2});battleLog.push(color(lineFish(target),target.grade)+"의 150% 공격력을 가진 복제체가 3턴 동안 등장했습니다.");}
   }else if(boss.id==="yog_sothoth"){
     const sorted=[...alive].sort((a,b)=>(ensureCombatStats(b).attack+ensureCombatStats(b).maxHp)-(ensureCombatStats(a).attack+ensureCombatStats(a).maxHp));const banished=sorted.slice(0,Math.ceil(sorted.length/2));banished.forEach(f=>{const c=ensureCombatStats(f);c.voidBanishedUntil=turn+2;c.voidReturnDamage=true;});bossAllTargetAttack(boss,participants,battleLog,2.5,"모든 차원의 종착점",{ignoreDodge:true});battleLog.push(banished.length+"마리가 2턴 동안 공허로 추방되었습니다.");
   }else if(boss.id==="azathoth"){
@@ -2374,7 +2442,7 @@ function runVoidBossAction(boss,participants,battleLog){
     if(r<first+second)return runBossSpecial(boss,"가면 강탈",battleLog,()=>{const t=getStrongestAliveFish(participants);if(!t)return;bossAttackSpecificTarget(boss,t,battleLog,1.5,"가면 강탈",false);boss._stolenAttackBonus=Number(boss._stolenAttackBonus||0)+Math.floor(ensureCombatStats(t).attack*0.2);boss.critRate+=5;});
   }else if(boss.id==="yog_sothoth"){
     if(r<first)return runBossSpecial(boss,"차원 압살",battleLog,()=>bossAllTargetAttack(boss,participants,battleLog,1.8,"차원 압살",{ignoreDodge:true}));
-    if(r<first+second)return runBossSpecial(boss,"은빛 문의 추방",battleLog,()=>{[...getAliveTargets(participants)].sort((a,b)=>ensureCombatStats(b).attack-ensureCombatStats(a).attack).slice(0,2).forEach(f=>ensureCombatStats(f).bossDisabledUntil=turn+1);battleLog.push("가장 강한 물고기 2마리가 다음 턴 행동할 수 없습니다.");});
+    if(r<first+second)return runBossSpecial(boss,"은빛 문의 감시자",battleLog,()=>summonVoidMinion(boss,battleLog,{type:"silver_gate_watcher",name:"은빛 문의 감시자",duration:3}));
   }else if(boss.id==="azathoth"){
     if(r<first)return runBossSpecial(boss,"맹목의 핵동",battleLog,()=>bossAllTargetAttack(boss,participants,battleLog,2,"맹목의 핵동",{ignoreDodge:true}));
     if(r<first+second)return runBossSpecial(boss,"우주의 불협화음",battleLog,()=>{for(let i=0;i<8;i++){const targets=getAliveTargets(participants);if(!targets.length)break;bossAttackSpecificTarget(boss,targets[Math.floor(Math.random()*targets.length)],battleLog,0.8,"우주의 불협화음",true);}});
@@ -2563,8 +2631,17 @@ function createBossBattleLog(boss,participants){
         bossMaxHp:Number(boss.hp||1),
         fish:participants.map((f,index)=>{const c=ensureCombatStats(f),displayMaxHp=Math.max(Number(c.maxHp||1),Number(c._traitBattle?.originalMaxHp||1));return {
           key:String(f.id||index),name:String(f.name||""),displayName:displayFishName(f.name),grade:f.grade,
-          hp:Math.max(0,Number(c.hp||0)),maxHp:Math.max(1,displayMaxHp),status:getCombatStatusText(f)
-        };})
+          battleLabel:String(lineFish(f)||displayFishName(f.name)),
+          hp:Math.max(0,Number(c.hp||0)),maxHp:Math.max(1,displayMaxHp),status:getCombatStatusText(f),
+          evolutionStage:typeof getFishEvolutionStage==="function"?getFishEvolutionStage(f):0
+        };}),
+        summons:(boss._summons||[]).map((summon,index)=>({summon,index})).filter(({summon})=>{
+          const turn=activeTraitBattle?Number(activeTraitBattle.turn||0):0;
+          return Number(summon.hp||0)>0&&(!summon.expiresTurn||Number(summon.expiresTurn)>=turn);
+        }).map(({summon,index})=>({
+          key:String(summon.id||("summon_"+index)),name:String(summon.name||"소환물"),order:Number(summon.order||index+1),
+          hp:Math.max(0,Number(summon.hp||0)),maxHp:Math.max(1,Number(summon.maxHp||summon.hp||1)),attack:Math.max(0,Number(summon.attack||0))
+        }))
       });
     });
     return log.length;
@@ -2634,6 +2711,7 @@ function runBossBattle(){
     _fishDisabledNextTurn:false,
     _bahamutAttackBonus:0,
     _summons:[],
+    _summonSeq:0,
     _attackBoost:0,
     _ring:0,
     _ringCompleted:false,
@@ -2829,8 +2907,9 @@ function runBossBattle(){
         const preAttackText=traitPreAttackText(f);
         const hit = ts.replaced ? {damage:ts.attack,crit:false} : calcDamage(ts.attack, getEffectiveFishCritRate(f), ts.critDamage);
         const dealt=Math.max(1,Math.floor(hit.damage*ts.multiplier+ts.extra));
+        const beforeSummonHp=Math.max(0,Number(targetSummon.hp||0));
         targetSummon.hp = Math.max(0, targetSummon.hp - dealt);
-        totalDamage += dealt;
+        totalDamage += Math.min(beforeSummonHp,dealt);
 
         let entry = (preAttackText ? preAttackText + "\n" : "") + color(lineFish(f), f.grade) + " 공격\n";
         if(hit.crit) entry += "치명타!\n";
@@ -2851,10 +2930,12 @@ function runBossBattle(){
         const hit = ts.replaced ? {damage:ts.attack,crit:false} : calcDamage(ts.attack, getEffectiveFishCritRate(f), ts.critDamage);
         const rawDamage=Math.max(1,Math.floor(hit.damage*ts.multiplier+ts.extra));
         let damage = applyBossPassiveBeforeFishAttack(boss, rawDamage, battleLog);
+        const beforeBossHp=Math.max(0,Number(bossHp||0));
         bossHp = Math.max(0, bossHp - damage);
         boss._currentHp = bossHp;
-        boss._currentTurnDamageTaken+=damage;
-        totalDamage += damage + Number(boss._lastDamageToSword || 0);
+        const actualBossDamage=Math.min(beforeBossHp,damage);
+        boss._currentTurnDamageTaken+=actualBossDamage;
+        totalDamage += actualBossDamage + Number(boss._lastDamageToSword || 0);
 
         if(boss.id === "typhon" && damage > boss._thisTurnTopDamage){
           boss._thisTurnTopDamage=damage;
@@ -2953,8 +3034,8 @@ function runBossBattle(){
       babyDragonActions(boss, participants, battleLog);
       const chronosEchoInterval=boss.difficulty==="crazy"?4:5;
       if(boss.id==="chronos"&&turn%chronosEchoInterval===0&&getAliveTargets(participants).length){
-        battleLog.push(bossColor(boss.name,boss)+"의 시간의 잔향\n직전 공격의 잔상이 다시 움직입니다.");
-        bossSingleTargetAttack(boss,participants,battleLog,0.5,"시간의 잔향",false);
+        battleLog.push(bossBattleEvent(boss,"시간의 잔향","다음 2턴 동안 대신 싸우는 시간의 잔상을 불러냅니다.","passive"));
+        summonVoidMinion(boss,battleLog,{type:"chronos_echo",name:"시간의 잔상",duration:2,startsNextTurn:true});
       }
       const azathothInterval=boss.difficulty==="crazy"?2:3;
       const azathothExtra=boss.id==="azathoth"&&(Number(boss._awakenedUntil||0)>=turn||(boss._chaos25&&turn%azathothInterval===0));
@@ -2967,6 +3048,8 @@ function runBossBattle(){
     bossHp=Math.max(0,Number(boss._currentHp));
     totalDamage+=Number(activeTraitBattle.traitDamage||0);
     activeTraitBattle.traitDamage=0;
+    bossHp=applyPhoenixImmortalityIfNeeded(boss,bossHp,battleLog);
+    boss._currentHp=bossHp;
     tryTimeRewindAfterWipe(battleLog);
     finishTraitTurn(boss,battleLog);
     bossHp=Math.max(0,Number(boss._currentHp));

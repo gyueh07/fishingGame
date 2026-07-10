@@ -16,6 +16,7 @@ let bossPrepIndexes=[];
 let pendingRecoveryBattleConfirm=false;
 let pvpPrepIndexes=[];
 let partyPresets={boss:[],pvp:[]};
+let fusionMainFishId="";
 let pendingPresetSaleId="";
 let pendingPresetSellAll=false;
 let onlinePresenceTimer=null;
@@ -26,9 +27,20 @@ let cloudSaveChain=Promise.resolve();
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
-const GAME_VERSION = "2026-07-10-fishinglife-bad-penalty-v4";
+const GAME_VERSION = "2026-07-10-fishinglife-fusion-evolution-v15";
 const UPDATE_NOTICE_TITLE = "📢 업데이트 안내";
 const UPDATE_NOTICES = [
+  {
+    id:"2026-07-10-fishinglife-fusion-evolution-15",
+    title:"물고기 합성·진화와 프리셋 편집 업데이트",
+    lines:[
+      "양동이에서 직접 합성 본체를 설정하고 이름이 같은 물고기만 재료로 사용할 수 있습니다.",
+      "재료의 영구 공격력과 최대 체력 20%가 횟수 제한 없이 고정 전이되며 회피·치명타·별·특성은 전이되지 않습니다.",
+      "누적 합성 3회·7회·15회에 골드를 사용해 1차·2차·최종 진화를 진행할 수 있습니다.",
+      "진화한 물고기는 양동이와 전투 화면에서 단계별 테두리·오라가 표시됩니다.",
+      "파티 프리셋은 전용 양동이 목록에서 보스 5마리·PVP 3마리를 직접 선택해 저장합니다."
+    ]
+  },
   {
     id:"2026-07-10-fishinglife-void-boss-difficulty-6",
     title:"공허 보스와 보스 난이도 업데이트",
@@ -439,7 +451,8 @@ function getGameState(){
     seenUpdateNoticeIds,
     bossProgress,
     pvpPrepIndexes,
-    partyPresets
+    partyPresets,
+    fusionMainFishId
   };
 }
 
@@ -560,6 +573,7 @@ function ensureAllFishIds(){
     f.id = id;
     used.add(id);
   });
+  if(fusionMainFishId&&!bucket.some(f=>f&&f.id===fusionMainFishId))fusionMainFishId="";
 }
 
 function applyGameState(s){
@@ -586,6 +600,7 @@ function applyGameState(s){
   bossProgress=normalizeBossProgress(s.bossProgress??bossProgress);
   pvpPrepIndexes=Array.isArray(s.pvpPrepIndexes)?s.pvpPrepIndexes:[];
   partyPresets=normalizePartyPresets(s.partyPresets??partyPresets);
+  fusionMainFishId=String(s.fusionMainFishId??fusionMainFishId??"");
   ensureAllFishIds();
 }
 
@@ -623,6 +638,7 @@ function resetGameData(){
   bossPrepIndexes = [];
   pvpPrepIndexes = [];
   partyPresets = {boss:[],pvp:[]};
+  fusionMainFishId = "";
   pendingPresetSaleId = "";
   pendingPresetSellAll = false;
   cloudRevision = 0;
@@ -1858,7 +1874,7 @@ function unequipTitle(){
 }
 
 function saveGame(){
-  localStorage.setItem("textFishingSpeciesSizeSave", JSON.stringify({money,totalEarned,rodLevel,bucket,collection,ranking,totalFishingCount,gradeCounts,completedAchievements,marketHour,marketRates,notifications,messages,researchLevels,trainingLevels,unlockedTitles,equippedTitle,profileCosmetics,seenUpdateNoticeIds,bossProgress,pvpPrepIndexes,partyPresets}));
+  localStorage.setItem("textFishingSpeciesSizeSave", JSON.stringify({money,totalEarned,rodLevel,bucket,collection,ranking,totalFishingCount,gradeCounts,completedAchievements,marketHour,marketRates,notifications,messages,researchLevels,trainingLevels,unlockedTitles,equippedTitle,profileCosmetics,seenUpdateNoticeIds,bossProgress,pvpPrepIndexes,partyPresets,fusionMainFishId}));
   syncCloudSoon();
 }
 function loadGame(){
@@ -1885,6 +1901,7 @@ function loadGame(){
     bossProgress=normalizeBossProgress(s.bossProgress);
     pvpPrepIndexes=Array.isArray(s.pvpPrepIndexes)?s.pvpPrepIndexes:[];
     partyPresets=normalizePartyPresets(s.partyPresets);
+    fusionMainFishId=String(s.fusionMainFishId||"");
     ensureAllFishIds();
   } catch(e) {}
 }
@@ -2134,7 +2151,8 @@ function applyTrainingBonusesToCombat(c){
   if(c._trainingHpLevel !== hpLevel || c.maxHp !== newMaxHp){
     const hpRatio = oldMaxHp > 0 ? clamp(Number(c.hp || oldMaxHp) / oldMaxHp, 0, 1) : 1;
     c.maxHp = newMaxHp;
-    if(c.status === "정상") c.hp = newMaxHp;
+    if(c.knockedOut || c.status === "기절" || Number(c.hp || 0) <= 0) c.hp = 0;
+    else if(c.status === "정상") c.hp = newMaxHp;
     else c.hp = Math.max(1, Math.min(newMaxHp, Math.floor(newMaxHp * hpRatio)));
     c._trainingHpLevel = hpLevel;
   } else {
