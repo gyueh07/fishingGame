@@ -8,8 +8,9 @@ let researchLevels={fishing:0, appraisal:0};
 let trainingLevels={attack:0,hp:0,critDamage:0};
 let unlockedTitles=[];
 let equippedTitle="";
+let profileCosmetics={border:"",aura:"",background:"",attackEffect:""};
 let seenUpdateNoticeIds=[];
-let bossProgress={defeated:{}, hp:{}, materials:{}, cooldownUntil:0};
+let bossProgress={defeated:{},difficultyClears:{},hp:{},materials:{},selectedDifficulty:"normal",cooldownUntil:0,cooldowns:{}};
 let isBossMenu=false;
 let bossPrepIndexes=[];
 let pendingRecoveryBattleConfirm=false;
@@ -28,6 +29,29 @@ const input = document.getElementById("command");
 const GAME_VERSION = "2026-07-10-fishinglife-bad-penalty-v4";
 const UPDATE_NOTICE_TITLE = "📢 업데이트 안내";
 const UPDATE_NOTICES = [
+  {
+    id:"2026-07-10-fishinglife-void-boss-difficulty-6",
+    title:"공허 보스와 보스 난이도 업데이트",
+    lines:[
+      "에레보스, 크로노스, 니알라토텝, 요그 소토스, 아자토스가 공허 등급 보스로 추가되었습니다.",
+      "모든 보스에 일반, 어려움, 크레이지 난이도가 추가되고 앞 난이도 클리어 시 다음 난이도가 해금됩니다.",
+      "일반은 기존 능력치, 어려움은 체력 10배·공격력 4배, 크레이지는 체력 50배·공격력 10배가 적용됩니다.",
+      "난이도별 최초 상금은 기준 상금의 0.5배, 0.7배, 1배이며 코어는 각각 1~3개, 3~5개, 5~10개 지급됩니다.",
+      "크레이지 보스는 전투당 한 번 전용 궁극기를 사용하고 기존 패시브도 강화됩니다.",
+      "기존 보스 처치 기록은 일반 난이도 클리어로 자동 인정됩니다."
+    ]
+  },
+  {
+    id: "2026-07-10-fishinglife-timing-ui-rod-2000-5",
+    title: "타이밍 UI와 낚싯대 2000레벨 확장",
+    lines: [
+      "PERFECT, GREAT, GOOD, BAD 구간이 노랑, 초록, 파랑, 빨강의 단색으로 구분됩니다.",
+      "타이밍 판정 문구는 낚아채는 순간에만 표시되고 획득 화면과 최근 기록에서는 반복 표시되지 않습니다.",
+      "최근 잡은 물고기를 눌러 능력치와 고유 특성을 바로 확인할 수 있습니다.",
+      "불타는 마음 아이콘이 하나의 불꽃 이모지로 표시되며 낚싯대 최대 레벨이 2000으로 확장됩니다.",
+      "1750레벨까지의 기존 확률과 낚시 성능은 유지되며 2000레벨까지 추가로 성장합니다."
+    ]
+  },
   {
     id: "2026-07-10-fishinglife-bad-penalty-4",
     title: "BAD 판정 페널티 강화",
@@ -411,6 +435,7 @@ function getGameState(){
     trainingLevels,
     unlockedTitles,
     equippedTitle,
+    profileCosmetics,
     seenUpdateNoticeIds,
     bossProgress,
     pvpPrepIndexes,
@@ -435,15 +460,61 @@ function normalizeLegacyTitleList(value){
   return [...new Set(value.map(normalizeLegacyTitleName))];
 }
 
+function normalizeProfileCosmetics(value){
+  const source=value&&typeof value==="object"?value:{};
+  return {
+    border:String(source.border||""),
+    aura:String(source.aura||""),
+    background:String(source.background||""),
+    attackEffect:String(source.attackEffect||"")
+  };
+}
+
+function hasBossDifficultyClearById(id,difficulty){
+  if(difficulty==="normal"&&bossProgress.defeated&&bossProgress.defeated[id])return true;
+  return !!(bossProgress.difficultyClears&&bossProgress.difficultyClears[id]&&bossProgress.difficultyClears[id][difficulty]);
+}
+
+function isBossGradeCrazyCleared(grade){
+  if(typeof bossList==="undefined")return false;
+  const gradeBosses=bossList.filter(boss=>boss.grade===grade);
+  return gradeBosses.length>0&&gradeBosses.every(boss=>hasBossDifficultyClearById(boss.id,"crazy"));
+}
+
+function isProfileCosmeticUnlocked(type,id){
+  if(!id)return true;
+  if(type==="border")return hasBossDifficultyClearById(id,"hard");
+  if(type==="aura")return hasBossDifficultyClearById(id,"crazy");
+  if(type==="background"||type==="attackEffect")return isBossGradeCrazyCleared(id);
+  return false;
+}
+
+function equipProfileCosmetic(type,id){
+  if(!["border","aura","background","attackEffect"].includes(type))return false;
+  const selected=String(id||"");
+  if(!isProfileCosmeticUnlocked(type,selected))return false;
+  profileCosmetics[type]=selected;
+  saveGame();
+  return true;
+}
+
 
 function normalizeBossProgress(value){
-  const base = {defeated:{}, hp:{}, materials:{}, selectedBossId:"", cooldownUntil:0, cooldowns:{}};
+  const base = {defeated:{},difficultyClears:{},hp:{},materials:{},selectedBossId:"",selectedDifficulty:"normal",cooldownUntil:0,cooldowns:{}};
   if(!value || typeof value !== "object") return base;
+  const defeated = value.defeated || {};
+  const difficultyClears = value.difficultyClears && typeof value.difficultyClears === "object" ? {...value.difficultyClears} : {};
+  Object.keys(defeated).forEach(id => {
+    if(!defeated[id]) return;
+    difficultyClears[id] = {...(difficultyClears[id] || {}), normal:true};
+  });
   return {
-    defeated:value.defeated || {},
+    defeated,
+    difficultyClears,
     hp:value.hp || {},
     materials:value.materials || {},
     selectedBossId:value.selectedBossId || "",
+    selectedDifficulty:["normal","hard","crazy"].includes(value.selectedDifficulty) ? value.selectedDifficulty : "normal",
     cooldownUntil:Number(value.cooldownUntil || 0),
     cooldowns:value.cooldowns || {}
   };
@@ -510,6 +581,7 @@ function applyGameState(s){
   trainingLevels=normalizeTrainingLevels(s.trainingLevels??trainingLevels);
   unlockedTitles=normalizeLegacyTitleList(Array.isArray(s.unlockedTitles)?s.unlockedTitles:unlockedTitles);
   equippedTitle=normalizeLegacyTitleName(s.equippedTitle??equippedTitle);
+  profileCosmetics=normalizeProfileCosmetics(s.profileCosmetics??profileCosmetics);
   seenUpdateNoticeIds=normalizeUpdateNoticeIds(s.seenUpdateNoticeIds, s.lastSeenUpdateVersion);
   bossProgress=normalizeBossProgress(s.bossProgress??bossProgress);
   pvpPrepIndexes=Array.isArray(s.pvpPrepIndexes)?s.pvpPrepIndexes:[];
@@ -544,8 +616,9 @@ function resetGameData(){
   trainingLevels = {attack:0,hp:0,critDamage:0};
   unlockedTitles = [];
   equippedTitle = "";
+  profileCosmetics = {border:"",aura:"",background:"",attackEffect:""};
   seenUpdateNoticeIds = [];
-  bossProgress = {defeated:{}, hp:{}, materials:{}, cooldownUntil:0, cooldowns:{}};
+  bossProgress = {defeated:{},difficultyClears:{},hp:{},materials:{},selectedDifficulty:"normal",cooldownUntil:0,cooldowns:{}};
   isBossMenu = false;
   bossPrepIndexes = [];
   pvpPrepIndexes = [];
@@ -1327,6 +1400,10 @@ function sanitizeGameHtml(value){
   const template = document.createElement("template");
   template.innerHTML = String(value ?? "");
   const allowedTags = new Set(["SPAN", "B", "BR"]);
+  const battleClasses = new Set([
+    "battle-event", "battle-event--skill", "battle-event--crazy", "battle-event--passive",
+    "battle-event__eyebrow", "battle-event__body"
+  ]);
 
   [...template.content.querySelectorAll("*")].reverse().forEach(el => {
     if(!allowedTags.has(el.tagName)){
@@ -1337,7 +1414,9 @@ function sanitizeGameHtml(value){
     [...el.attributes].forEach(attr => {
       const isSafeColor = el.tagName === "SPAN" && attr.name === "style" &&
         /^color:\s*#[0-9a-fA-F]{3,8}\s*;?$/.test(attr.value);
-      if(!isSafeColor) el.removeAttribute(attr.name);
+      const isSafeBattleClass = el.tagName === "SPAN" && attr.name === "class" &&
+        attr.value.split(/\s+/).every(name => battleClasses.has(name));
+      if(!isSafeColor && !isSafeBattleClass) el.removeAttribute(attr.name);
     });
   });
 
@@ -1779,7 +1858,7 @@ function unequipTitle(){
 }
 
 function saveGame(){
-  localStorage.setItem("textFishingSpeciesSizeSave", JSON.stringify({money,totalEarned,rodLevel,bucket,collection,ranking,totalFishingCount,gradeCounts,completedAchievements,marketHour,marketRates,notifications,messages,researchLevels,trainingLevels,unlockedTitles,equippedTitle,seenUpdateNoticeIds,bossProgress,pvpPrepIndexes,partyPresets}));
+  localStorage.setItem("textFishingSpeciesSizeSave", JSON.stringify({money,totalEarned,rodLevel,bucket,collection,ranking,totalFishingCount,gradeCounts,completedAchievements,marketHour,marketRates,notifications,messages,researchLevels,trainingLevels,unlockedTitles,equippedTitle,profileCosmetics,seenUpdateNoticeIds,bossProgress,pvpPrepIndexes,partyPresets}));
   syncCloudSoon();
 }
 function loadGame(){
@@ -1801,6 +1880,7 @@ function loadGame(){
     trainingLevels=normalizeTrainingLevels(s.trainingLevels);
     unlockedTitles=normalizeLegacyTitleList(s.unlockedTitles);
     equippedTitle=normalizeLegacyTitleName(s.equippedTitle??"");
+    profileCosmetics=normalizeProfileCosmetics(s.profileCosmetics);
     seenUpdateNoticeIds=normalizeUpdateNoticeIds(s.seenUpdateNoticeIds, s.lastSeenUpdateVersion);
     bossProgress=normalizeBossProgress(s.bossProgress);
     pvpPrepIndexes=Array.isArray(s.pvpPrepIndexes)?s.pvpPrepIndexes:[];

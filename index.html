@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#071b2d">
   <meta name="description" content="낚시하고 성장하며 보스와 대전하는 온라인 낚시 RPG">
   <title>FishingLife</title>
-  <link rel="stylesheet" href="./css/legacy.css?v=2.1">
-  <link rel="stylesheet" href="./css/game-ui.css?v=2.1">
+  <link rel="stylesheet" href="./css/legacy.css?v=2.5">
+  <link rel="stylesheet" href="./css/game-ui.css?v=2.5">
 </head>
 <body>
   <div class="ambient-bg" aria-hidden="true">
@@ -88,11 +88,14 @@
 
               <button id="castButton" class="cast-button">
                 <span class="cast-icon">🎣</span>
-                <span><b>낚싯대 던지기</b><small id="castSubText">한 번의 터치로 낚시 시작</small></span>
+                <span><b>낚싯대 던지기</b><small id="castSubText" hidden></small></span>
               </button>
 
               <div id="timingGame" class="timing-game" aria-hidden="true">
-                <div class="timing-head"><div><small>TIMING CHALLENGE</small><b>목표 구간에 맞춰 낚아채세요!</b></div><strong id="timingResult">READY</strong></div>
+                <div class="timing-head"><div><small>TIMING CHALLENGE</small><b>목표 구간에 맞춰 낚아채세요!</b></div><strong id="timingResult" class="timing-result" aria-live="polite"></strong></div>
+                <div class="timing-legend" aria-label="타이밍 판정 색상">
+                  <span class="legend-perfect">PERFECT</span><span class="legend-great">GREAT</span><span class="legend-good">GOOD</span><span class="legend-bad">BAD</span>
+                </div>
                 <div id="timingTrack" class="timing-track">
                   <span class="timing-zone zone-good"></span><span class="timing-zone zone-great"></span><span class="timing-zone zone-perfect"></span><i id="timingNeedle"></i>
                 </div>
@@ -101,7 +104,7 @@
 
               <div id="catchCelebration" class="catch-celebration" aria-live="polite">
                 <div class="catch-rays"></div><div class="catch-particles" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
-                <strong id="celebrationRating">PERFECT</strong><span id="celebrationIcon">🐟</span><h2 id="celebrationName">물고기 획득!</h2><p id="celebrationMeta"></p>
+                <span id="celebrationIcon">🐟</span><h2 id="celebrationName">물고기 획득!</h2><p id="celebrationMeta"></p>
               </div>
 
               <div id="catchSpotlight" class="catch-spotlight" aria-live="polite">
@@ -167,7 +170,7 @@
 
         <section id="bossView" class="game-view" data-title="보스전" data-eyebrow="심해의 지배자에게 도전하세요">
           <section class="boss-banner">
-            <div><span class="danger-label">BOSS RAID</span><h2>전용 코어를 획득하세요</h2><p>보스 처치 시 코어 1~10개. 기존 전투 능력치와 보스 패턴은 그대로 유지됩니다.</p></div>
+            <div><span class="danger-label">BOSS RAID</span><h2>20마리의 보스와 세 가지 난이도</h2><p>일반 1~3개 · 어려움 3~5개 · 크레이지 5~10개. 크레이지에서는 전투당 한 번 강력한 궁극기가 발동합니다.</p></div>
             <button data-ui-action="bossParty">보스 준비 화면 열기</button>
           </section>
           <div id="bossGrid" class="boss-card-grid"></div>
@@ -199,10 +202,12 @@
             <button class="community-card" data-ui-action="titles"><span>🎖️</span><div><small>나만의 이름</small><h3>칭호</h3><p>획득한 칭호를 관리합니다.</p></div></button>
             <button class="community-card" data-ui-action="pvp"><span>⚔️</span><div><small>실시간 경쟁</small><h3>PVP 준비</h3><p>대전 파티와 요청을 확인합니다.</p></div></button>
             <button class="community-card" data-ui-action="presets"><span>🧭</span><div><small>파티 관리</small><h3>프리셋</h3><p>보스와 PVP 파티를 불러옵니다.</p></div></button>
+            <button class="community-card" data-ui-action="cosmetics"><span>🌌</span><div><small>정복 보상</small><h3>프로필 꾸미기</h3><p>테두리·오라·배경·공격 연출을 장착합니다.</p></div></button>
+            <button class="community-card" data-ui-action="settings"><span>⚙️</span><div><small>게임 환경</small><h3>설정</h3><p>효과음과 모바일 진동을 설정합니다.</p></div></button>
             <button class="community-card message-card" data-ui-action="message"><span>💌</span><div><small>친구에게 전송</small><h3>메시지 보내기</h3><p>닉네임을 입력해 메시지를 보냅니다.</p></div></button>
           </div>
           <section class="account-strip glass-panel">
-            <div><small>계정</small><h3 id="accountName">로그인이 필요합니다</h3><p id="accountHelp">회원가입하거나 기존 계정으로 로그인하세요.</p></div>
+            <div class="account-profile-wrap"><div id="profilePreview" class="profile-preview"><i class="profile-aura-layer"></i><span id="profileAvatar">⚓</span></div><div><small>계정</small><h3 id="accountName">로그인이 필요합니다</h3><p id="accountHelp">회원가입하거나 기존 계정으로 로그인하세요.</p></div></div>
             <div class="button-row"><button data-game-command="회원가입">회원가입</button><button data-game-command="로그인">로그인</button><button class="danger" data-game-command="로그아웃">로그아웃</button></div>
           </section>
         </section>
@@ -235,12 +240,12 @@
 
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="./js/data/fish-data.js?v=2.1"></script>
-  <script src="./js/core.js?v=2.1"></script>
-  <script src="./js/data/combat-data.js?v=2.1"></script>
-  <script src="./js/combat.js?v=2.1"></script>
-  <script src="./js/gameplay.js?v=2.1"></script>
-  <script src="./js/commands.js?v=2.1"></script>
-  <script src="./js/ui.js?v=2.1"></script>
+  <script src="./js/data/fish-data.js?v=2.5"></script>
+  <script src="./js/core.js?v=2.5"></script>
+  <script src="./js/data/combat-data.js?v=2.5"></script>
+  <script src="./js/combat.js?v=2.5"></script>
+  <script src="./js/gameplay.js?v=2.5"></script>
+  <script src="./js/commands.js?v=2.5"></script>
+  <script src="./js/ui.js?v=2.5"></script>
 </body>
 </html>

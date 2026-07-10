@@ -17,7 +17,8 @@ function getUpgradeCost(level){
     [1100, 100000000000],[1200, 200000000000],[1300, 400000000000],
     [1400, 700000000000],[1500, 1000000000000],[1550, 1500000000000],
     [1600, 2000000000000],[1650, 3000000000000],[1700, 4000000000000],
-    [1750, 5000000000000]
+    [1750, 5000000000000],[1800, 6500000000000],[1850, 8500000000000],
+    [1900, 11000000000000],[1950, 14500000000000],[2000, 20000000000000]
   ];
 
   if(level <= 1) return points[0][1];
@@ -71,6 +72,11 @@ function getBossMaterialRequirement(level){
   else if(level < 1650){ item = "다마반드의 사슬"; start = 1600; }
   else if(level < 1700){ item = "폭풍의 심장"; start = 1650; }
   else if(level < 1750){ item = "파멸의 근원"; start = 1700; }
+  else if(level < 1800){ item = "원초의 어둠"; start = 1750; }
+  else if(level < 1850){ item = "시간의 파편"; start = 1800; }
+  else if(level < 1900){ item = "천 번째 가면"; start = 1850; }
+  else if(level < 1950){ item = "은빛 열쇠"; start = 1900; }
+  else if(level < 2000){ item = "혼돈의 핵"; start = 1950; }
   else return "LOCKED";
 
   const amount = Math.floor((level - start) / 25) + 1;
@@ -124,9 +130,15 @@ function getRawGradeChances(){
   }
 
   const base = {"쓰레기":0.40,"일반":9.68,"희귀":19.35,"영웅":28.23,"전설":24.19,"신화":11.29,"초월":5.65,"영원":1.21,"공허":0};
-  const target = {"쓰레기":0,"일반":3,"희귀":12,"영웅":20,"전설":25,"신화":23,"초월":11,"영원":4.5,"공허":1.5};
-  const t = Math.min(1, (rodLevel - 1000) / (1750 - 1000));
-  return Object.keys(target).map(name => ({name, chance: base[name] + (target[name] - base[name]) * t}));
+  const legacyTarget = {"쓰레기":0,"일반":3,"희귀":12,"영웅":20,"전설":25,"신화":23,"초월":11,"영원":4.5,"공허":1.5};
+  if(rodLevel <= LEGACY_MAX_ROD){
+    const t = Math.min(1, (rodLevel - 1000) / (LEGACY_MAX_ROD - 1000));
+    return Object.keys(legacyTarget).map(name => ({name, chance: base[name] + (legacyTarget[name] - base[name]) * t}));
+  }
+
+  const finalTarget = {"쓰레기":0,"일반":2,"희귀":8,"영웅":16,"전설":24,"신화":26,"초월":14,"영원":7,"공허":3};
+  const t = Math.min(1, (rodLevel - LEGACY_MAX_ROD) / (MAX_ROD - LEGACY_MAX_ROD));
+  return Object.keys(finalTarget).map(name => ({name, chance: legacyTarget[name] + (finalTarget[name] - legacyTarget[name]) * t}));
 }
 
 const fishingTimingWeights = {
@@ -152,6 +164,15 @@ function pickGrade(timingResult="GREAT"){
   let chances = getRawGradeChances();
   const timingWeights = fishingTimingWeights[timingResult] || fishingTimingWeights.GOOD;
   chances = chances.map(x => ({...x, chance: Math.max(0, x.chance) * (timingWeights[x.name] || 1)}));
+
+  // BAD 판정에서는 만렙에서도 쓰레기가 최종 확률 10% 이상 나오게 한다.
+  if(timingResult === "BAD"){
+    const trash = chances.find(x => x.name === "쓰레기");
+    const nonTrashTotal = chances.filter(x => x.name !== "쓰레기").reduce((sum, x) => sum + x.chance, 0);
+    const minimumTrashWeight = nonTrashTotal / 9;
+    if(trash && trash.chance < minimumTrashWeight) trash.chance = minimumTrashWeight;
+  }
+
   let total = chances.reduce((s,g)=>s+g.chance,0);
   let r = Math.random()*total;
   for(const c of chances){
@@ -177,8 +198,12 @@ function makeSizeByName(name){
 }
 
 function getEscapeChance(){
-  const t = Math.min(1, (rodLevel - 1) / (MAX_ROD - 1));
-  return 35 - (34 * t); // Lv.1 = 35%, Lv.1000 = 1%
+  if(rodLevel <= LEGACY_MAX_ROD){
+    const t = Math.min(1, (rodLevel - 1) / (LEGACY_MAX_ROD - 1));
+    return 35 - (34 * t); // 기존 Lv.1~1750 수치를 그대로 유지
+  }
+  const extension = Math.min(1, (rodLevel - LEGACY_MAX_ROD) / (MAX_ROD - LEGACY_MAX_ROD));
+  return 1 - (0.5 * extension); // Lv.1750 = 1%, Lv.2000 = 0.5%
 }
 
 function getCurrentGradeChances(){
@@ -211,10 +236,11 @@ function fish(){
   const castTimingResult = takeFishingTimingResult();
   const castUser = currentUser;
   const castSessionId = ++fishingSessionId;
-  const t=(rodLevel-1)/(MAX_ROD-1);
+  const legacyT=Math.min(1,(rodLevel-1)/(LEGACY_MAX_ROD-1));
+  const extensionT=Math.max(0,Math.min(1,(rodLevel-LEGACY_MAX_ROD)/(MAX_ROD-LEGACY_MAX_ROD)));
   const timeMultiplier = getFishingTimeMultiplier();
-  const minTime=Math.floor((15000-(7000*t)) * timeMultiplier); // Lv1 15초 -> Lv1000 8초, 연구소 적용
-  const maxTime=Math.floor((30000-(15000*t)) * timeMultiplier); // Lv1 30초 -> Lv1000 15초, 연구소 적용
+  const minTime=Math.floor((15000-(7000*legacyT)-(1000*extensionT)) * timeMultiplier); // Lv1750 8초, Lv2000 7초
+  const maxTime=Math.floor((30000-(15000*legacyT)-(2000*extensionT)) * timeMultiplier); // Lv1750 15초, Lv2000 13초
   const wait=Math.floor(Math.random()*(maxTime-minTime))+minTime;
   print("낚싯대를 던졌습니다.");
   fishingTimer = setTimeout(()=>{

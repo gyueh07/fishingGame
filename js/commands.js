@@ -43,6 +43,11 @@
   else if(cmd.startsWith("보스정보 ")) showBossInfo(cmd.slice("보스정보 ".length).trim());
   else if(cmd==="보스목록") showBossList();
   else if(cmd.startsWith("보스선택 ")){ const p=cmd.split(" "); selectBoss(Number(p[1])); }
+  else if(cmd.startsWith("보스난이도 ")){
+    const label=cmd.slice("보스난이도 ".length).trim();
+    const difficultyId=label==="일반"?"normal":label==="어려움"?"hard":label==="크레이지"?"crazy":"";
+    selectBossDifficulty(difficultyId);
+  }
   else if(cmd==="인벤토리") showInventory();
   else if(cmd.startsWith("준비해제 ")){ const p=cmd.split(" "); unprepareBossFish(Number(p[1])); }
   else if(cmd.startsWith("준비 ")){ const p=cmd.split(" "); prepareBossFish(Number(p[1])); }

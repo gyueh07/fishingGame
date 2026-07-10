@@ -4,7 +4,8 @@ const sizeData = {"휴지 조각": [1, 40], "플라스틱 통": [1, 40], "안경
 sizeData["수상한 기운 👁️"] = null;
 sizeData["기묘한 기운 🌀"] = null;
 
-const MAX_ROD = 1750;
+const LEGACY_MAX_ROD = 1750;
+const MAX_ROD = 2000;
 
 const grades = [
   {name:"쓰레기", color:"#8b949e", basePrice:1, chance:8},

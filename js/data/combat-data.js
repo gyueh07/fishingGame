@@ -25,7 +25,19 @@ const materialInfo = {
   "세계수의 썩은 뿌리":"니드호그가 갉아 먹어 부패한 세계수의 뿌리.",
   "다마반드의 사슬":"아지다하카를 다마반드 산에 묶어 둔 신성한 사슬.",
   "폭풍의 심장":"대지와 하늘을 뒤엎는 타이폰의 폭풍이 응축된 핵.",
-  "파멸의 근원":"선한 창조를 부정하는 앙그라 마이뉴의 절대악이 응축된 근원."
+  "파멸의 근원":"선한 창조를 부정하는 앙그라 마이뉴의 절대악이 응축된 근원.",
+  "원초의 어둠":"에레보스가 삼킨 빛이 굳어 만들어진 공허의 결정.",
+  "시간의 파편":"크로노스의 끊어진 시간선에서 떨어져 나온 파편.",
+  "천 번째 가면":"니알라토텝이 마지막까지 감추고 있던 공허의 가면.",
+  "은빛 열쇠":"요그 소토스의 무한한 문을 여는 은빛 열쇠.",
+  "혼돈의 핵":"아자토스의 잠든 혼돈이 응축된 최종 공허의 핵."
+};
+
+const BOSS_DIFFICULTY_ORDER = ["normal","hard","crazy"];
+const BOSS_DIFFICULTIES = {
+  normal:{id:"normal",name:"일반",hpMultiplier:1,attackMultiplier:1,dodgeBonus:0,skillMultiplier:1,rewardMultiplier:0.5,coreMin:1,coreMax:3},
+  hard:{id:"hard",name:"어려움",hpMultiplier:10,attackMultiplier:4,dodgeBonus:5,skillMultiplier:1.15,rewardMultiplier:0.7,coreMin:3,coreMax:5},
+  crazy:{id:"crazy",name:"크레이지",hpMultiplier:50,attackMultiplier:10,dodgeBonus:10,skillMultiplier:1.30,rewardMultiplier:1,coreMin:5,coreMax:10}
 };
 
 const bossList = [
@@ -133,5 +145,45 @@ const bossList = [
     reward:300000000000000, drop:"파멸의 근원",
     skillName:"존재 말살 / 창조의 붕괴", skillDesc:"존재 말살 20% / 창조의 붕괴 15%",
     desc:"선한 창조에 맞서는 절대적인 파괴의 정신.\n질병과 죽음, 거짓을 퍼뜨려 만들어진 모든 존재를 부정하고 세계를 영원한 어둠으로 되돌리려 한다."
+  },
+  {
+    id:"erebos", name:"에레보스", grade:"공허", color:"#b36cff",
+    hp:8000000000, attack:2400000, dodge:26, critRate:38, critDamage:440, skillRate:35,
+    reward:500000000000000, drop:"원초의 어둠",
+    skillName:"흑일식 / 어둠의 포식", skillDesc:"흑일식 20% : 전체 공격력 160% 피해, 치명타 봉인\n어둠의 포식 15% : 가장 강한 대상에게 공격력 300% 피해, 체력 회복",
+    crazySkillName:"빛이 존재하지 않는 세계",
+    desc:"모든 빛이 태어나기 전부터 존재한 원초의 어둠.\n빛을 삼킬수록 전장은 완전한 암흑에 가까워진다."
+  },
+  {
+    id:"chronos", name:"크로노스", grade:"공허", color:"#b36cff",
+    hp:14000000000, attack:3200000, dodge:27, critRate:40, critDamage:460, skillRate:35,
+    reward:800000000000000, drop:"시간의 파편",
+    skillName:"시간 역행 / 미래 삭제", skillDesc:"시간 역행 20% : 직전 턴 피해 일부 회복\n미래 삭제 15% : 가장 강한 대상에게 공격력 300% 피해, 다음 행동 삭제",
+    crazySkillName:"시간선 말소",
+    desc:"과거와 미래를 동시에 내려다보는 시간의 지배자.\n불리한 시간선을 지우고 이미 지나간 공격을 다시 불러온다."
+  },
+  {
+    id:"nyarlathotep", name:"니알라토텝", grade:"공허", color:"#b36cff",
+    hp:24000000000, attack:4300000, dodge:28, critRate:42, critDamage:480, skillRate:40,
+    reward:1300000000000000, drop:"천 번째 가면",
+    skillName:"광기의 합창 / 가면 강탈", skillDesc:"광기의 합창 25% : 가장 강한 물고기가 아군을 공격\n가면 강탈 15% : 대상의 힘을 빼앗아 자신을 강화",
+    crazySkillName:"천 번째 얼굴",
+    desc:"수많은 모습으로 다가와 정신과 힘을 훔치는 공허의 사자.\n가장 강한 존재의 얼굴을 빼앗아 적으로 되돌려 보낸다."
+  },
+  {
+    id:"yog_sothoth", name:"요그 소토스", grade:"공허", color:"#b36cff",
+    hp:40000000000, attack:5800000, dodge:29, critRate:44, critDamage:500, skillRate:40,
+    reward:2000000000000000, drop:"은빛 열쇠",
+    skillName:"차원 압살 / 은빛 문의 추방", skillDesc:"차원 압살 25% : 회피 불가 전체 공격력 180% 피해\n은빛 문의 추방 15% : 강한 물고기 2마리 행동 불가",
+    crazySkillName:"모든 차원의 종착점",
+    desc:"모든 공간과 문의 너머에 동시에 존재하는 공허의 주인.\n전장을 서로 닿을 수 없는 차원으로 갈라 버린다."
+  },
+  {
+    id:"azathoth", name:"아자토스", grade:"공허", color:"#d053ff",
+    hp:70000000000, attack:8000000, dodge:30, critRate:46, critDamage:550, skillRate:45,
+    reward:3000000000000000, drop:"혼돈의 핵",
+    skillName:"맹목의 핵동 / 우주의 불협화음", skillDesc:"맹목의 핵동 25% : 회피 불가 전체 공격력 200% 피해\n우주의 불협화음 20% : 무작위 공격력 80% 피해 8회",
+    crazySkillName:"잠든 신의 개안",
+    desc:"우주의 중심에서 잠든 채 모든 질서를 꿈꾸는 최종 혼돈.\n눈을 뜨는 순간 전투의 규칙과 세계가 함께 무너진다."
   }
 ];
