@@ -36,6 +36,7 @@
     initialized:false, toastTimer:null, trainingSyncKey:"", trainingBucketRef:null, timingActive:false, timingStartedAt:0, timingDuration:1900,
     timingTarget:.5, timingPosition:0, timingRaf:0, timingTimeout:0,
     battleReplayToken:0, battleReplaySpeed:2, battleReplaySkip:false, lastBattleReplay:null, bossPartySortOrder:"전투력", catchCelebrationTimer:0,
+    pvpReplayToken:0,pvpReplaySpeed:2,pvpReplaySkip:false,lastPvpReplay:null,pvpReplayDom:null,pvpPartySortOrder:"전투력",pvpVisibleCount:30,pendingPvpRequest:null,
     fusionMaterialIds:[],fusionAnimationResolve:null,presetEditorType:"boss",presetEditorIds:[],
     renderQueued:false,renderForce:false,bucketRenderToken:0,replayDom:null,replaySummonKey:"",lastActionHtml:"",bossPartyVisibleCount:30,soundAt:{}
   };
@@ -176,6 +177,7 @@
   globalThis.showWorldCatchAlert=showWorldCatchAlert;
   function openUiModal(title, html) {
     state.battleReplayToken++;
+    state.pvpReplayToken++;
     $("#modalTitle").textContent = title;
     $("#modalBody").innerHTML = html;
     $("#modalOverlay").style.display = "block";
@@ -386,6 +388,60 @@
     state.replayDom={arena:$("#bossBattleArena"),action:$("#battleActionCard"),turnLabel:$("#battleTurnLabel"),bossBar:$("#replayBossHpBar"),bossHp:$("#replayBossHpText"),summons:$("#replayBossSummons"),fishCards:$$('[data-replay-fish-index]'),fishBars:$$('[data-replay-fish-bar]'),fishHp:$$('[data-replay-fish-hp]')};
     playBossBattleReplay(replay);
   }
+
+  function pvpProfileVisual(profile){
+    const cosmetics=normalizeProfileCosmetics(profile),borderBoss=bossList.find(boss=>boss.id===cosmetics.border),auraBoss=bossList.find(boss=>boss.id===cosmetics.aura);
+    return {classes:`profile-preview pvp-player-avatar ${borderBoss?"has-profile-border":""} ${auraBoss?"has-profile-aura":""}`,style:`--profile-border-color:${borderBoss?.color||"#4ee4ce"};--profile-aura-color:${auraBoss?.color||"#4ee4ce"}`,aura:auraBoss?bossSymbols[auraBoss.id]||"✦":"",avatar:borderBoss?bossSymbols[borderBoss.id]||"✦":"⚓"};
+  }
+  function pvpReplayTeamHtml(team,side){
+    return (team||[]).map((fish,index)=>`<article class="pvp-replay-fish ${gradeClass(fish.grade)} ${fishEvolutionClass(fish)}" data-pvp-replay-fish="${side}-${index}"><span>${fishIcon(fish)}</span><div><b>${safe(fish.name)} ${fishEvolutionBadge(fish)}</b><div class="replay-hp"><i data-pvp-replay-bar="${side}-${index}" style="width:${hpPercent(fish.hp,fish.maxHp)}%"></i></div><small data-pvp-replay-hp="${side}-${index}">${combatHpNumber(fish.hp)} / ${combatHpNumber(fish.maxHp)}</small></div></article>`).join("");
+  }
+  function updatePvpReplayFrame(frame){
+    const dom=state.pvpReplayDom;if(!dom||!frame)return;
+    const mine=frame[dom.mineSide]||[],enemy=frame[dom.enemySide]||[],text=plain(frame.entry),actorIsMine=frame.actorSide===dom.mineSide;
+    dom.arena.classList.remove("hit-ally","hit-enemy","event-skill","event-crit");
+    if(/특성|발동|부활|되감|봉인|관측|회복|각성|폭발|유언/.test(text))dom.arena.classList.add("event-skill");
+    else if(frame.actorSide)dom.arena.classList.add(actorIsMine?"hit-enemy":"hit-ally");
+    if(text.includes("치명타")){dom.arena.classList.add("event-crit");playGameSound("crit");gameVibrate("crit");}
+    const updateTeam=(team,side,cards,bars,hps)=>team.forEach((fish,index)=>{const card=cards[index],bar=bars[index],hp=hps[index],attacking=frame.actorSide===side&&String(frame.actorId||"")===String(fish.id||"");if(card){card.classList.toggle("down",Number(fish.hp)<=0);card.classList.toggle("attacking",attacking);}if(bar)bar.style.width=hpPercent(fish.hp,fish.maxHp)+"%";if(hp)hp.textContent=combatHpNumber(fish.hp)+" / "+combatHpNumber(fish.maxHp);});
+    updateTeam(mine,dom.mineSide,dom.mineCards,dom.mineBars,dom.mineHp);updateTeam(enemy,dom.enemySide,dom.enemyCards,dom.enemyBars,dom.enemyHp);
+    if(frame.turn)dom.turnLabel.textContent="TURN "+frame.turn;
+    const actorTeam=frame.actorSide===dom.mineSide?mine:frame.actorSide===dom.enemySide?enemy:[],actor=actorTeam.find(f=>String(f.id||"")===String(frame.actorId||""));
+    const actorHtml=actor?`<div class="battle-attacker-banner ${actorIsMine?"ally":"boss"}"><span>${fishIcon(actor)}</span><div><small>${actorIsMine?"MY ATTACK":"RIVAL ATTACK"}</small><b>${safe(actor.name)}</b></div></div>`:"";
+    const actionHtml=actorHtml+`<div class="battle-action-text">${legacyTextHtml(frame.entry)}</div>`;
+    if(actionHtml!==state.lastActionHtml){dom.action.innerHTML=actionHtml;state.lastActionHtml=actionHtml;}
+  }
+  function finishPvpBattleReplay(replay){
+    const dom=state.pvpReplayDom;if(!dom)return;
+    const won=replay.winnerName&&replay.winnerName===currentUser,draw=!replay.winnerName;
+    dom.arena.classList.remove("hit-ally","hit-enemy","event-skill","event-crit");
+    dom.arena.classList.add(draw?"battle-draw":won?"battle-win":"battle-lose");
+    dom.action.innerHTML=`<div class="battle-finish-card ${draw?"draw":won?"win":"lose"}"><small>PVP BATTLE END</small><strong>${draw?"무승부":won?"승리":"패배"}</strong><p>${legacyTextHtml(replay.summary||"")}</p><div class="battle-finish-actions"><button data-pvp-replay>다시 보기</button><button data-pvp-replay-close>닫기</button></div></div>`;
+    dom.turnLabel.textContent="BATTLE END";
+    if(won){playGameSound("victory");gameVibrate("victory");}
+  }
+  async function playPvpBattleReplay(replay){
+    const token=++state.pvpReplayToken;state.pvpReplaySkip=false;state.lastActionHtml="";
+    const frames=Array.isArray(replay.frames)?replay.frames:[];
+    for(let index=0;index<frames.length;index++){
+      if(token!==state.pvpReplayToken||$("#modalOverlay")?.style.display==="none")return;
+      if(state.pvpReplaySkip){updatePvpReplayFrame(frames[frames.length-1]);break;}
+      const frame=frames[index],text=plain(frame.entry),base=/특성|부활|되감|각성|폭발|유언/.test(text)?1500:/^턴 \d+/.test(text)?480:850;
+      updatePvpReplayFrame(frame);
+      await sleep(Math.max(55,base/Math.max(1,state.pvpReplaySpeed)));
+    }
+    if(token===state.pvpReplayToken)finishPvpBattleReplay(replay);
+  }
+  function openPvpBattleReplay(replay){
+    if(!replay||!Array.isArray(replay.frames)||!replay.frames.length)return showToast("재생할 1대1 전투 기록이 없습니다.");
+    state.lastPvpReplay=replay;state.pvpReplaySpeed=2;
+    const mineSide=currentUser===replay.right?.name?"right":"left",enemySide=mineSide==="left"?"right":"left",mine=replay[mineSide]||{},enemy=replay[enemySide]||{},first=replay.frames[0],mineTeam=first[mineSide]||[],enemyTeam=first[enemySide]||[],mineProfile=pvpProfileVisual(mine.profile),enemyProfile=pvpProfileVisual(enemy.profile);
+    openUiModal("1대1 라이브 전투",`<div class="pvp-battle-replay"><header class="battle-replay-head"><div><small>LIVE PVP BATTLE</small><b id="pvpBattleTurnLabel">BATTLE START</b></div><div class="battle-speed"><button data-pvp-battle-speed="1">×1</button><button class="active" data-pvp-battle-speed="2">×2</button><button data-pvp-battle-speed="4">×4</button><button data-pvp-battle-skip>건너뛰기</button></div></header><section id="pvpBattleArena" class="pvp-battle-arena"><section class="pvp-battle-side ally"><div class="battle-player-card"><div class="${mineProfile.classes}" style="${mineProfile.style}" data-aura-symbol="${safe(mineProfile.aura)}"><span>${mineProfile.avatar}</span></div><div><small>MY CAPTAIN</small><b>${safe(mine.name||"나")}</b><em>${safe(mine.title?`[${mine.title}]`:"칭호 없음")}</em></div></div><div class="pvp-live-team">${pvpReplayTeamHtml(mineTeam,mineSide)}</div></section><div class="battle-versus">VS</div><section class="pvp-battle-side enemy"><div class="battle-player-card rival"><div class="${enemyProfile.classes}" style="${enemyProfile.style}" data-aura-symbol="${safe(enemyProfile.aura)}"><span>${enemyProfile.avatar}</span></div><div><small>RIVAL CAPTAIN</small><b>${safe(enemy.name||"상대")}</b><em>${safe(enemy.title?`[${enemy.title}]`:"칭호 없음")}</em></div></div><div class="pvp-live-team">${pvpReplayTeamHtml(enemyTeam,enemySide)}</div></section><div id="pvpBattleAction" class="battle-action-card">대전이 시작됩니다.</div></section></div>`);
+    const sideElements=side=>({cards:$$(`[data-pvp-replay-fish^="${side}-"]`),bars:$$(`[data-pvp-replay-bar^="${side}-"]`),hp:$$(`[data-pvp-replay-hp^="${side}-"]`)}),mineElements=sideElements(mineSide),enemyElements=sideElements(enemySide);
+    state.pvpReplayDom={arena:$("#pvpBattleArena"),action:$("#pvpBattleAction"),turnLabel:$("#pvpBattleTurnLabel"),mineSide,enemySide,mineCards:mineElements.cards,mineBars:mineElements.bars,mineHp:mineElements.hp,enemyCards:enemyElements.cards,enemyBars:enemyElements.bars,enemyHp:enemyElements.hp};
+    playPvpBattleReplay(replay);
+  }
+  globalThis.openPvpBattleReplay=openPvpBattleReplay;
 
   function maybeOpenLocalBattleReplayDemo(){
     if(location.hostname!=="127.0.0.1"||!new URLSearchParams(location.search).has("battleDemo"))return;
@@ -882,6 +938,27 @@
     openUiModal("설정",`<div class="game-dialog settings-dialog"><div class="dialog-summary"><div><small>GAME SETTINGS</small><b>효과음과 진동</b><p>설정은 이 기기에 저장됩니다.</p></div><span>⚙️</span></div><article class="setting-row"><div><span>🔊</span><div><h3>효과음</h3><p>캐스팅·판정·획득·보스 공격·치명타·승리 효과음</p></div></div><button data-feedback-toggle="sound" class="${feedbackSettings.sound?"on":"off"}">${feedbackSettings.sound?"켜짐":"꺼짐"}</button></article><article class="setting-row"><div><span>📳</span><div><h3>모바일 진동</h3><p>입질과 치명타 순간의 진동 피드백</p></div></div><button data-feedback-toggle="vibration" class="${feedbackSettings.vibration?"on":"off"}">${feedbackSettings.vibration?"켜짐":"꺼짐"}</button></article></div>`);
   }
 
+  function openMyInfo(){
+    if(!currentUser)return openUiModal("내정보",`<div class="game-dialog"><div class="dialog-summary"><div><small>CAPTAIN PROFILE</small><b>로그인이 필요합니다.</b></div><span>🪪</span></div></div>`);
+    const visual=pvpProfileVisual(profileCosmetics),bossClears=Object.values(bossProgress?.difficultyClears||{}).reduce((sum,entry)=>sum+Object.values(entry||{}).filter(Boolean).length,0),achievementCount=getCurrentCompletedAchievements().length;
+    openUiModal("내정보",`<div class="game-dialog my-info-dialog"><section class="my-info-profile"><div class="${visual.classes}" style="${visual.style}" data-aura-symbol="${safe(visual.aura)}"><span>${visual.avatar}</span></div><div><small>MY CAPTAIN</small><h2>${safe(currentUser)}</h2><p>${safe(getCurrentTitle()?`[${getCurrentTitle()}] 장착 중`:"장착 칭호 없음")}</p></div><strong>${formatMoney(money)}</strong></section><div class="my-info-grid"><article><small>낚싯대</small><b>Lv.${Number(rodLevel||1).toLocaleString()}</b></article><article><small>총 낚시</small><b>${Number(totalFishingCount||0).toLocaleString()}회</b></article><article><small>보유 물고기</small><b>${bucket.length.toLocaleString()}마리</b></article><article><small>도감</small><b>${Object.keys(collection||{}).length.toLocaleString()} / ${allFishCount().toLocaleString()}</b></article><article><small>보스 클리어</small><b>${bossClears.toLocaleString()}회</b></article><article><small>업적</small><b>${achievementCount.toLocaleString()}개</b></article></div><section class="my-info-growth"><h3>연구·훈련 현황</h3><div><span>🎣 낚시 연구 Lv.${Number(researchLevels?.fishing||0)}</span><span>💰 감정 연구 Lv.${Number(researchLevels?.appraisal||0)}</span><span>⚔ 공격 훈련 Lv.${Number(trainingLevels?.attack||0)} · +${getTrainingAttackBonus()}%</span><span>❤️ 체력 훈련 Lv.${Number(trainingLevels?.hp||0)} · +${getTrainingHpBonus()}%</span><span>💥 치명타 피해 Lv.${Number(trainingLevels?.critDamage||0)} · +${getTrainingCritDamageBonus()}%</span></div></section><details class="battle-details"><summary>기존 텍스트 내정보 전체보기</summary><div class="battle-log">${legacyTextHtml(buildGameInfoText())}</div></details></div>`);
+  }
+
+  function openBattleHistory(type="boss"){
+    type=type==="pvp"?"pvp":"boss";battleHistory=normalizeBattleHistory(battleHistory);
+    const records=battleHistory[type]||[],tabs=`<div class="history-tabs"><button data-history-tab="boss" class="${type==="boss"?"active":""}">🐲 보스 최근 ${battleHistory.boss.length}/5</button><button data-history-tab="pvp" class="${type==="pvp"?"active":""}">⚔️ 1대1 최근 ${battleHistory.pvp.length}/5</button></div>`;
+    const cards=records.map((record,index)=>{if(type==="boss"){const success=record.result==="처치 성공";return `<article class="history-card ${gradeClass(record.boss?.grade)}"><span>${bossSymbols[record.boss?.id]||"🐲"}</span><div><small>${safe(formatDateTime(record.createdAtMillis))} · ${safe(record.boss?.difficulty||"일반")}</small><b>${safe(record.boss?.name||"보스")} · ${success?"승리":"패배"}</b><p>총 피해 ${Number(record.totalDamage||0).toLocaleString()} · ${safe(record.rewardDrop||"보상 없음")} × ${Number(record.rewardDropCount||0).toLocaleString()}</p></div><button data-battle-history-index="${index}" data-battle-history-type="boss" ${record.frames?.length?"":"disabled"}>다시 보기</button></article>`;}const opponent=record.left?.name===currentUser?record.right:record.left,won=record.winnerName===currentUser,draw=!record.winnerName;return `<article class="history-card pvp"><span>⚔️</span><div><small>${safe(formatDateTime(record.createdAtMillis))} · ${Number(record.totalTurns||0)}턴</small><b>VS ${safe(opponent?.name||"상대")} · ${draw?"무승부":won?"승리":"패배"}</b><p>${safe(record.summary||"1대1 전투 결과")}</p></div><button data-battle-history-index="${index}" data-battle-history-type="pvp" ${record.frames?.length?"":"disabled"}>다시 보기</button></article>`;}).join("");
+    openUiModal("전투 기록",`<div class="game-dialog battle-history-dialog"><div class="dialog-summary"><div><small>RECENT BATTLE ARCHIVE</small><b>최근 전투를 다시 확인하세요</b><p>보스와 1대1 기록은 각각 최신 5회까지 저장됩니다.</p></div><span>📼</span></div>${tabs}<div class="history-list">${cards||`<div class="fusion-empty">아직 저장된 ${type==="boss"?"보스":"1대1"} 전투 기록이 없습니다.</div>`}</div></div>`);
+  }
+
+  function hidePvpRequestAlert(){const host=$("#pvpRequestAlert");if(host){host.classList.remove("show");host.hidden=true;host.replaceChildren();}state.pendingPvpRequest=null;}
+  function showPvpRequestAlert(data){
+    const host=$("#pvpRequestAlert");if(!host)return;
+    state.pendingPvpRequest=data;host.hidden=false;host.innerHTML=`<div><small>LIVE PVP REQUEST</small><b>${safe(data.sender||data.from||"다른 선장")} 님의 대전 신청</b><p>낚시를 계속하면서 바로 수락하거나 거절할 수 있습니다.</p></div><div><button data-pvp-alert-accept>수락</button><button data-pvp-alert-reject>거절</button></div>`;requestAnimationFrame(()=>host.classList.add("show"));playGameSound("timing","GREAT");gameVibrate("bite");
+  }
+  globalThis.showPvpRequestAlert=showPvpRequestAlert;
+  globalThis.hidePvpRequestAlert=hidePvpRequestAlert;
+
   async function openRanking() {
     openUiModal("랭킹", `<div class="game-dialog"><div class="dialog-summary"><div><small>ONLINE RANKING</small><b>순위를 불러오는 중...</b></div><span>🏆</span></div></div>`);
     try {
@@ -904,15 +981,24 @@
     recoverStunnedFish();
     const localPvpDemo=location.hostname==="127.0.0.1"&&new URLSearchParams(location.search).has("pvpPartyDemo");
     const active = localPvpDemo?{opponent:"로컬 상대",status:"accepted"}:await getMyActivePvp();
-    if (!active) return openUiModal("1대1 대전", `<div class="game-dialog"><div class="dialog-summary"><div><small>ONLINE PVP</small><b>새로운 상대에게 도전하세요</b></div><span>⚔️</span></div><div class="dialog-form"><label for="pvpNickname">상대 닉네임</label><input id="pvpNickname" maxlength="12" placeholder="닉네임"><button data-pvp-request>대전 신청</button></div></div>`);
+    if (!active) return openUiModal("1대1 대전", `<div class="game-dialog"><div class="dialog-summary"><div><small>ONLINE PVP</small><b>새로운 상대에게 도전하세요</b></div><span>⚔️</span></div><div class="dialog-form"><label for="pvpNickname">상대 닉네임</label><input id="pvpNickname" maxlength="16" placeholder="닉네임"><button data-pvp-request>대전 신청</button></div></div>`);
     if (active.status === "requested") {
       const incoming = active.requester !== currentUser;
       return openUiModal("1대1 대전", `<div class="game-dialog"><div class="dialog-summary"><div><small>대전 신청 ${incoming ? "도착" : "전송 완료"}</small><b>VS ${safe(active.opponent || "상대")}</b></div><span>⚔️</span></div><div class="dialog-actions">${incoming ? `<button class="primary" data-pvp-accept>수락</button><button data-pvp-reject>거절</button>` : ""}<button data-pvp-cancel>대전 취소</button></div></div>`);
     }
-    const sortedPvpBucket=sortedBucketList(),pvpDisplayNumberMap=new Map(sortedPvpBucket.map((entry,index)=>[entry.originalIndex,index+1]));
-    const list = sortedPvpBucket.filter(entry => entry.fish.grade !== "쓰레기");
-    const fishCards = list.map(entry => { const selected=pvpPrepIndexes.includes(entry.originalIndex),f=entry.fish,c=ensureCombatStats(f),no=pvpDisplayNumberMap.get(entry.originalIndex),knockedOut=!!c.knockedOut||c.status==="기절"||c.hp<=0; return `<article class="boss-party-fish ${gradeClass(f.grade)} ${fishEvolutionClass(f)} ${selected ? "selected" : ""} ${knockedOut?"knocked-out":""}"><span>${fishIcon(f)}</span><div><b>${safe(f.name)} ${fishEvolutionBadge(f)}</b><small>⚔ ${compactNumber(c.attack)} · ❤️ ${compactNumber(c.hp)} / ${compactNumber(c.maxHp)}${knockedOut?" · 기절":""}</small></div><button data-pvp-fish="${no}" data-selected="${selected?1:0}" ${knockedOut?"disabled":""}>${knockedOut?"기절":selected?"해제":"참가"}</button></article>`; }).join("");
-    openUiModal("1대1 대전", `<div class="game-dialog"><div class="dialog-summary"><div><small>VS ${safe(active.opponent || "상대")}</small><b>출전 파티 ${pvpPrepIndexes.length} / 3</b></div><span>⚔️</span></div><div class="party-preset-quick"><div><small>저장 파티</small><b>PVP 프리셋 ${partyPresets.pvp.length} / 3</b></div><button data-party-preset-load="pvp" ${partyPresets.pvp.length?"":"disabled"}>${partyPresets.pvp.length?"PVP 프리셋 불러오기":"저장된 프리셋 없음"}</button></div><div class="boss-party-list">${fishCards}</div><div class="dialog-actions"><button class="primary" data-pvp-ready>준비 완료</button><button data-pvp-cancel>대전 취소</button></div></div>`);
+    const sortedPvpBucket=sortedBucketList(),pvpDisplayNumberMap=new Map(sortedPvpBucket.map((entry,index)=>[entry.originalIndex,index+1])),gradeRank=Object.fromEntries(grades.map((grade,index)=>[grade.name,index]));
+    const list=bucket.map((fish,originalIndex)=>{if(!fish||fish.grade==="쓰레기")return null;const combat=ensureCombatStats(fish),power=combat.attack*(1+combat.critRate/100*Math.max(0,combat.critDamage/100-1))+combat.maxHp*.2;return {fish,originalIndex,combat,power};}).filter(Boolean).sort((a,b)=>{
+      if(state.pvpPartySortOrder==="공격력")return b.combat.attack-a.combat.attack||b.originalIndex-a.originalIndex;
+      if(state.pvpPartySortOrder==="체력")return b.combat.maxHp-a.combat.maxHp||b.originalIndex-a.originalIndex;
+      if(state.pvpPartySortOrder==="등급")return (gradeRank[b.fish.grade]??-1)-(gradeRank[a.fish.grade]??-1)||b.power-a.power;
+      if(state.pvpPartySortOrder==="최근 획득")return b.originalIndex-a.originalIndex;
+      return b.power-a.power||b.originalIndex-a.originalIndex;
+    });
+    const visibleEntries=list.slice(0,state.pvpVisibleCount),visibleIds=new Set(visibleEntries.map(entry=>entry.fish.id));
+    list.forEach(entry=>{if(pvpPrepIndexes.includes(entry.originalIndex)&&!visibleIds.has(entry.fish.id)){visibleEntries.push(entry);visibleIds.add(entry.fish.id);}});
+    const fishCards=visibleEntries.map(entry=>{const selected=pvpPrepIndexes.includes(entry.originalIndex),f=entry.fish,c=entry.combat,no=pvpDisplayNumberMap.get(entry.originalIndex),knockedOut=!!c.knockedOut||c.status==="기절"||c.hp<=0;return `<article class="boss-party-fish ${gradeClass(f.grade)} ${fishEvolutionClass(f)} ${selected?"selected":""} ${knockedOut?"knocked-out":""}"><span>${fishIcon(f)}</span><div><b>${safe(f.name)} ${fishEvolutionBadge(f)}</b><small>⚔ ${compactNumber(c.attack)} · ❤️ ${compactNumber(c.hp)} / ${compactNumber(c.maxHp)}${knockedOut?" · 기절":""}</small></div><button data-pvp-fish="${no}" data-selected="${selected?1:0}" ${knockedOut?"disabled":""}>${knockedOut?"기절":selected?"해제":"참가"}</button></article>`;}).join("");
+    const sortButtons=["전투력","공격력","체력","등급","최근 획득"].map(order=>`<button data-pvp-party-sort="${order}" class="${state.pvpPartySortOrder===order?"active":""}">${order}</button>`).join(""),more=list.length>visibleIds.size?`<button class="boss-party-more" data-pvp-party-more>물고기 더 보기 · ${visibleIds.size.toLocaleString()} / ${list.length.toLocaleString()}</button>`:"";
+    openUiModal("1대1 대전", `<div class="game-dialog"><div class="dialog-summary"><div><small>VS ${safe(active.opponent || "상대")}</small><b>출전 파티 ${pvpPrepIndexes.length} / 3</b></div><span>⚔️</span></div><div class="party-preset-quick"><div><small>저장 파티</small><b>PVP 프리셋 ${partyPresets.pvp.length} / 3</b></div><button data-party-preset-load="pvp" ${partyPresets.pvp.length?"":"disabled"}>${partyPresets.pvp.length?"PVP 프리셋 불러오기":"저장된 프리셋 없음"}</button></div><div class="boss-party-sort"><small>출전 물고기 정렬</small><div>${sortButtons}</div></div><div class="boss-party-list">${fishCards}</div>${more}<div class="dialog-actions"><button class="primary" data-pvp-ready>준비 완료</button><button data-pvp-cancel>대전 취소</button></div></div>`);
   }
 
   function fusionProgressHtml(fish){
@@ -1066,7 +1152,7 @@
   }
 
   function handleUiAction(action) {
-    const map = {market:openMarket,fishCollection:openFishCollection,coreCollection:openCoreCollection,bossParty:()=>openBossParty(),ranking:openRanking,wallet:openWallet,achievements:openAchievements,titles:openTitles,cosmetics:openCosmetics,settings:openSettings,pvp:openPvpPanel,presets:openPresets,fusion:openFusionLab,transfer:()=>openTransferHub(),message:openMessageForm};
+    const map = {market:openMarket,fishCollection:openFishCollection,coreCollection:openCoreCollection,bossParty:()=>openBossParty(),ranking:openRanking,myInfo:openMyInfo,battleHistory:()=>openBattleHistory(),wallet:openWallet,achievements:openAchievements,titles:openTitles,cosmetics:openCosmetics,settings:openSettings,pvp:openPvpPanel,presets:openPresets,fusion:openFusionLab,transfer:()=>openTransferHub(),message:openMessageForm};
     map[action]?.();
   }
 
@@ -1098,11 +1184,22 @@
     if(feedbackToggle){const key=feedbackToggle.dataset.feedbackToggle;if(key==="sound"||key==="vibration"){feedbackSettings[key]=!feedbackSettings[key];saveFeedbackSettings();if(key==="sound"&&feedbackSettings.sound)playGameSound("timing","PERFECT");openSettings();}return;}
     const cosmeticButton=event.target.closest("[data-cosmetic-type]");
     if(cosmeticButton&&!cosmeticButton.disabled){const type=cosmeticButton.dataset.cosmeticType,id=cosmeticButton.dataset.cosmeticId||"";if(equipProfileCosmetic(type,id)){renderProfileCosmetics();showToast("꾸미기 설정이 변경되었습니다.");openCosmetics();}return;}
+    const historyTab=event.target.closest("[data-history-tab]");
+    if(historyTab)return openBattleHistory(historyTab.dataset.historyTab);
+    const historyButton=event.target.closest("[data-battle-history-index]");
+    if(historyButton&&!historyButton.disabled){const type=historyButton.dataset.battleHistoryType,index=Number(historyButton.dataset.battleHistoryIndex),record=battleHistory?.[type]?.[index];if(!record)return showToast("저장된 전투 기록을 찾을 수 없습니다.");return type==="pvp"?openPvpBattleReplay(record):openBossBattleReplay(record);}
     const battleSpeed=event.target.closest("[data-battle-speed]");
     if(battleSpeed){state.battleReplaySpeed=Number(battleSpeed.dataset.battleSpeed)||1;$$('[data-battle-speed]').forEach(button=>button.classList.toggle("active",button===battleSpeed));return;}
     if(event.target.closest("[data-battle-skip]")){state.battleReplaySkip=true;return;}
     if(event.target.closest("[data-battle-replay]")){if(state.lastBattleReplay)openBossBattleReplay(state.lastBattleReplay);return;}
     if(event.target.closest("[data-battle-close]")){state.battleReplayToken++;closeModal();return;}
+    const pvpBattleSpeed=event.target.closest("[data-pvp-battle-speed]");
+    if(pvpBattleSpeed){state.pvpReplaySpeed=Number(pvpBattleSpeed.dataset.pvpBattleSpeed)||1;$$('[data-pvp-battle-speed]').forEach(button=>button.classList.toggle("active",button===pvpBattleSpeed));return;}
+    if(event.target.closest("[data-pvp-battle-skip]")){state.pvpReplaySkip=true;return;}
+    if(event.target.closest("[data-pvp-replay]")){if(state.lastPvpReplay)openPvpBattleReplay(state.lastPvpReplay);return;}
+    if(event.target.closest("[data-pvp-replay-close]")){state.pvpReplayToken++;closeModal();return;}
+    if(event.target.closest("[data-pvp-alert-accept]")){hidePvpRequestAlert();await acceptLatestPvpRequest();state.pvpVisibleCount=30;return openPvpPanel();}
+    if(event.target.closest("[data-pvp-alert-reject]")){hidePvpRequestAlert();await rejectLatestPvpRequest();return showToast("대전 신청을 거절했습니다.");}
     const viewButton = event.target.closest("[data-view-target]"); if (viewButton) return switchView(viewButton.dataset.viewTarget);
     const uiButton = event.target.closest("[data-ui-action]"); if (uiButton) return handleUiAction(uiButton.dataset.uiAction);
     const commandButton = event.target.closest("[data-game-command]"); if (commandButton) { await runGameCommand(commandButton.dataset.gameCommand); if ($("#modalOverlay").style.display === "block" && commandButton.closest(".modalBody")) closeModal(); return; }
@@ -1130,12 +1227,14 @@
     if(event.target.closest("[data-boss-confirm]")){ runBossBattle(); return; }
     const titleButton=event.target.closest("[data-title-index]"); if(titleButton){ equipTitle(titleButton.dataset.titleIndex); return openTitles(); }
     if(event.target.closest("[data-message-send]")) return sendDirectMessage($("#messageNickname").value,$("#messageText").value);
-    if(event.target.closest("[data-pvp-request]")){ await requestPvp($("#pvpNickname").value); return openPvpPanel(); }
-    if(event.target.closest("[data-pvp-accept]")){ await acceptLatestPvpRequest(); return openPvpPanel(); }
-    if(event.target.closest("[data-pvp-reject]")){ await rejectLatestPvpRequest(); return openPvpPanel(); }
+    const pvpPartySort=event.target.closest("[data-pvp-party-sort]");if(pvpPartySort){state.pvpPartySortOrder=pvpPartySort.dataset.pvpPartySort;state.pvpVisibleCount=30;return openPvpPanel();}
+    if(event.target.closest("[data-pvp-party-more]")){state.pvpVisibleCount+=30;return openPvpPanel();}
+    if(event.target.closest("[data-pvp-request]")){state.pvpVisibleCount=30;await requestPvp($("#pvpNickname").value);return openPvpPanel();}
+    if(event.target.closest("[data-pvp-accept]")){hidePvpRequestAlert();state.pvpVisibleCount=30;await acceptLatestPvpRequest();return openPvpPanel();}
+    if(event.target.closest("[data-pvp-reject]")){hidePvpRequestAlert();await rejectLatestPvpRequest();return openPvpPanel();}
     if(event.target.closest("[data-pvp-cancel]")){ await cancelPvpRequest(); return openPvpPanel(); }
     const pvpFish=event.target.closest("[data-pvp-fish]"); if(pvpFish){ pvpFish.dataset.selected==="1" ? await unpreparePvpFish(pvpFish.dataset.pvpFish) : await preparePvpFish(pvpFish.dataset.pvpFish); return openPvpPanel(); }
-    if(event.target.closest("[data-pvp-ready]")){ await finishPvpReady(); return openPvpPanel(); }
+    if(event.target.closest("[data-pvp-ready]")){const before=state.lastPvpReplay?.id;await finishPvpReady();if(state.lastPvpReplay?.id!==before)return;return openPvpPanel();}
   });
 
   $("#castButton")?.addEventListener("click", startTimingGame);

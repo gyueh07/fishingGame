@@ -9,6 +9,7 @@ let trainingLevels={attack:0,hp:0,critDamage:0};
 let unlockedTitles=[];
 let equippedTitle="";
 let profileCosmetics={border:"",aura:"",background:"",attackEffect:""};
+let battleHistory={boss:[],pvp:[]};
 let seenUpdateNoticeIds=[];
 let bossProgress={defeated:{},difficultyClears:{},hp:{},materials:{},selectedDifficulty:"normal",cooldownUntil:0,cooldowns:{}};
 let isBossMenu=false;
@@ -28,9 +29,20 @@ let cloudSaveChain=Promise.resolve();
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
-const GAME_VERSION = "2026-07-10-fishinglife-mobile-performance-transfer-v20";
+const GAME_VERSION = "2026-07-10-fishinglife-pvp-live-history-v21";
 const UPDATE_NOTICE_TITLE = "📢 업데이트 안내";
 const UPDATE_NOTICES = [
+  {
+    id:"2026-07-10-fishinglife-pvp-live-history-21",
+    title:"1대1 라이브 전투·최근 전투 기록 업데이트",
+    lines:[
+      "1대1 출전 화면에 전투력·공격력·체력·등급·최근 획득 정렬과 30마리씩 더 보기를 추가했습니다.",
+      "1대1 결과를 보스 레이드처럼 양쪽 파티 체력·공격자·스킬 발동이 이어지는 라이브 전투로 표시합니다.",
+      "낚시터에서도 들어온 대전 신청을 바로 확인하고 수락하거나 거절할 수 있습니다.",
+      "광장에 기존 텍스트 게임의 내정보를 카드형 화면으로 추가했습니다.",
+      "보스와 1대1 전투는 각각 최근 5회까지 저장되며 전투 기록에서 다시 재생할 수 있습니다."
+    ]
+  },
   {
     id:"2026-07-10-fishinglife-mobile-performance-transfer-20",
     title:"모바일 최적화·안전 거래 업데이트",
@@ -490,6 +502,7 @@ function getGameState(){
     unlockedTitles,
     equippedTitle,
     profileCosmetics,
+    battleHistory,
     seenUpdateNoticeIds,
     bossProgress,
     pvpPrepIndexes,
@@ -524,6 +537,48 @@ function normalizeProfileCosmetics(value){
     background:String(source.background||""),
     attackEffect:String(source.attackEffect||"")
   };
+}
+
+function compactBattleReplayFrames(frames,maxFrames=180){
+  const list=Array.isArray(frames)?frames:[];
+  if(list.length<=maxFrames)return list;
+  const important=/전투 시작|전투 종료|처치 성공|처치 실패|대전 결과|CRAZY|ULTIMATE|BOSS SKILL|ALLY SKILL|PASSIVE|스킬|특성|부활|기절|쓰러|되감|회복/i;
+  const keep=new Set([0,list.length-1]);
+  list.forEach((frame,index)=>{if(important.test(String(frame?.entry||"")))keep.add(index);});
+  const remaining=Math.max(0,maxFrames-keep.size),step=remaining>0?list.length/remaining:list.length;
+  for(let cursor=0;keep.size<maxFrames&&cursor<list.length;cursor+=step)keep.add(Math.min(list.length-1,Math.floor(cursor)));
+  const indexes=[...keep].sort((a,b)=>a-b);
+  if(indexes.length>maxFrames){
+    const finalIndex=list.length-1,trimmed=indexes.slice(0,Math.max(1,maxFrames-1));
+    if(!trimmed.includes(finalIndex))trimmed.push(finalIndex);
+    return trimmed.sort((a,b)=>a-b).map(index=>list[index]);
+  }
+  return indexes.map(index=>list[index]);
+}
+
+function normalizeBattleHistory(value){
+  const source=value&&typeof value==="object"?value:{};
+  const clean=(items,type)=>(Array.isArray(items)?items:[]).slice(0,5).map((item,index)=>{
+    const record=item&&typeof item==="object"?JSON.parse(JSON.stringify(item)):{};
+    record.id=String(record.id||`${type}_legacy_${index}_${Number(record.createdAtMillis||0)}`);
+    record.createdAtMillis=Number(record.createdAtMillis||Date.now());
+    record.frames=compactBattleReplayFrames(record.frames,180);
+    if(typeof record.fullLog==="string"&&record.fullLog.length>50000)record.fullLog=record.fullLog.slice(-50000);
+    return record;
+  });
+  return {boss:clean(source.boss,"boss"),pvp:clean(source.pvp,"pvp")};
+}
+
+function addBattleHistory(type,replay){
+  if(!["boss","pvp"].includes(type)||!replay)return null;
+  battleHistory=normalizeBattleHistory(battleHistory);
+  const record=JSON.parse(JSON.stringify(replay));
+  record.id=String(record.id||`${type}_${Date.now()}_${Math.random().toString(36).slice(2,8)}`);
+  record.createdAtMillis=Number(record.createdAtMillis||Date.now());
+  record.frames=compactBattleReplayFrames(record.frames,180);
+  if(typeof record.fullLog==="string"&&record.fullLog.length>50000)record.fullLog=record.fullLog.slice(-50000);
+  battleHistory[type]=[record,...battleHistory[type].filter(item=>item.id!==record.id)].slice(0,5);
+  return record;
 }
 
 function hasBossDifficultyClearById(id,difficulty){
@@ -648,6 +703,7 @@ function applyGameState(s){
   unlockedTitles=normalizeLegacyTitleList(Array.isArray(s.unlockedTitles)?s.unlockedTitles:unlockedTitles);
   equippedTitle=normalizeLegacyTitleName(s.equippedTitle??equippedTitle);
   profileCosmetics=normalizeProfileCosmetics(s.profileCosmetics??profileCosmetics);
+  battleHistory=normalizeBattleHistory(s.battleHistory??battleHistory);
   seenUpdateNoticeIds=normalizeUpdateNoticeIds(s.seenUpdateNoticeIds, s.lastSeenUpdateVersion);
   bossProgress=normalizeBossProgress(s.bossProgress??bossProgress);
   pvpPrepIndexes=Array.isArray(s.pvpPrepIndexes)?s.pvpPrepIndexes:[];
@@ -685,6 +741,7 @@ function resetGameData(){
   unlockedTitles = [];
   equippedTitle = "";
   profileCosmetics = {border:"",aura:"",background:"",attackEffect:""};
+  battleHistory = {boss:[],pvp:[]};
   seenUpdateNoticeIds = [];
   bossProgress = {defeated:{},difficultyClears:{},hp:{},materials:{},selectedDifficulty:"normal",cooldownUntil:0,cooldowns:{}};
   isBossMenu = false;
@@ -1272,7 +1329,8 @@ function startServerAlertListener(){
         if(data.type === "pvpRequest"){
           if(data.to !== currentUser) return;
           const sender = formatUserName(data.from, data.fromTitle);
-          print("⚔️ 대전 신청\n\n" + sender + " 님이 대전을 신청했습니다.\n\n대전수락\n대전거절");
+          if(typeof globalThis.showPvpRequestAlert==="function")globalThis.showPvpRequestAlert({roomId:data.roomId,from:data.from,fromTitle:data.fromTitle||"",sender});
+          else print("⚔️ 대전 신청\n\n" + sender + " 님이 대전을 신청했습니다.\n\n대전수락\n대전거절");
           return;
         }
 
@@ -1293,6 +1351,7 @@ function startServerAlertListener(){
         if(data.type === "pvpCancelled"){
           if(data.to !== currentUser) return;
           pvpPrepIndexes = [];
+          if(typeof globalThis.hidePvpRequestAlert==="function")globalThis.hidePvpRequestAlert();
           saveGame();
           const sender = formatUserName(data.from, data.fromTitle);
           print("⚔️ 대전 취소\n\n" + sender + " 님이 대전을 취소했습니다.");
@@ -1302,6 +1361,7 @@ function startServerAlertListener(){
         if(data.type === "pvpRejected"){
           if(data.to !== currentUser) return;
           pvpPrepIndexes = [];
+          if(typeof globalThis.hidePvpRequestAlert==="function")globalThis.hidePvpRequestAlert();
           saveGame();
           const sender = formatUserName(data.from, data.fromTitle);
           print("⚔️ 대전 거절\n\n" + sender + " 님이 대전 신청을 거절했습니다.");
@@ -1311,8 +1371,11 @@ function startServerAlertListener(){
         if(data.type === "pvpResult"){
           if(data.to !== currentUser) return;
           pvpPrepIndexes = [];
+          if(typeof globalThis.hidePvpRequestAlert==="function")globalThis.hidePvpRequestAlert();
+          const replay=data.replay?addBattleHistory("pvp",data.replay):null;
           saveGame();
-          printPvpResultPreview(data.summary || "대전 결과", data.fullLog || "상세 로그가 없습니다.");
+          if(replay&&typeof globalThis.openPvpBattleReplay==="function")globalThis.openPvpBattleReplay(replay);
+          else printPvpResultPreview(data.summary || "대전 결과", data.fullLog || "상세 로그가 없습니다.");
           return;
         }
 
@@ -1931,7 +1994,7 @@ function unequipTitle(){
 }
 
 function saveGame(){
-  localStorage.setItem("textFishingSpeciesSizeSave", JSON.stringify({money,totalEarned,rodLevel,bucket,collection,ranking,totalFishingCount,gradeCounts,completedAchievements,marketHour,marketRates,notifications,messages,researchLevels,trainingLevels,unlockedTitles,equippedTitle,profileCosmetics,seenUpdateNoticeIds,bossProgress,pvpPrepIndexes,partyPresets,fusionMainFishId,fusionMainFishIds}));
+  localStorage.setItem("textFishingSpeciesSizeSave", JSON.stringify({money,totalEarned,rodLevel,bucket,collection,ranking,totalFishingCount,gradeCounts,completedAchievements,marketHour,marketRates,notifications,messages,researchLevels,trainingLevels,unlockedTitles,equippedTitle,profileCosmetics,battleHistory,seenUpdateNoticeIds,bossProgress,pvpPrepIndexes,partyPresets,fusionMainFishId,fusionMainFishIds}));
   syncCloudSoon();
 }
 function loadGame(){
@@ -1954,6 +2017,7 @@ function loadGame(){
     unlockedTitles=normalizeLegacyTitleList(s.unlockedTitles);
     equippedTitle=normalizeLegacyTitleName(s.equippedTitle??"");
     profileCosmetics=normalizeProfileCosmetics(s.profileCosmetics);
+    battleHistory=normalizeBattleHistory(s.battleHistory);
     seenUpdateNoticeIds=normalizeUpdateNoticeIds(s.seenUpdateNoticeIds, s.lastSeenUpdateVersion);
     bossProgress=normalizeBossProgress(s.bossProgress);
     pvpPrepIndexes=Array.isArray(s.pvpPrepIndexes)?s.pvpPrepIndexes:[];

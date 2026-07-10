@@ -1278,7 +1278,7 @@ function pvpHpBar(cur,max){
     "█".repeat(filled) + "░".repeat(10-filled) + " " + Math.floor(ratio*100) + "%";
 }
 
-function simulatePvpBattle({leftName,leftTitle,leftTeam,rightName,rightTitle,rightTeam}){
+function simulatePvpBattle({leftName,leftTitle,leftProfile,leftTeam,rightName,rightTitle,rightProfile,rightTeam}){
   const left = (leftTeam || []).map(f => JSON.parse(JSON.stringify(f))).slice(0,3);
   const right = (rightTeam || []).map(f => JSON.parse(JSON.stringify(f))).slice(0,3);
   const allPvpFishes = left.concat(right);
@@ -1305,6 +1305,14 @@ function simulatePvpBattle({leftName,leftTitle,leftTeam,rightName,rightTitle,rig
     c._pvp={originalMaxHp:c.maxHp,originalCritDamage:c.critDamage};
   });
 
+  const replayFrames=[];
+  const snapshotPvpFish=f=>({id:String(f.id||""),name:f.name,grade:f.grade,size:f.size??null,evolutionStage:Number(f.fusion?.evolutionStage||0),hp:Math.max(0,Number(f.combat?.hp||0)),maxHp:Math.max(1,Number(f.combat?.maxHp||1)),attack:Math.max(0,Number(f.combat?.attack||0)),status:f.combat?._pvp?.gone?"전투 불가":Number(f.combat?.hp||0)<=0?"쓰러짐":"정상"});
+  function capturePvpFrame(entry,frameTurn=turn,actorSide="",actorId=""){
+    const text=String(entry||"").trim();
+    if(!text)return;
+    replayFrames.push({entry:text,turn:Number(frameTurn||0),actorSide,actorId:String(actorId||""),left:left.map(snapshotPvpFish),right:right.map(snapshotPvpFish)});
+  }
+
   let logText = "";
   logText += "다중 대전 시작\n\n";
   logText += pvpDisplayName(leftName,leftTitle) + "\n" + pvpTeamLine(left) + "\n\n";
@@ -1316,6 +1324,7 @@ function simulatePvpBattle({leftName,leftTitle,leftTeam,rightName,rightTitle,rig
   const firstSide = Math.random() < 0.5 ? "left" : "right";
   logText += "선공 : " + (firstSide === "left" ? pvpDisplayName(leftName,leftTitle) : pvpDisplayName(rightName,rightTitle)) + "\n\n";
   logText += "━━━━━━━━━━━━━━\n\n";
+  capturePvpFrame("대전 시작\n선공 : "+(firstSide==="left"?pvpDisplayName(leftName,leftTitle):pvpDisplayName(rightName,rightTitle)),0,firstSide,"");
 
   function sideTitle(side){ return side === "left" ? pvpDisplayName(leftName,leftTitle) : pvpDisplayName(rightName,rightTitle); }
   function otherSide(side){ return side === "left" ? "right" : "left"; }
@@ -1568,6 +1577,8 @@ function simulatePvpBattle({leftName,leftTitle,leftTeam,rightName,rightTitle,rig
     sideLog.push('<span style="font-weight:700">' + sideTitle(side) + '의 턴</span>\n\n');
     const attackers=livingSide(side).slice();
     for(const attacker of attackers){
+      const frameLogStart=sideLog.length;
+      try{
       if(!attacker.combat||attacker.combat.hp<=0||pvpState(attacker).ashRemnant&&pvpState(attacker).ashTurns<=0)continue;
       const firstLetter=livingSide(enemySide).find(f=>f.name==="잃어버린 첫 번째 편지 조각 ✉️");
       if(state[enemySide].deletedAttackerId===attacker.id&&turn<=state[enemySide].deletedAttackerUntil){
@@ -1614,6 +1625,10 @@ function simulatePvpBattle({leftName,leftTitle,leftTeam,rightName,rightTitle,rig
         sideLog.push(traitUseByFish(livingSide(enemySide).find(f=>f.name==="수상한 기운 👁️"), pvpFishLabel(attacker)+"의 공격을 3턴 동안 관측합니다.")+"\n\n");
       }
       if(!pvpAlive(teamOf(enemySide)))break;
+      }finally{
+        const frameEntry=sideLog.slice(frameLogStart).join("");
+        if(frameEntry.trim())capturePvpFrame(frameEntry,turn,side,attacker.id);
+      }
     }
     if(hasFish(side,"황룡")){
       const al=livingSide(side).filter(f=>!pvpState(f).ashRemnant),total=al.reduce((s,f)=>s+f.combat.hp,0),maxTotal=al.reduce((s,f)=>s+f.combat.maxHp,0);
@@ -1649,13 +1664,20 @@ function simulatePvpBattle({leftName,leftTitle,leftTeam,rightName,rightTitle,rig
 
   while(pvpAlive(left) && pvpAlive(right) && turn <= 200){
     logText += "턴 " + turn + "\n\n";
-    logText += startPvpTurn("left"); logText += startPvpTurn("right");
+    capturePvpFrame("턴 "+turn,turn,"","");
+    const leftStartLog=startPvpTurn("left"),rightStartLog=startPvpTurn("right");
+    logText += leftStartLog;logText += rightStartLog;
+    if(leftStartLog.trim())capturePvpFrame(leftStartLog,turn,"left","");
+    if(rightStartLog.trim())capturePvpFrame(rightStartLog,turn,"right","");
     const order = firstSide === "left" ? ["left","right"] : ["right","left"];
     for(const side of order){
       if(!pvpAlive(teamOf(side))||!pvpAlive(teamOf(otherSide(side))))break;
       logText += sideAttack(side);
     }
+    const finishLogStart=logText.length;
     finishPvpTurn();
+    const finishLog=logText.slice(finishLogStart);
+    if(finishLog.trim())capturePvpFrame(finishLog,turn,"","");
     logText += "━━━━━━━━━━━━━━\n\n";
     turn++;
   }
@@ -1675,9 +1697,11 @@ function simulatePvpBattle({leftName,leftTitle,leftTeam,rightName,rightTitle,rig
     pvpDisplayName(rightName,rightTitle) + " 피해량 : " + state.right.damage.toLocaleString();
 
   logText += "전투 종료\n\n" + summary;
+  capturePvpFrame("전투 종료\n"+summary,Math.min(Math.max(0,turn-1),200),"","");
   clearBattleDisplayNumbers(allPvpFishes);
   activePvpFishLabeler = null;
-  return {summary, fullLog:logText};
+  const winnerName=leftWin?leftName:rightWin?rightName:"";
+  return {summary,fullLog:logText,replay:{id:`pvp_${Date.now()}_${Math.random().toString(36).slice(2,8)}`,createdAtMillis:Date.now(),left:{name:leftName,title:leftTitle||"",profile:normalizeProfileCosmetics(leftProfile)},right:{name:rightName,title:rightTitle||"",profile:normalizeProfileCosmetics(rightProfile)},winnerName,totalTurns:Math.min(Math.max(0,turn-1),200),summary,fullLog:logText,frames:replayFrames}};
 }
 
 function printPvpResultPreview(summary, fullLog){
@@ -1727,6 +1751,7 @@ async function requestPvp(nickname){
       roomId,
       from: currentUser,
       fromTitle: getCurrentTitle(),
+      fromProfile: normalizeProfileCosmetics(profileCosmetics),
       to: nickname,
       toTitle: "",
       users: [currentUser, nickname],
@@ -1783,6 +1808,7 @@ async function acceptLatestPvpRequest(){
       acceptedAtMillis:Date.now(),
       updatedAtMillis:Date.now(),
       toTitle:getCurrentTitle(),
+      toProfile:normalizeProfileCosmetics(profileCosmetics),
       [currentUser + "_ready"]: false,
       [room.from + "_ready"]: false,
       [currentUser + "_team"]: [],
@@ -1810,6 +1836,7 @@ async function acceptLatestPvpRequest(){
 
     pvpPrepIndexes = [];
     saveGame();
+    if(typeof globalThis.hidePvpRequestAlert==="function")globalThis.hidePvpRequestAlert();
     print("대전을 수락했습니다.\n\n이제 대전준비 번호 로 물고기를 고르고 대전준비완료 를 입력하세요.");
   }catch(e){
     console.error(e);
@@ -1843,6 +1870,7 @@ async function rejectLatestPvpRequest(){
       await getMyActivePvpRef().delete();
     }
 
+    if(typeof globalThis.hidePvpRequestAlert==="function")globalThis.hidePvpRequestAlert();
     print("대전 신청을 거절했습니다.");
   }catch(e){
     console.error(e);
@@ -1880,6 +1908,7 @@ async function cancelPvpRequest(){
 
     pvpPrepIndexes = [];
     saveGame();
+    if(typeof globalThis.hidePvpRequestAlert==="function")globalThis.hidePvpRequestAlert();
     print("대전을 취소했습니다.");
   }catch(e){
     console.error(e);
@@ -2075,12 +2104,15 @@ async function finishPvpReady(){
     const result = simulatePvpBattle({
       leftName,
       leftTitle: claimedRoom.fromTitle || "",
+      leftProfile:claimedRoom.fromProfile,
       leftTeam: claimedRoom[leftName + "_team"] || [],
       rightName,
       rightTitle: claimedRoom.toTitle || "",
+      rightProfile:claimedRoom.toProfile,
       rightTeam: claimedRoom[rightName + "_team"] || []
     });
     const opponentLog = swapPvpPerspectiveLog(result.fullLog);
+    const compactReplay=addBattleHistory("pvp",result.replay);
 
     await roomRef.set({
       status:"finished",
@@ -2089,6 +2121,7 @@ async function finishPvpReady(){
       resultLog:result.fullLog,
       resultLogByResolver:result.fullLog,
       resultLogByOpponent:opponentLog,
+      replay:compactReplay,
       updatedAtMillis:Date.now()
     }, {merge:true});
 
@@ -2102,11 +2135,13 @@ async function finishPvpReady(){
       to:opp,
       summary:result.summary,
       fullLog:opponentLog,
+      replay:compactReplay,
       createdAtMillis:Date.now(),
       createdAt:firebase.firestore.FieldValue.serverTimestamp()
     });
 
-    printPvpResultPreview(result.summary, result.fullLog);
+    if(typeof globalThis.openPvpBattleReplay==="function")globalThis.openPvpBattleReplay(compactReplay);
+    else printPvpResultPreview(result.summary,result.fullLog);
   }catch(e){
     console.error(e);
     print("대전 준비완료 중 오류가 발생했습니다.");

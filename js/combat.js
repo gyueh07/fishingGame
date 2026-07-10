@@ -3192,9 +3192,12 @@ function runBossBattle(){
   const resultText = buildBattleResultText(boss, participants, totalDamage, result, rewardMoney, rewardDrop, rewardDropCount, battleLog,healthReport);
   const summary = buildBattleSummaryText(boss, result, rewardMoney, rewardDrop, rewardDropCount,healthReport);
   globalThis.pendingBossBattleReplay={
+    id:`boss_${Date.now()}_${boss.id}_${selectedDifficulty}`,
+    createdAtMillis:Date.now(),
     boss:{id:boss.id,name:boss.name,grade:boss.grade,color:boss.color,difficulty:boss.difficultyName||"일반",maxHp:boss.hp},
     frames:battleLog.replayFrames.slice(),result,totalDamage,rewardMoney,rewardDrop,rewardDropCount,summary,healthReport
   };
+  addBattleHistory("boss",globalThis.pendingBossBattleReplay);
   clearBattleDisplayNumbers(participants);
 
   if(result === "처치 성공"){
