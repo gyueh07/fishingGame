@@ -21,7 +21,7 @@
   };
   const ratingColors = {PERFECT:"#ffe46a", GREAT:"#5ef0d1", GOOD:"#73cfff", BAD:"#ff8b91"};
   const cosmeticGrades = {
-    "영웅":{slug:"hero",icon:"🟣",name:"영웅의 심해",primary:"#c58aff",secondary:"#6d4cff"},
+    "영웅":{slug:"hero",icon:"🔵",name:"영웅의 심해",primary:"#6f9dff",secondary:"#2858d9"},
     "전설":{slug:"legend",icon:"🟠",name:"전설의 해역",primary:"#ffac55",secondary:"#ff6238"},
     "신화":{slug:"myth",icon:"🔴",name:"신화의 화염천",primary:"#ff6279",secondary:"#ff263f"},
     "초월":{slug:"transcend",icon:"🟡",name:"초월의 황금해",primary:"#ffe25b",secondary:"#ff9f1c"},
@@ -35,7 +35,7 @@
     activeView:"fishingView", bucketKey:"", bossKey:"", collectionKey:"", previousBucketCount:0,
     initialized:false, toastTimer:null, trainingSyncKey:"", trainingBucketRef:null, timingActive:false, timingStartedAt:0, timingDuration:1900,
     timingTarget:.5, timingPosition:0, timingRaf:0, timingTimeout:0,
-    battleReplayToken:0, battleReplaySpeed:2, battleReplaySkip:false, lastBattleReplay:null
+    battleReplayToken:0, battleReplaySpeed:2, battleReplaySkip:false, lastBattleReplay:null, bossPartySortOrder:"전투력", catchCelebrationTimer:0
   };
 
   function saveFeedbackSettings(){
@@ -99,6 +99,8 @@
   function fishIcon(fish) {
     const name = String(fish?.name || "");
     if (specialFishEmojis[name]) return specialFishEmojis[name];
+    const specialName=Object.keys(specialFishEmojis).find(key=>name===displayFishName(key));
+    if(specialName)return specialFishEmojis[specialName];
     if (/드래곤|룡|이무기/.test(name)) return "🐉";
     if (/고래/.test(name)) return "🐋";
     if (/상어/.test(name)) return "🦈";
@@ -108,6 +110,10 @@
     if (/조개|굴|전복/.test(name)) return "🐚";
     if (/해마/.test(name)) return "🐴";
     return fish?.grade === "쓰레기" ? "🗑️" : "🐟";
+  }
+  function combatStars(combat,stat){
+    const tier=Math.max(0,Math.min(3,Number(combat?.stars?.[stat]||0)));
+    return tier?`<span class="stat-stars" aria-label="${tier}성">${"★".repeat(tier)}</span>`:"";
   }
   function compactNumber(value) {
     const n = Number(value || 0);
@@ -141,11 +147,11 @@
 
   function replayDelay(entry){
     const text=String(entry||"");
-    if(text.includes("battle-event--crazy"))return 1700;
-    if(text.includes("battle-event--passive"))return 1150;
-    if(text.includes("battle-event--skill"))return 900;
-    if(/턴 \d+|내 턴|보스 턴/.test(plain(text)))return 520;
-    return 380;
+    if(text.includes("battle-event--crazy"))return 5100;
+    if(text.includes("battle-event--passive"))return 3450;
+    if(text.includes("battle-event--skill"))return 2700;
+    if(/턴 \d+|내 턴|보스 턴/.test(plain(text)))return 1560;
+    return 1140;
   }
 
   function replayEventKind(entry){
@@ -157,7 +163,7 @@
   }
 
   function updateReplayFrame(frame){
-    const arena=$("#bossBattleArena"),action=$("#battleActionCard"),feed=$("#battleLiveFeed");
+    const arena=$("#bossBattleArena"),action=$("#battleActionCard");
     if(!arena||!action||!frame)return;
     const kind=replayEventKind(frame.entry),text=plain(frame.entry);
     arena.classList.remove("hit-player","hit-boss","event-skill","event-crazy","event-passive",...Object.values(cosmeticGrades).map(config=>"grade-attack-"+config.slug));
@@ -165,6 +171,8 @@
     const bossName=arena.dataset.bossName||"";
     const bossAttack=/보스 턴/.test(text)||(bossName&&text.includes(bossName+"의"));
     const playerAttack=!bossAttack&&(/ 공격|피해/.test(text));
+    const attackerIndex=playerAttack?(frame.fish||[]).findIndex(fish=>text.includes(fish.displayName||fish.name)||text.includes(fish.name)):-1;
+    const attacker=attackerIndex>=0?frame.fish[attackerIndex]:null;
     if(kind!=="normal")arena.classList.add("event-"+kind);
     else if(bossAttack)arena.classList.add("hit-player");
     else if(playerAttack)arena.classList.add("hit-boss");
@@ -185,20 +193,14 @@
     (frame.fish||[]).forEach((fish,index)=>{
       const card=$(`[data-replay-fish-index="${index}"]`),bar=$(`[data-replay-fish-bar="${index}"]`),hp=$(`[data-replay-fish-hp="${index}"]`);
       if(card)card.classList.toggle("down",Number(fish.hp)<=0);
+      if(card)card.classList.toggle("attacking",index===attackerIndex);
       if(bar)bar.style.width=hpPercent(fish.hp,fish.maxHp)+"%";
       if(hp)hp.textContent=compactNumber(fish.hp)+" / "+compactNumber(fish.maxHp);
     });
 
     action.className="battle-action-card "+(kind!=="normal"?"is-"+kind:"");
-    action.innerHTML=legacyTextHtml(frame.entry);
-    if(feed){
-      const item=document.createElement("div");
-      item.className="battle-feed-item "+(kind!=="normal"?"is-"+kind:"");
-      item.innerHTML=legacyTextHtml(frame.entry);
-      feed.append(item);
-      while(feed.children.length>8)feed.firstElementChild.remove();
-      feed.scrollTop=feed.scrollHeight;
-    }
+    const actorBanner=attacker?`<div class="battle-attacker-banner"><span>${fishIcon(attacker)}</span><div><small>PLAYER ATTACK</small><b>${safe(attacker.name)}</b></div></div>`:bossAttack&&kind==="normal"?`<div class="battle-attacker-banner boss"><span>🐲</span><div><small>BOSS ATTACK</small><b>${safe(bossName)}</b></div></div>`:"";
+    action.innerHTML=actorBanner+`<div class="battle-action-text">${legacyTextHtml(frame.entry)}</div>`;
   }
 
   function finishBossBattleReplay(replay){
@@ -206,6 +208,7 @@
     if(arena){arena.classList.remove("event-skill","event-crazy","event-passive","hit-player","hit-boss");arena.classList.add(success?"battle-win":"battle-lose");}
     if(action)action.innerHTML=`<div class="battle-finish-card ${success?"win":"lose"}"><small>${success?"RAID CLEAR":"RAID FAILED"}</small><strong>${success?"처치 성공":"처치 실패"}</strong><p>총 피해 ${Number(replay.totalDamage||0).toLocaleString()}</p>${success?`<p>${safe(replay.rewardDrop)} × ${Number(replay.rewardDropCount||0).toLocaleString()}${replay.rewardMoney>0?` · ${safe(formatMoney(replay.rewardMoney))}`:""}</p>`:""}<div class="battle-finish-actions"><button data-battle-replay>다시 보기</button><button data-battle-close>닫기</button></div></div>`;
     const title=$("#modalTitle");if(title)title.textContent=success?"보스 레이드 승리":"보스 레이드 패배";
+    const turnLabel=$("#battleTurnLabel");if(turnLabel)turnLabel.textContent="BATTLE END";
     if(success){playGameSound("victory");gameVibrate("victory");}
   }
 
@@ -227,7 +230,7 @@
     state.battleReplaySpeed=2;
     const first=replay.frames?.[0]||{bossHp:replay.boss.maxHp,bossMaxHp:replay.boss.maxHp,fish:[]};
     const party=(first.fish||[]).map((fish,index)=>`<article class="replay-fish ${gradeClass(fish.grade)}" data-replay-fish-index="${index}"><span>${fishIcon(fish)}</span><div><b>${safe(fish.name)}</b><div class="replay-hp"><i data-replay-fish-bar="${index}" style="width:${hpPercent(fish.hp,fish.maxHp)}%"></i></div><small data-replay-fish-hp="${index}">${compactNumber(fish.hp)} / ${compactNumber(fish.maxHp)}</small></div></article>`).join("");
-    openUiModal(`${replay.boss.name} · ${replay.boss.difficulty}`,`<div class="boss-battle-replay"><header class="battle-replay-head"><div><small>LIVE BOSS RAID</small><b id="battleTurnLabel">BATTLE START</b></div><div class="battle-speed"><button data-battle-speed="1">×1</button><button class="active" data-battle-speed="2">×2</button><button data-battle-speed="4">×4</button><button data-battle-skip>건너뛰기</button></div></header><section id="bossBattleArena" class="boss-battle-arena" data-boss-name="${safe(replay.boss.name)}"><div class="grade-attack-layer" aria-hidden="true"></div><div class="replay-boss ${gradeClass(replay.boss.grade)}"><div class="replay-boss-symbol">${bossSymbols[replay.boss.id]||"🐲"}</div><div><small>${safe(replay.boss.grade)} · ${safe(replay.boss.difficulty)}</small><h2>${safe(replay.boss.name)}</h2><div class="replay-hp boss-hp"><i id="replayBossHpBar" style="width:${hpPercent(first.bossHp,first.bossMaxHp)}%"></i></div><b id="replayBossHpText">${compactNumber(first.bossHp)} / ${compactNumber(first.bossMaxHp)}</b></div></div><div class="battle-versus">VS</div><div class="replay-party">${party}</div><div id="battleActionCard" class="battle-action-card">전투가 시작됩니다.</div><div id="battleLiveFeed" class="battle-live-feed" aria-live="polite"></div></section></div>`);
+    openUiModal(`${replay.boss.name} · ${replay.boss.difficulty}`,`<div class="boss-battle-replay"><header class="battle-replay-head"><div><small>LIVE BOSS RAID</small><b id="battleTurnLabel">BATTLE START</b></div><div class="battle-speed"><button data-battle-speed="1">×1</button><button class="active" data-battle-speed="2">×2</button><button data-battle-speed="4">×4</button><button data-battle-skip>건너뛰기</button></div></header><section id="bossBattleArena" class="boss-battle-arena" data-boss-name="${safe(replay.boss.name)}"><div class="grade-attack-layer" aria-hidden="true"></div><div class="replay-boss ${gradeClass(replay.boss.grade)}"><div class="replay-boss-symbol">${bossSymbols[replay.boss.id]||"🐲"}</div><div><small>${safe(replay.boss.grade)} · ${safe(replay.boss.difficulty)}</small><h2>${safe(replay.boss.name)}</h2><div class="replay-hp boss-hp"><i id="replayBossHpBar" style="width:${hpPercent(first.bossHp,first.bossMaxHp)}%"></i></div><b id="replayBossHpText">${compactNumber(first.bossHp)} / ${compactNumber(first.bossMaxHp)}</b></div></div><div class="battle-versus">VS</div><div class="replay-party">${party}</div><div id="battleActionCard" class="battle-action-card">전투가 시작됩니다.</div></section></div>`);
     playBossBattleReplay(replay);
   }
 
@@ -260,6 +263,7 @@
       basePrint(value);
       const message = plain(value);
       if (message && !message.startsWith(">")) showToast(message.slice(0, 105));
+      if(globalThis.pendingFishingEscape){const escaped=globalThis.pendingFishingEscape;delete globalThis.pendingFishingEscape;showEscapeCelebration(escaped);}
       state.bucketKey = state.bossKey = state.collectionKey = "";
       setTimeout(() => renderAll(true), 0);
     };
@@ -333,19 +337,39 @@
       target.style.setProperty("--profile-border-color",borderBoss?.color||"#4ee4ce");
       target.style.setProperty("--profile-aura-color",auraBoss?.color||"#4ee4ce");
       target.dataset.auraSymbol=auraBoss?bossSymbols[auraBoss.id]||"✦":"";
+      target.dataset.borderSymbol=borderBoss?bossSymbols[borderBoss.id]||"✦":"";
+      const avatar=target.querySelector("span");
+      if(avatar)avatar.textContent=borderBoss?bossSymbols[borderBoss.id]||"✦":"⚓";
+      else if(target.classList.contains("captain-avatar"))target.textContent=borderBoss?bossSymbols[borderBoss.id]||"✦":"⚓";
     });
     document.body.dataset.profileBackground=cosmeticGrades[backgroundGrade]?.slug||"";
   }
 
   function showCatchCelebration(fish) {
     const layer = $("#catchCelebration");
+    layer.classList.remove("escaped");
     $("#celebrationIcon").textContent = fishIcon(fish);
     $("#celebrationName").textContent = fish.name;
     $("#celebrationMeta").textContent = `[${fish.grade}] ${fish.size === null ? "특별 개체" : `${formatSize(fish.size)}cm`} · ${formatMoney(fish.price || 0)}`;
     layer.classList.remove("show");
     void layer.offsetWidth;
     layer.classList.add("show");
+    clearTimeout(state.catchCelebrationTimer);
+    state.catchCelebrationTimer=setTimeout(()=>layer.classList.remove("show"),2450);
     playGameSound("catch",fish.grade);
+  }
+
+  function showEscapeCelebration(result){
+    const layer=$("#catchCelebration");
+    layer.classList.remove("show");
+    layer.classList.add("escaped");
+    $("#celebrationIcon").textContent="💨";
+    $("#celebrationName").textContent=`${result.name} 도주!`;
+    $("#celebrationMeta").textContent=`[${result.grade}] ${result.timingResult} 판정 · 도주 확률 ${Number(result.escapeChance||0).toFixed(1)}%`;
+    void layer.offsetWidth;
+    layer.classList.add("show");
+    clearTimeout(state.catchCelebrationTimer);
+    state.catchCelebrationTimer=setTimeout(()=>layer.classList.remove("show","escaped"),2450);
   }
 
   function renderFishing() {
@@ -457,13 +481,13 @@
     grid.hidden = bucket.length === 0;
     $$("[data-sort]").forEach(button => button.classList.toggle("active", button.dataset.sort === bucketSortOrder));
     if (!bucket.length) { grid.replaceChildren(); return; }
-    const list = sortedBucketList().slice(0, 180);
+    const list = sortedBucketList();
     grid.innerHTML = list.map((entry, index) => {
       const fish = entry.fish, combat = ensureCombatStats(fish), no = index + 1;
       return `<article class="fish-card ${gradeClass(fish.grade)}">
         <div class="fish-card-top"><span class="fish-card-icon">${fishIcon(fish)}</span><span class="fish-card-index">NO.${no}${fish.locked ? " · 🔒" : ""}</span></div>
         <span class="fish-card-grade">${safe(fish.grade)}</span><h3>${safe(fish.name)}</h3><p>${fish.size === null ? "특별 개체" : `${formatSize(fish.size)}cm`}</p>
-        <div class="fish-stats"><div><small>공격력</small><b>${compactNumber(combat.attack)}</b></div><div><small>체력</small><b>${compactNumber(combat.maxHp)}</b></div></div>
+        <div class="fish-stats"><div><small>공격력 ${combatStars(combat,"attack")}</small><b>${compactNumber(combat.attack)}</b></div><div><small>체력 ${combatStars(combat,"hp")}</small><b>${compactNumber(combat.maxHp)}</b></div></div>
         <div class="fish-actions"><button data-fish-action="info" data-number="${no}" data-tooltip="능력치와 특성을 확인합니다">상세</button><button data-fish-action="lock" data-number="${no}" data-tooltip="${fish.locked ? "잠금을 해제합니다" : "판매되지 않도록 잠급니다"}">${fish.locked ? "잠금 해제" : "잠금"}</button><button class="sell" data-fish-action="sell" data-number="${no}" data-tooltip="현재 시세로 판매합니다" ${fish.locked ? "disabled" : ""}>판매</button></div>
       </article>`;
     }).join("");
@@ -475,7 +499,7 @@
     const displayNumber = getDisplayNumberByBucketIndex(idx);
     const c = ensureCombatStats(fish), trait = getFishTrait(fish);
     openUiModal(fish.name, `<div class="game-dialog"><div class="dialog-summary ${gradeClass(fish.grade)}"><div><small>${safe(fish.grade)} · 양동이 ${displayNumber}번</small><b>${safe(fish.name)}</b></div><span>${fishIcon(fish)}</span></div>
-      <div class="dialog-card-grid"><article class="dialog-card"><small>공격력</small><strong>${Number(c.attack).toLocaleString()}</strong></article><article class="dialog-card"><small>체력</small><strong>${Number(c.hp).toLocaleString()} / ${Number(c.maxHp).toLocaleString()}</strong></article><article class="dialog-card"><small>회피율</small><strong>${Number(c.dodge).toFixed(1)}%</strong></article><article class="dialog-card"><small>치명타</small><strong>${Number(c.critRate).toFixed(1)}% · ${Number(c.critDamage).toFixed(0)}%</strong></article></div>
+      <div class="dialog-card-grid"><article class="dialog-card"><small>공격력 ${combatStars(c,"attack")}</small><strong>${Number(c.attack).toLocaleString()}</strong></article><article class="dialog-card"><small>체력 ${combatStars(c,"hp")}</small><strong>${Number(c.hp).toLocaleString()} / ${Number(c.maxHp).toLocaleString()}</strong></article><article class="dialog-card"><small>회피율 ${combatStars(c,"dodge")}</small><strong>${Number(c.dodge).toFixed(1)}%</strong></article><article class="dialog-card"><small>치명타 확률 ${combatStars(c,"critRate")}</small><strong>${Number(c.critRate).toFixed(1)}%</strong></article><article class="dialog-card"><small>치명타 피해 ${combatStars(c,"critDamage")}</small><strong>${Number(c.critDamage).toFixed(0)}%</strong></article></div>
       ${trait ? `<article class="dialog-card ${gradeClass(fish.grade)}"><small>고유 특성</small><h3>${safe(trait.name)}</h3><p>${safe(trait.desc)}</p></article>` : ""}</div>`);
   }
   function openFishDetail(displayNumber) {
@@ -531,15 +555,33 @@
       const boss = bossList[Number(bossNumber) - 1];
       if (boss && isBossUnlocked(boss)) { bossProgress.selectedBossId = boss.id; bossProgress.selectedDifficulty=getSelectedBossDifficulty(boss); saveGame(); }
     }
-    const baseBoss = getCurrentBoss(), difficultyId=getSelectedBossDifficulty(baseBoss), difficulty=getBossDifficultyConfig(difficultyId), boss=getBossForDifficulty(baseBoss,difficultyId), list = sortedBucketList().filter(entry => entry.fish.grade !== "쓰레기").slice(0, 60);
+    const baseBoss = getCurrentBoss(), difficultyId=getSelectedBossDifficulty(baseBoss), difficulty=getBossDifficultyConfig(difficultyId), boss=getBossForDifficulty(baseBoss,difficultyId);
+    const gradeRank=Object.fromEntries(grades.map((grade,index)=>[grade.name,index]));
+    const combatPower=fish=>{const c=ensureCombatStats(fish);return c.attack*(1+c.critRate/100*Math.max(0,c.critDamage/100-1))+c.maxHp*.2;};
+    const list=bucket.map((fish,originalIndex)=>({fish,originalIndex})).filter(entry=>entry.fish.grade!=="쓰레기").sort((a,b)=>{
+      if(state.bossPartySortOrder==="공격력")return ensureCombatStats(b.fish).attack-ensureCombatStats(a.fish).attack||b.originalIndex-a.originalIndex;
+      if(state.bossPartySortOrder==="체력")return ensureCombatStats(b.fish).maxHp-ensureCombatStats(a.fish).maxHp||b.originalIndex-a.originalIndex;
+      if(state.bossPartySortOrder==="등급")return (gradeRank[b.fish.grade]??-1)-(gradeRank[a.fish.grade]??-1)||combatPower(b.fish)-combatPower(a.fish);
+      if(state.bossPartySortOrder==="최근 획득")return b.originalIndex-a.originalIndex;
+      return combatPower(b.fish)-combatPower(a.fish)||b.originalIndex-a.originalIndex;
+    }).slice(0,60);
     const fishCards = list.map(entry => {
       const fish = entry.fish, no = getDisplayNumberByBucketIndex(entry.originalIndex), selected = bossPrepIndexes.includes(entry.originalIndex), c = ensureCombatStats(fish);
-      return `<article class="boss-party-fish ${gradeClass(fish.grade)} ${selected ? "selected" : ""}"><span>${fishIcon(fish)}</span><div><b>${safe(fish.name)}</b><small>⚔ ${compactNumber(c.attack)} · ❤️ ${compactNumber(c.maxHp)}</small></div><button data-boss-prep-number="${no}" data-selected="${selected ? 1 : 0}">${selected ? "해제" : "참가"}</button></article>`;
+      return `<article class="boss-party-fish ${gradeClass(fish.grade)} ${selected ? "selected" : ""}"><span>${fishIcon(fish)}</span><div><b>${safe(fish.name)}</b><small>⚔ ${compactNumber(c.attack)} ${combatStars(c,"attack")} · ❤️ ${compactNumber(c.maxHp)} ${combatStars(c,"hp")}</small></div><button data-boss-prep-number="${no}" data-selected="${selected ? 1 : 0}">${selected ? "해제" : "참가"}</button></article>`;
     }).join("");
-    const cooldown = getBossCooldownLeft(boss.id);
+    const cooldown = getBossCooldownLeft(boss.id,difficultyId);
     const difficultyButtons=BOSS_DIFFICULTY_ORDER.map(id=>{const config=getBossDifficultyConfig(id),open=isBossDifficultyUnlocked(baseBoss,id),done=isBossDifficultyCleared(baseBoss,id);return `<button data-boss-difficulty="${id}" class="${id===difficultyId?"active":""}" ${open?"":"disabled"}>${config.name}${done?" ✓":open?"":" 🔒"}</button>`;}).join("");
+    const sortButtons=["전투력","공격력","체력","등급","최근 획득"].map(order=>`<button data-boss-party-sort="${order}" class="${state.bossPartySortOrder===order?"active":""}">${order}</button>`).join("");
     const firstReward=getBossDifficultyReward(baseBoss,difficultyId),coreRange=getBossCoreRange(difficultyId);
-    openUiModal(`${boss.name} · ${difficulty.name}`, `<div class="game-dialog"><div class="dialog-summary ${gradeClass(boss.grade)}"><div><small>${safe(boss.grade)} BOSS · ${safe(difficulty.name)} · 파티 ${bossPrepIndexes.length} / 5</small><b>${safe(boss.name)}</b><p>❤️ ${boss.hp.toLocaleString()} · ⚔️ ${boss.attack.toLocaleString()} · 💨 ${boss.dodge}%</p><p>최초 상금 ${formatMoney(firstReward)} · 💎 ${safe(boss.drop)} ${coreRange.min}~${coreRange.max}개</p></div><span>${bossSymbols[boss.id] || "🐲"}</span></div><div class="boss-difficulty-selector">${difficultyButtons}</div>${difficultyId==="crazy"?`<div class="crazy-warning">💀 10% 확률 · 전투당 1회 · 체력 35% 이하 미사용 시 확정<br>${safe(baseBoss.crazySkillName||CRAZY_BOSS_SKILL_NAMES[baseBoss.id]||"크레이지 궁극기")}</div>`:""}<div class="boss-party-list">${fishCards || "출전 가능한 물고기가 없습니다."}</div><div class="dialog-actions"><button class="primary" data-boss-start ${cooldown > 0 ? "disabled" : ""}>${cooldown > 0 ? `쿨타임 ${formatRemain(cooldown)}` : `${safe(difficulty.name)} 레이드 시작`}</button><button data-ui-action="coreCollection">보유 코어 확인</button></div></div>`);
+    openUiModal(`${boss.name} · ${difficulty.name}`, `<div class="game-dialog"><div class="dialog-summary ${gradeClass(boss.grade)}"><div><small>${safe(boss.grade)} BOSS · ${safe(difficulty.name)} · 파티 ${bossPrepIndexes.length} / 5</small><b>${safe(boss.name)}</b><p>❤️ ${boss.hp.toLocaleString()} · ⚔️ ${boss.attack.toLocaleString()} · 💨 ${boss.dodge}%</p><p>최초 상금 ${formatMoney(firstReward)} · 💎 ${safe(boss.drop)} ${coreRange.min}~${coreRange.max}개</p></div><span>${bossSymbols[boss.id] || "🐲"}</span></div><div class="boss-difficulty-selector">${difficultyButtons}</div>${difficultyId==="crazy"?`<div class="crazy-warning">💀 10% 확률 · 전투당 1회 · 체력 35% 이하 미사용 시 확정<br>${safe(baseBoss.crazySkillName||CRAZY_BOSS_SKILL_NAMES[baseBoss.id]||"크레이지 궁극기")}</div>`:""}<div class="boss-party-sort"><small>출전 물고기 정렬</small><div>${sortButtons}</div></div><div class="boss-party-list">${fishCards || "출전 가능한 물고기가 없습니다."}</div><div class="dialog-actions"><button class="primary" data-boss-start data-boss-id="${boss.id}" data-start-boss-difficulty="${difficultyId}" data-boss-difficulty-name="${safe(difficulty.name)}" ${cooldown > 0 ? "disabled" : ""}>${cooldown > 0 ? `쿨타임 ${formatRemain(cooldown)}` : `${safe(difficulty.name)} 레이드 시작`}</button><button data-ui-action="coreCollection">보유 코어 확인</button></div></div>`);
+  }
+
+  function updateOpenBossCooldown(){
+    const button=$("#modalBody [data-boss-start]");
+    if(!button)return;
+    const left=getBossCooldownLeft(button.dataset.bossId,button.dataset.startBossDifficulty);
+    button.disabled=left>0;
+    button.textContent=left>0?`쿨타임 ${formatRemain(left)}`:`${button.dataset.bossDifficultyName||"선택한 난이도"} 레이드 시작`;
   }
 
   function openMarket() {
@@ -589,7 +631,8 @@
     if(preview){
       const borderBoss=bossList.find(boss=>boss.id===profileCosmetics.border),auraBoss=bossList.find(boss=>boss.id===profileCosmetics.aura);
       preview.classList.toggle("has-profile-border",!!borderBoss);preview.classList.toggle("has-profile-aura",!!auraBoss);
-      preview.style.setProperty("--profile-border-color",borderBoss?.color||"#4ee4ce");preview.style.setProperty("--profile-aura-color",auraBoss?.color||"#4ee4ce");preview.dataset.auraSymbol=auraBoss?bossSymbols[auraBoss.id]||"✦":"";
+      preview.style.setProperty("--profile-border-color",borderBoss?.color||"#4ee4ce");preview.style.setProperty("--profile-aura-color",auraBoss?.color||"#4ee4ce");preview.dataset.auraSymbol=auraBoss?bossSymbols[auraBoss.id]||"✦":"";preview.dataset.borderSymbol=borderBoss?bossSymbols[borderBoss.id]||"✦":"";
+      const previewAvatar=preview.querySelector("span");if(previewAvatar)previewAvatar.textContent=borderBoss?bossSymbols[borderBoss.id]||"✦":"⚓";
     }
   }
 
@@ -692,6 +735,7 @@
     }
     const bossButton = event.target.closest("[data-boss-index]"); if (bossButton && !bossButton.disabled) return openBossParty(bossButton.dataset.bossIndex);
     const difficultyButton=event.target.closest("[data-boss-difficulty]"); if(difficultyButton&&!difficultyButton.disabled){selectBossDifficulty(difficultyButton.dataset.bossDifficulty,true);return openBossParty();}
+    const bossPartySort=event.target.closest("[data-boss-party-sort]"); if(bossPartySort){state.bossPartySortOrder=bossPartySort.dataset.bossPartySort;return openBossParty();}
     const prepButton = event.target.closest("[data-boss-prep-number]");
     if(prepButton){ prepButton.dataset.selected==="1" ? unprepareBossFish(Number(prepButton.dataset.bossPrepNumber)) : prepareBossFish(Number(prepButton.dataset.bossPrepNumber)); return openBossParty(); }
     if(event.target.closest("[data-boss-start]")){
@@ -728,5 +772,5 @@
   renderAll(true);
   installTooltips();
   maybeOpenLocalBattleReplayDemo();
-  setInterval(() => { renderAll(false); if($("#log").textContent.length > 80000) $("#log").replaceChildren(); }, 800);
+  setInterval(() => { renderAll(false); updateOpenBossCooldown(); if($("#log").textContent.length > 80000) $("#log").replaceChildren(); }, 800);
 })();

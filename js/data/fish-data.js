@@ -11,7 +11,7 @@ const grades = [
   {name:"쓰레기", color:"#8b949e", basePrice:1, chance:8},
   {name:"일반", color:"#e6edf3", basePrice:100, chance:55},
   {name:"희귀", color:"#58a6ff", basePrice:1500, chance:25},
-  {name:"영웅", color:"#d2a8ff", basePrice:100000, chance:8},
+  {name:"영웅", color:"#6f9dff", basePrice:100000, chance:8},
   {name:"전설", color:"#ffa657", basePrice:9000000, chance:2.2},
   {name:"신화", color:"#ff4d4f", basePrice:75000000, chance:0.7},
   {name:"초월", color:"#ffd700", basePrice:1000000000, chance:0.12},

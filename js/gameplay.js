@@ -258,16 +258,17 @@ function fish(){
 
     const escapeGrades = ["일반","희귀","영웅","전설","신화"];
     if(escapeGrades.includes(g.name)){
-      const escapeChance = getEscapeChance() * (fishingTimingEscapeMultipliers[castTimingResult] || 1);
+      const escapeChance = Math.min(100,Math.max(0,getEscapeChance() * (fishingTimingEscapeMultipliers[castTimingResult] || 1)));
       if(Math.random() * 100 < escapeChance){
         totalFishingCount++;
         const newAchievements = updateAchievements();
         checkSpecialTitles();
         saveGame();
-        print(color("[" + g.name + "] " + name, g.name) + subjectParticle(name) + " 도주했습니다.");
-        printAchievementRewards(newAchievements);
         isFishing=false;
         fishingSessionId++;
+        globalThis.pendingFishingEscape={grade:g.name,name,timingResult:castTimingResult,escapeChance};
+        print(color("[" + g.name + "] " + name, g.name) + "\n낚싯줄을 끊고 도주했습니다!\n" + castTimingResult + " 판정 · 도주 확률 " + escapeChance.toFixed(1) + "%");
+        printAchievementRewards(newAchievements);
         return;
       }
     }

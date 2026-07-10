@@ -42,14 +42,14 @@ const BOSS_DIFFICULTIES = {
 
 const bossList = [
   {
-    id:"kraken", name:"크라켄", grade:"영웅", color:"#d2a8ff",
+    id:"kraken", name:"크라켄", grade:"영웅", color:"#6f9dff",
     hp:50000, attack:2500, dodge:5, critRate:10, critDamage:180, skillRate:25,
     reward:100000000, drop:"심연의 촉수",
     skillName:"촉수 강타", skillDesc:"공격력 150% 피해",
     desc:"깊은 심해에 숨어있던 거대 크라켄.\n수많은 낚시꾼들을 바다 아래로 끌고 갔다."
   },
   {
-    id:"hydra", name:"히드라", grade:"영웅", color:"#d2a8ff",
+    id:"hydra", name:"히드라", grade:"영웅", color:"#6f9dff",
     hp:150000, attack:6000, dodge:7, critRate:12, critDamage:190, skillRate:25,
     reward:500000000, drop:"히드라의 독니",
     skillName:"독니 물어뜯기", skillDesc:"공격력 180% 피해",

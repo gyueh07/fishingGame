@@ -2114,6 +2114,10 @@ function applyTrainingBonusesToCombat(c){
   if(!c) return c;
   if(c.status === "전투 불가") return c;
 
+  // 보스전 중 임시 최대 체력 증감은 전투 규칙이 관리한다.
+  // 여기서 훈련 수치를 다시 맞추면 현재 체력까지 완전히 회복되는 문제가 생긴다.
+  if(c._traitBattle) return c;
+
   if(c._baseAttack === undefined) c._baseAttack = Number(c.attack || 0);
   if(c._baseMaxHp === undefined) c._baseMaxHp = Number(c.maxHp || c.hp || 1);
   if(c._baseCritDamage === undefined) c._baseCritDamage = Number(c.critDamage || 0);

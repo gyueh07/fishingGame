@@ -851,20 +851,30 @@ function pickBossPattern(boss){
   return "normal";
 }
 
-function getBossCooldownLeft(bossId=null){
-  const id = bossId || getCurrentBoss().id;
+function getBossCooldownKey(bossId,difficultyId){
+  return String(bossId) + ":" + String(difficultyId || "normal");
+}
+
+function getBossCooldownLeft(bossId=null,difficultyId=null){
+  const baseBoss = bossId ? (bossList.find(b => b.id === bossId) || getCurrentBoss()) : getCurrentBoss();
+  const id = bossId || baseBoss.id;
+  const difficulty = difficultyId || getSelectedBossDifficulty(baseBoss);
   const cooldowns = bossProgress.cooldowns || {};
-  return Math.max(0, (cooldowns[id] || 0) - Date.now());
+  const saved = Number(cooldowns[getBossCooldownKey(id,difficulty)] || 0);
+  const legacyNormal = difficulty === "normal" ? Number(cooldowns[id] || 0) : 0;
+  return Math.max(0, Math.max(saved,legacyNormal) - Date.now());
 }
 
-function isBossCooldownActive(bossId=null){
-  return getBossCooldownLeft(bossId) > 0;
+function isBossCooldownActive(bossId=null,difficultyId=null){
+  return getBossCooldownLeft(bossId,difficultyId) > 0;
 }
 
-function setBossCooldown(bossId=null){
-  const id = bossId || getCurrentBoss().id;
+function setBossCooldown(bossId=null,difficultyId=null){
+  const baseBoss = bossId ? (bossList.find(b => b.id === bossId) || getCurrentBoss()) : getCurrentBoss();
+  const id = bossId || baseBoss.id;
+  const difficulty = difficultyId || getSelectedBossDifficulty(baseBoss);
   if(!bossProgress.cooldowns) bossProgress.cooldowns = {};
-  bossProgress.cooldowns[id] = Date.now() + 5 * 60 * 1000;
+  bossProgress.cooldowns[getBossCooldownKey(id,difficulty)] = Date.now() + 5 * 60 * 1000;
 }
 
 
@@ -2511,7 +2521,7 @@ function createBossBattleLog(boss,participants){
         bossHp:Math.max(0,Number(boss._currentHp??boss.hp)),
         bossMaxHp:Number(boss.hp||1),
         fish:participants.map((f,index)=>{const c=ensureCombatStats(f);return {
-          key:String(f.id||index),name:displayFishName(f.name),grade:f.grade,
+          key:String(f.id||index),name:String(f.name||""),displayName:displayFishName(f.name),grade:f.grade,
           hp:Math.max(0,Number(c.hp||0)),maxHp:Math.max(1,Number(c.maxHp||1)),status:getCombatStatusText(f)
         };})
       });
@@ -2528,7 +2538,7 @@ function runBossBattle(){
   const selectedBaseBoss = getCurrentBoss();
   const selectedDifficulty = getSelectedBossDifficulty(selectedBaseBoss);
   if(!isBossDifficultyUnlocked(selectedBaseBoss,selectedDifficulty)) return print("아직 해금되지 않은 보스 난이도입니다.");
-  if(isBossCooldownActive(selectedBaseBoss.id)) return print("아직 보스전 쿨타임이 남아있습니다.\n\n남은 시간 : " + formatRemain(getBossCooldownLeft(selectedBaseBoss.id)));
+  if(isBossCooldownActive(selectedBaseBoss.id,selectedDifficulty)) return print("아직 보스전 쿨타임이 남아있습니다.\n\n남은 시간 : " + formatRemain(getBossCooldownLeft(selectedBaseBoss.id,selectedDifficulty)));
   if(bossPrepIndexes.length === 0) return print("준비된 물고기가 없습니다.\n준비 번호 를 입력하세요.");
 
   const recoveryFishes = getPreparedRecoveryFishes();
@@ -2610,7 +2620,7 @@ function runBossBattle(){
   boss._flameSwordHp=boss._flameSwordMaxHp;
 
   if(!isBossUnlocked(boss)) return print("아직 해금되지 않은 보스입니다.");
-  if(isBossCooldownActive(boss.id)) return print("아직 보스전 쿨타임이 남아있습니다.\n\n남은 시간 : " + formatRemain(getBossCooldownLeft(boss.id)));
+  if(isBossCooldownActive(boss.id,selectedDifficulty)) return print("아직 보스전 쿨타임이 남아있습니다.\n\n남은 시간 : " + formatRemain(getBossCooldownLeft(boss.id,selectedDifficulty)));
 
   let bossHp = getBossHp(boss,selectedDifficulty);
   let totalDamage = 0;
@@ -2974,7 +2984,7 @@ function runBossBattle(){
   clearBattleDisplayNumbers(participants);
 
   if(result === "처치 성공"){
-    setBossCooldown(boss.id);
+    setBossCooldown(boss.id,selectedDifficulty);
   }
   bossPrepIndexes = [];
   saveGame();
