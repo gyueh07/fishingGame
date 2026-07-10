@@ -8,16 +8,13 @@ let researchLevels={fishing:0, appraisal:0};
 let trainingLevels={attack:0,hp:0,critDamage:0};
 let unlockedTitles=[];
 let equippedTitle="";
-let profileCosmetics={border:"",aura:"",background:"",attackEffect:""};
 let seenUpdateNoticeIds=[];
-let bossProgress={defeated:{},difficultyClears:{},hp:{},materials:{},selectedDifficulty:"normal",cooldownUntil:0,cooldowns:{}};
+let bossProgress={defeated:{}, hp:{}, materials:{}, cooldownUntil:0};
 let isBossMenu=false;
 let bossPrepIndexes=[];
 let pendingRecoveryBattleConfirm=false;
 let pvpPrepIndexes=[];
 let partyPresets={boss:[],pvp:[]};
-let fusionMainFishId="";
-let fusionMainFishIds={};
 let pendingPresetSaleId="";
 let pendingPresetSellAll=false;
 let onlinePresenceTimer=null;
@@ -28,124 +25,9 @@ let cloudSaveChain=Promise.resolve();
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
-const GAME_VERSION = "2026-07-10-fishinglife-mobile-performance-transfer-v20";
+const GAME_VERSION = "2026-07-05-pvp-team-number-v1";
 const UPDATE_NOTICE_TITLE = "📢 업데이트 안내";
 const UPDATE_NOTICES = [
-  {
-    id:"2026-07-10-fishinglife-mobile-performance-transfer-20",
-    title:"모바일 최적화·안전 거래 업데이트",
-    lines:[
-      "현재 화면만 갱신하고 양동이 카드를 나누어 그려 모바일 진입 지연을 줄였습니다.",
-      "보스 리플레이의 강제 레이아웃 계산과 반복 DOM 탐색을 줄여 전투 연출을 가볍게 만들었습니다.",
-      "모바일 프로필·랭킹·보스전 카드와 모달이 화면 한쪽으로 밀리거나 잘리지 않도록 반응형 배치를 보강했습니다.",
-      "광장에서 닉네임 기반 송금과 물고기 전송을 사용할 수 있습니다.",
-      "거래는 서버 트랜잭션으로 처리되며 잠금 물고기와 합성 본체는 전송할 수 없습니다."
-    ]
-  },
-  {
-    id:"2026-07-10-fishinglife-boss-intel-19",
-    title:"레이드 전 보스 스킬 정보 업데이트",
-    lines:[
-      "보스 난이도·출전 파티 선택 화면에서 선택한 보스의 패시브와 기본 스킬을 미리 확인할 수 있습니다.",
-      "기본 스킬 확률은 일반·어려움·크레이지의 실제 확률 보정값을 반영해 표시합니다.",
-      "크레이지 전용 패시브와 궁극기 효과·발동 조건은 크레이지 난이도를 선택했을 때만 표시됩니다.",
-      "PC에서는 스킬 카드를 2열로, 모바일에서는 읽기 쉬운 1열로 배치합니다."
-    ]
-  },
-  {
-    id:"2026-07-10-fishinglife-stun-hp-18",
-    title:"기절 5분·레이드 체력 정밀 표시 업데이트",
-    lines:[
-      "물고기 기절 시간이 전 등급 공통 10분에서 5분으로 줄어듭니다.",
-      "이미 기절 중인 물고기도 기절 시작 시각을 기준으로 새 5분 제한이 자동 적용됩니다.",
-      "HP 0인데 기절 정보가 일부 누락된 저장 데이터도 즉시 부활하지 않고 정상적인 5분 기절로 복구됩니다.",
-      "부분 부상 회복 속도는 기존과 동일하며 기절 시간만 줄어듭니다.",
-      "레이드의 보스·아군·소환물·스킬 결과 체력을 억 단위로 뭉개지 않고 만 단위까지 표시합니다."
-    ]
-  },
-  {
-    id:"2026-07-10-fishinglife-evolution-replay-17",
-    title:"진화 성장 강화·보스 스킬 연출 개선 업데이트",
-    lines:[
-      "진화는 본체 최초 기준 공격력·최대 체력을 1차 2배, 2차 3배, 최종 5배로 만듭니다.",
-      "합성 누적 전이는 진화 배율과 별도로 더해져 합성과 진화 순서에 따라 최종 수치가 달라지지 않습니다.",
-      "이미 진화한 물고기도 새 고정 기준 방식으로 자동 보정되며 부상 비율과 기절 상태는 그대로 유지됩니다.",
-      "진화 화면과 성공 연출에서 공격력·최대 체력의 전후 수치와 실제 증가량을 확인할 수 있습니다.",
-      "보스 기본 스킬과 크레이지 궁극기의 큰 카드에 실제 효과 설명이 함께 표시됩니다.",
-      "스킬 적용 뒤에는 물고기와 보스의 전후 체력·감소량·감소율을 별도 화면으로 더 오래 표시합니다.",
-      "보스 난이도 선택과 1대1 출전 화면에서 저장한 파티 프리셋을 즉시 불러올 수 있습니다.",
-      "합성 본체는 어종마다 1마리씩 설정할 수 있고 같은 어종의 다른 개체로 교체하거나 해제할 수 있습니다.",
-      "양동이 카드는 합성/진화 진입 버튼만 표시하고 본체 설정은 상세정보와 합성 화면에서 진행합니다.",
-      "재료의 영구 공격력과 최대 체력 20%가 횟수 제한 없이 고정 전이되며 회피·치명타·별·특성은 전이되지 않습니다.",
-      "누적 합성 3회·7회·15회에 골드를 사용해 1차·2차·최종 진화를 진행할 수 있습니다.",
-      "영원·공허 낚시 성공은 다른 접속자의 낚시터 우측 하단에 실시간으로 표시됩니다.",
-      "처음 발견한 물고기는 NEW가 표시되고 상세정보를 확인하면 표시가 해제됩니다.",
-      "레이드 종료 보고서의 마지막 물고기와 하단 버튼까지 스크롤되며 작은 알림의 표 장식 문자가 제거됩니다."
-    ]
-  },
-  {
-    id:"2026-07-10-fishinglife-void-boss-difficulty-6",
-    title:"공허 보스와 보스 난이도 업데이트",
-    lines:[
-      "에레보스, 크로노스, 니알라토텝, 요그 소토스, 아자토스가 공허 등급 보스로 추가되었습니다.",
-      "모든 보스에 일반, 어려움, 크레이지 난이도가 추가되고 앞 난이도 클리어 시 다음 난이도가 해금됩니다.",
-      "일반은 기존 능력치, 어려움은 체력 10배·공격력 4배, 크레이지는 체력 50배·공격력 10배가 적용됩니다.",
-      "난이도별 최초 상금은 기준 상금의 0.5배, 0.7배, 1배이며 코어는 각각 1~3개, 3~5개, 5~10개 지급됩니다.",
-      "크레이지 보스는 전투당 한 번 전용 궁극기를 사용하고 기존 패시브도 강화됩니다.",
-      "기존 보스 처치 기록은 일반 난이도 클리어로 자동 인정됩니다."
-    ]
-  },
-  {
-    id: "2026-07-10-fishinglife-timing-ui-rod-2000-5",
-    title: "타이밍 UI와 낚싯대 2000레벨 확장",
-    lines: [
-      "PERFECT, GREAT, GOOD, BAD 구간이 노랑, 초록, 파랑, 빨강의 단색으로 구분됩니다.",
-      "타이밍 판정 문구는 낚아채는 순간에만 표시되고 획득 화면과 최근 기록에서는 반복 표시되지 않습니다.",
-      "최근 잡은 물고기를 눌러 능력치와 고유 특성을 바로 확인할 수 있습니다.",
-      "불타는 마음 아이콘이 하나의 불꽃 이모지로 표시되며 낚싯대 최대 레벨이 2000으로 확장됩니다.",
-      "1750레벨까지의 기존 확률과 낚시 성능은 유지되며 2000레벨까지 추가로 성장합니다."
-    ]
-  },
-  {
-    id: "2026-07-10-fishinglife-bad-penalty-4",
-    title: "BAD 판정 페널티 강화",
-    lines: [
-      "BAD 판정에서 일반과 희귀 등급의 비중이 크게 증가합니다.",
-      "초월, 영원, 공허 등급 확률이 크게 감소하고 도주 확률은 기본의 150%가 적용됩니다.",
-      "GREAT는 기존 낚싯대 확률을 그대로 사용하는 기본 판정으로 유지됩니다."
-    ]
-  },
-  {
-    id: "2026-07-10-fishinglife-timing-balance-3",
-    title: "낚시 타이밍 밸런스 조정",
-    lines: [
-      "GREAT 판정이 기존 낚싯대 확률을 그대로 사용하는 기본 판정으로 변경되었습니다.",
-      "PERFECT는 소폭의 상위 등급 보너스, GOOD과 BAD는 단계별 페널티가 적용됩니다.",
-      "타이밍 판정의 도주 확률 보정 폭을 줄여 낚싯대 성장 효과가 중심이 되도록 조정했습니다."
-    ]
-  },
-  {
-    id: "2026-07-10-fishinglife-timing-training-2",
-    title: "FishingLife 게임 UI 업데이트",
-    lines: [
-      "게임 이름이 FishingLife로 변경되었습니다.",
-      "낚시 타이밍 미니게임과 PERFECT, GREAT, GOOD, BAD 판정이 추가되었습니다.",
-      "타이밍 판정에 따라 물고기 등급 확률과 도주 확률이 달라집니다.",
-      "훈련소가 구간별 누적 성장 방식으로 상향되어 기존 양동이 물고기에도 적용됩니다.",
-      "채팅형 명령어 화면을 제거하고 시세, 도감, 보스전, 대전 메뉴를 게임형 화면으로 변경했습니다.",
-      "양동이에서 최근 획득한 물고기 10마리를 확인할 수 있습니다."
-    ]
-  },
-  {
-    id: "2026-07-10-responsive-ui-core-drop-1",
-    title: "새 게임 화면과 보스 코어 보상",
-    lines: [
-      "모바일과 PC에서 함께 사용할 수 있는 반응형 게임 화면이 적용되었습니다.",
-      "기존 명령어와 모든 저장 데이터, 물고기 능력치, 전투 규칙은 그대로 유지됩니다.",
-      "보스를 처치하면 해당 보스의 전용 코어를 1~10개 획득합니다.",
-      "기존 명령어는 게임 기록의 명령어 입력창에서 계속 사용할 수 있습니다."
-    ]
-  },
   {
     id: "2026-06-25-battle-pvp-bugfix-1",
     title: "보스전/PVP 전투 버그 수정",
@@ -489,13 +371,10 @@ function getGameState(){
     trainingLevels,
     unlockedTitles,
     equippedTitle,
-    profileCosmetics,
     seenUpdateNoticeIds,
     bossProgress,
     pvpPrepIndexes,
-    partyPresets,
-    fusionMainFishId,
-    fusionMainFishIds
+    partyPresets
   };
 }
 
@@ -516,61 +395,15 @@ function normalizeLegacyTitleList(value){
   return [...new Set(value.map(normalizeLegacyTitleName))];
 }
 
-function normalizeProfileCosmetics(value){
-  const source=value&&typeof value==="object"?value:{};
-  return {
-    border:String(source.border||""),
-    aura:String(source.aura||""),
-    background:String(source.background||""),
-    attackEffect:String(source.attackEffect||"")
-  };
-}
-
-function hasBossDifficultyClearById(id,difficulty){
-  if(difficulty==="normal"&&bossProgress.defeated&&bossProgress.defeated[id])return true;
-  return !!(bossProgress.difficultyClears&&bossProgress.difficultyClears[id]&&bossProgress.difficultyClears[id][difficulty]);
-}
-
-function isBossGradeCrazyCleared(grade){
-  if(typeof bossList==="undefined")return false;
-  const gradeBosses=bossList.filter(boss=>boss.grade===grade);
-  return gradeBosses.length>0&&gradeBosses.every(boss=>hasBossDifficultyClearById(boss.id,"crazy"));
-}
-
-function isProfileCosmeticUnlocked(type,id){
-  if(!id)return true;
-  if(type==="border")return hasBossDifficultyClearById(id,"hard");
-  if(type==="aura")return hasBossDifficultyClearById(id,"crazy");
-  if(type==="background"||type==="attackEffect")return isBossGradeCrazyCleared(id);
-  return false;
-}
-
-function equipProfileCosmetic(type,id){
-  if(!["border","aura","background","attackEffect"].includes(type))return false;
-  const selected=String(id||"");
-  if(!isProfileCosmeticUnlocked(type,selected))return false;
-  profileCosmetics[type]=selected;
-  saveGame();
-  return true;
-}
-
 
 function normalizeBossProgress(value){
-  const base = {defeated:{},difficultyClears:{},hp:{},materials:{},selectedBossId:"",selectedDifficulty:"normal",cooldownUntil:0,cooldowns:{}};
+  const base = {defeated:{}, hp:{}, materials:{}, selectedBossId:"", cooldownUntil:0, cooldowns:{}};
   if(!value || typeof value !== "object") return base;
-  const defeated = value.defeated || {};
-  const difficultyClears = value.difficultyClears && typeof value.difficultyClears === "object" ? {...value.difficultyClears} : {};
-  Object.keys(defeated).forEach(id => {
-    if(!defeated[id]) return;
-    difficultyClears[id] = {...(difficultyClears[id] || {}), normal:true};
-  });
   return {
-    defeated,
-    difficultyClears,
+    defeated:value.defeated || {},
     hp:value.hp || {},
     materials:value.materials || {},
     selectedBossId:value.selectedBossId || "",
-    selectedDifficulty:["normal","hard","crazy"].includes(value.selectedDifficulty) ? value.selectedDifficulty : "normal",
     cooldownUntil:Number(value.cooldownUntil || 0),
     cooldowns:value.cooldowns || {}
   };
@@ -616,16 +449,6 @@ function ensureAllFishIds(){
     f.id = id;
     used.add(id);
   });
-  const ownedById=new Map(bucket.filter(Boolean).map(f=>[String(f.id),f]));
-  const cleaned={};
-  Object.entries(fusionMainFishIds&&typeof fusionMainFishIds==="object"?fusionMainFishIds:{}).forEach(([name,id])=>{
-    const fish=ownedById.get(String(id));
-    if(fish&&fish.grade!=="쓰레기"&&fish.name===name)cleaned[name]=fish.id;
-  });
-  const active=ownedById.get(String(fusionMainFishId||""));
-  if(active&&active.grade!=="쓰레기")cleaned[active.name]=active.id;
-  else fusionMainFishId="";
-  fusionMainFishIds=cleaned;
 }
 
 function applyGameState(s){
@@ -647,13 +470,10 @@ function applyGameState(s){
   trainingLevels=normalizeTrainingLevels(s.trainingLevels??trainingLevels);
   unlockedTitles=normalizeLegacyTitleList(Array.isArray(s.unlockedTitles)?s.unlockedTitles:unlockedTitles);
   equippedTitle=normalizeLegacyTitleName(s.equippedTitle??equippedTitle);
-  profileCosmetics=normalizeProfileCosmetics(s.profileCosmetics??profileCosmetics);
   seenUpdateNoticeIds=normalizeUpdateNoticeIds(s.seenUpdateNoticeIds, s.lastSeenUpdateVersion);
   bossProgress=normalizeBossProgress(s.bossProgress??bossProgress);
   pvpPrepIndexes=Array.isArray(s.pvpPrepIndexes)?s.pvpPrepIndexes:[];
   partyPresets=normalizePartyPresets(s.partyPresets??partyPresets);
-  fusionMainFishId=String(s.fusionMainFishId??fusionMainFishId??"");
-  fusionMainFishIds=s.fusionMainFishIds&&typeof s.fusionMainFishIds==="object"?{...s.fusionMainFishIds}:{};
   ensureAllFishIds();
 }
 
@@ -684,15 +504,12 @@ function resetGameData(){
   trainingLevels = {attack:0,hp:0,critDamage:0};
   unlockedTitles = [];
   equippedTitle = "";
-  profileCosmetics = {border:"",aura:"",background:"",attackEffect:""};
   seenUpdateNoticeIds = [];
-  bossProgress = {defeated:{},difficultyClears:{},hp:{},materials:{},selectedDifficulty:"normal",cooldownUntil:0,cooldowns:{}};
+  bossProgress = {defeated:{}, hp:{}, materials:{}, cooldownUntil:0, cooldowns:{}};
   isBossMenu = false;
   bossPrepIndexes = [];
   pvpPrepIndexes = [];
   partyPresets = {boss:[],pvp:[]};
-  fusionMainFishId = "";
-  fusionMainFishIds = {};
   pendingPresetSaleId = "";
   pendingPresetSellAll = false;
   cloudRevision = 0;
@@ -1231,11 +1048,8 @@ function startServerAlertListener(){
 
           const sender = formatUserName(data.nickname, data.title);
           const fishName = displayFishName(data.fishName);
-          if(typeof globalThis.showWorldCatchAlert==="function"){
-            globalThis.showWorldCatchAlert({nickname:sender,fishName,fishGrade:data.fishGrade||"영원"});
-          }else{
-            print("📢 알림\n\n" + sender + " 님이 " + color(fishName, data.fishGrade || "영원") + objParticle(data.fishName) + " 낚았습니다.");
-          }
+
+          print("📢 알림\n\n" + sender + " 님이 " + color(fishName, data.fishGrade || "영원") + objParticle(data.fishName) + " 낚았습니다.");
           return;
         }
 
@@ -1473,10 +1287,6 @@ function sanitizeGameHtml(value){
   const template = document.createElement("template");
   template.innerHTML = String(value ?? "");
   const allowedTags = new Set(["SPAN", "B", "BR"]);
-  const battleClasses = new Set([
-    "battle-event", "battle-event--skill", "battle-event--crazy", "battle-event--passive", "battle-event--ally",
-    "battle-event__eyebrow", "battle-event__body"
-  ]);
 
   [...template.content.querySelectorAll("*")].reverse().forEach(el => {
     if(!allowedTags.has(el.tagName)){
@@ -1487,9 +1297,7 @@ function sanitizeGameHtml(value){
     [...el.attributes].forEach(attr => {
       const isSafeColor = el.tagName === "SPAN" && attr.name === "style" &&
         /^color:\s*#[0-9a-fA-F]{3,8}\s*;?$/.test(attr.value);
-      const isSafeBattleClass = el.tagName === "SPAN" && attr.name === "class" &&
-        attr.value.split(/\s+/).every(name => battleClasses.has(name));
-      if(!isSafeColor && !isSafeBattleClass) el.removeAttribute(attr.name);
+      if(!isSafeColor) el.removeAttribute(attr.name);
     });
   });
 
@@ -1931,7 +1739,7 @@ function unequipTitle(){
 }
 
 function saveGame(){
-  localStorage.setItem("textFishingSpeciesSizeSave", JSON.stringify({money,totalEarned,rodLevel,bucket,collection,ranking,totalFishingCount,gradeCounts,completedAchievements,marketHour,marketRates,notifications,messages,researchLevels,trainingLevels,unlockedTitles,equippedTitle,profileCosmetics,seenUpdateNoticeIds,bossProgress,pvpPrepIndexes,partyPresets,fusionMainFishId,fusionMainFishIds}));
+  localStorage.setItem("textFishingSpeciesSizeSave", JSON.stringify({money,totalEarned,rodLevel,bucket,collection,ranking,totalFishingCount,gradeCounts,completedAchievements,marketHour,marketRates,notifications,messages,researchLevels,trainingLevels,unlockedTitles,equippedTitle,seenUpdateNoticeIds,bossProgress,pvpPrepIndexes,partyPresets}));
   syncCloudSoon();
 }
 function loadGame(){
@@ -1953,13 +1761,10 @@ function loadGame(){
     trainingLevels=normalizeTrainingLevels(s.trainingLevels);
     unlockedTitles=normalizeLegacyTitleList(s.unlockedTitles);
     equippedTitle=normalizeLegacyTitleName(s.equippedTitle??"");
-    profileCosmetics=normalizeProfileCosmetics(s.profileCosmetics);
     seenUpdateNoticeIds=normalizeUpdateNoticeIds(s.seenUpdateNoticeIds, s.lastSeenUpdateVersion);
     bossProgress=normalizeBossProgress(s.bossProgress);
     pvpPrepIndexes=Array.isArray(s.pvpPrepIndexes)?s.pvpPrepIndexes:[];
     partyPresets=normalizePartyPresets(s.partyPresets);
-    fusionMainFishId=String(s.fusionMainFishId||"");
-    fusionMainFishIds=s.fusionMainFishIds&&typeof s.fusionMainFishIds==="object"?{...s.fusionMainFishIds}:{};
     ensureAllFishIds();
   } catch(e) {}
 }
@@ -2089,24 +1894,16 @@ function getTrainingCost(level){
   return trainingCostTable[level];
 }
 
-function getProgressiveTrainingBonus(level){
-  level = Math.min(MAX_TRAINING, Math.max(0, Number(level || 0)));
-  const first = Math.min(level, 5) * 20;
-  const middle = Math.min(Math.max(level - 5, 0), 5) * 50;
-  const final = Math.min(Math.max(level - 10, 0), 5) * 100;
-  return first + middle + final;
-}
-
 function getTrainingAttackBonus(){
-  return getProgressiveTrainingBonus(getTrainingLevel("attack"));
+  return getTrainingLevel("attack") * 10;
 }
 
 function getTrainingHpBonus(){
-  return getProgressiveTrainingBonus(getTrainingLevel("hp"));
+  return getTrainingLevel("hp") * 10;
 }
 
 function getTrainingCritDamageBonus(){
-  return getProgressiveTrainingBonus(getTrainingLevel("critDamage"));
+  return getTrainingLevel("critDamage") * 20;
 }
 
 function buildTrainingLine(num, name, level, effectText){
@@ -2189,10 +1986,6 @@ function applyTrainingBonusesToCombat(c){
   if(!c) return c;
   if(c.status === "전투 불가") return c;
 
-  // 보스전 중 임시 최대 체력 증감은 전투 규칙이 관리한다.
-  // 여기서 훈련 수치를 다시 맞추면 현재 체력까지 완전히 회복되는 문제가 생긴다.
-  if(c._traitBattle) return c;
-
   if(c._baseAttack === undefined) c._baseAttack = Number(c.attack || 0);
   if(c._baseMaxHp === undefined) c._baseMaxHp = Number(c.maxHp || c.hp || 1);
   if(c._baseCritDamage === undefined) c._baseCritDamage = Number(c.critDamage || 0);
@@ -2201,23 +1994,22 @@ function applyTrainingBonusesToCombat(c){
   const hpLevel = getTrainingLevel("hp");
   const critDamageLevel = getTrainingLevel("critDamage");
 
-  c.attack = Math.floor(c._baseAttack * (1 + getProgressiveTrainingBonus(attackLevel) / 100));
+  c.attack = Math.floor(c._baseAttack * (1 + attackLevel * 0.10));
 
   const oldMaxHp = Math.max(1, Number(c.maxHp || c._baseMaxHp || 1));
-  const newMaxHp = Math.max(1, Math.floor(c._baseMaxHp * (1 + getProgressiveTrainingBonus(hpLevel) / 100)));
+  const newMaxHp = Math.max(1, Math.floor(c._baseMaxHp * (1 + hpLevel * 0.10)));
 
   if(c._trainingHpLevel !== hpLevel || c.maxHp !== newMaxHp){
     const hpRatio = oldMaxHp > 0 ? clamp(Number(c.hp || oldMaxHp) / oldMaxHp, 0, 1) : 1;
     c.maxHp = newMaxHp;
-    if(c.knockedOut || c.status === "기절" || Number(c.hp || 0) <= 0) c.hp = 0;
-    else if(c.status === "정상") c.hp = newMaxHp;
+    if(c.status === "정상") c.hp = newMaxHp;
     else c.hp = Math.max(1, Math.min(newMaxHp, Math.floor(newMaxHp * hpRatio)));
     c._trainingHpLevel = hpLevel;
   } else {
     c.maxHp = newMaxHp;
   }
 
-  c.critDamage = Math.floor(c._baseCritDamage + getProgressiveTrainingBonus(critDamageLevel));
+  c.critDamage = Math.floor(c._baseCritDamage + critDamageLevel * 20);
 
   return c;
 }

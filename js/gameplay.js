@@ -2282,196 +2282,134 @@ function showGameInfo(){
   printPreview("내정보", summary, "내정보 전체보기", buildGameInfoText());
 }
 
-async function sendMoney(targetNickname, amount){
-  if(isOnlineActionRunning) return print("처리 중입니다. 잠시만 기다려주세요.");
-  if(!currentUser) return print("로그인 후 사용 가능합니다.");
-
-  targetNickname = cleanNickname(targetNickname);
-  amount = Number(amount);
-
-  if(!targetNickname || !Number.isSafeInteger(amount) || amount <= 0) return print("송금 금액은 1 이상의 안전한 정수로 입력해주세요.");
-  if(targetNickname === currentUser) return print("자기 자신에게는 송금할 수 없습니다.");
-
-  isOnlineActionRunning = true;
-
-  try{
-    await refreshMyCloudData();
-    const sessionHash = await getCurrentSessionHash();
-    if(!sessionHash) throw new Error("SESSION_INVALID");
-
-    if(money < amount){
-      isOnlineActionRunning = false;
-      return print("돈이 부족합니다.");
-    }
-
-    const myRef = db.collection("users").doc(currentUser);
-    const targetRef = db.collection("users").doc(targetNickname);
-
-    await db.runTransaction(async (tx)=>{
-      const mySnap = await tx.get(myRef);
-      const targetSnap = await tx.get(targetRef);
-
-      if(!mySnap.exists) throw new Error("MY_ACCOUNT_NOT_FOUND");
-      if(!targetSnap.exists) throw new Error("TARGET_NOT_FOUND");
-
-      const myData = mySnap.data();
-      const targetData = targetSnap.data();
-      if(myData.sessionTokenHash !== sessionHash) throw new Error("SESSION_INVALID");
-
-      const myState = myData.gameState || {};
-      const targetState = targetData.gameState || {};
-      const currentMoney = myData.money || 0;
-      const senderMoneyAfter = normalizeMoney(currentMoney - amount);
-      const targetMoneyAfter = normalizeMoney((targetData.money || 0) + amount);
-
-      if(currentMoney < amount) throw new Error("NOT_ENOUGH_MONEY");
-
-      const targetNotifications = targetState.notifications || [];
-      targetNotifications.push("📢 알림\n\n" + formatCurrentUserName() + " 님이 " + amount.toLocaleString() + "원을 송금했습니다.");
-
-      myState.money = senderMoneyAfter;
-
-      tx.set(myRef, {
-        money: senderMoneyAfter,
-        cloudRevision: Number(myData.cloudRevision || 0) + 1,
-        gameState: myState,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-      }, {merge:true});
-
-      tx.set(targetRef, {
-        money: targetMoneyAfter,
-        cloudRevision: Number(targetData.cloudRevision || 0) + 1,
-        gameState: {...targetState, money:targetMoneyAfter, notifications: targetNotifications},
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-      }, {merge:true});
-    });
-
-    await db.collection("serverAlerts").add({
-      type: "moneyTransfer",
-      from: currentUser,
-      fromTitle: getCurrentTitle(),
-      to: targetNickname,
-      amount: amount,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-      createdAtMillis: Date.now()
-    });
-
-    await refreshMyCloudData();
-    print(targetNickname + " 님에게 " + amount.toLocaleString() + "원을 송금하였습니다.");
-  }catch(e){
-    console.error(e);
-    if(e.message === "TARGET_NOT_FOUND") print("존재하지 않는 닉네임입니다.");
-    else if(e.message === "NOT_ENOUGH_MONEY") print("돈이 부족합니다.");
-    else if(e.message === "MY_ACCOUNT_NOT_FOUND") print("현재 계정을 찾을 수 없습니다. 다시 로그인해주세요.");
-    else print("송금 중 오류가 발생했습니다.");
-  }finally{
-    isOnlineActionRunning = false;
-  }
+function finishOnlineTransferState(nextState,nextRevision){
+  applyGameState(nextState);
+  cloudRevision=Number(nextRevision||cloudRevision);
+  cloudSyncedSeq=localSaveSeq;
+  bossPrepIndexes=[];
+  localStorage.setItem("textFishingSpeciesSizeSave",JSON.stringify(getGameState()));
+  updateWallet();
 }
 
-async function sendFish(targetNickname, displayNumber){
-  if(isOnlineActionRunning) return print("처리 중입니다. 잠시만 기다려주세요.");
-  if(!currentUser) return print("로그인 후 사용 가능합니다.");
+function transferFailure(message){
+  print(message);
+  return {ok:false,message};
+}
 
-  targetNickname = cleanNickname(targetNickname);
-
-  if(!targetNickname) return print("사용법 : 전송 닉네임 번호");
-  if(targetNickname === currentUser) return print("자기 자신에게는 전송할 수 없습니다.");
-
-  isOnlineActionRunning = true;
-
+async function sendMoney(targetNickname, amount){
+  if(isOnlineActionRunning)return transferFailure("처리 중입니다. 잠시만 기다려주세요.");
+  if(!currentUser)return transferFailure("로그인 후 사용 가능합니다.");
+  targetNickname=cleanNickname(targetNickname);
+  amount=Number(amount);
+  if(!targetNickname||!Number.isSafeInteger(amount)||amount<=0)return transferFailure("송금 금액은 1 이상의 안전한 정수로 입력해주세요.");
+  if(targetNickname===currentUser)return transferFailure("자기 자신에게는 송금할 수 없습니다.");
+  isOnlineActionRunning=true;
+  let committed=null;
   try{
-    await refreshMyCloudData();
-    const sessionHash = await getCurrentSessionHash();
-    if(!sessionHash) throw new Error("SESSION_INVALID");
-
-    const idx = getBucketIndexByDisplayNumber(Number(displayNumber));
-    if(idx < 0 || !bucket[idx]){
-      isOnlineActionRunning = false;
-      return print("존재하지 않는 번호입니다.");
-    }
-
-    if(bucket[idx].locked){
-      isOnlineActionRunning = false;
-      return print("잠금된 물고기는 전송할 수 없습니다.");
-    }
-
-    let transferredFish = null;
-
-    const myRef = db.collection("users").doc(currentUser);
-    const targetRef = db.collection("users").doc(targetNickname);
-
-    await db.runTransaction(async (tx)=>{
-      const mySnap = await tx.get(myRef);
-      const targetSnap = await tx.get(targetRef);
-
-      if(!mySnap.exists) throw new Error("MY_ACCOUNT_NOT_FOUND");
-      if(!targetSnap.exists) throw new Error("TARGET_NOT_FOUND");
-
-      const myData = mySnap.data();
-      const targetData = targetSnap.data();
-      if(myData.sessionTokenHash !== sessionHash) throw new Error("SESSION_INVALID");
-
-      const myState = myData.gameState || {};
-      const targetState = targetData.gameState || {};
-      const myBucket = myState.bucket || [];
-      const targetBucket = targetState.bucket || [];
-      const targetNotifications = targetState.notifications || [];
-
-      const currentList = sortBucketEntries(myBucket, bucketSortOrder);
-
-      const displayItem = currentList[Number(displayNumber)-1];
-      if(!displayItem || !myBucket[displayItem.originalIndex]) throw new Error("FISH_NOT_FOUND");
-      if(myBucket[displayItem.originalIndex].locked) throw new Error("FISH_LOCKED");
-
-      const movedFish = {...myBucket.splice(displayItem.originalIndex,1)[0], locked:false, isNewCatch:false};
-      transferredFish = movedFish;
-      const myPresets = normalizePartyPresets(myState.partyPresets);
-      myPresets.boss = myPresets.boss.filter(id => id !== movedFish.id);
-      myPresets.pvp = myPresets.pvp.filter(id => id !== movedFish.id);
-
-      targetBucket.push(movedFish);
-      targetNotifications.push("📢 알림\n\n" + formatCurrentUserName() + " 님이 " + lineFish(movedFish) + objParticle(movedFish.name) + " 전송했습니다.");
-
-      const myFusionMainFishIds=myState.fusionMainFishIds&&typeof myState.fusionMainFishIds==="object"?{...myState.fusionMainFishIds}:{};
-      Object.keys(myFusionMainFishIds).forEach(name=>{if(String(myFusionMainFishIds[name])===String(movedFish.id))delete myFusionMainFishIds[name];});
-      tx.set(myRef, {
-        cloudRevision: Number(myData.cloudRevision || 0) + 1,
-        gameState: {...myState, bucket: myBucket, pvpPrepIndexes:[], partyPresets:myPresets,fusionMainFishIds:myFusionMainFishIds,fusionMainFishId:String(myState.fusionMainFishId||"")===String(movedFish.id)?"":String(myState.fusionMainFishId||"")},
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-      }, {merge:true});
-
-      tx.set(targetRef, {
-        cloudRevision: Number(targetData.cloudRevision || 0) + 1,
-        gameState: {...targetState, bucket: targetBucket, notifications: targetNotifications},
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-      }, {merge:true});
+    await saveCloudData();
+    if(hasPendingLocalCloudChanges())throw new Error("SYNC_REQUIRED");
+    const sessionHash=await getCurrentSessionHash();
+    if(!sessionHash)throw new Error("SESSION_INVALID");
+    const senderName=currentUser,senderTitle=getCurrentTitle();
+    const myRef=db.collection("users").doc(senderName),targetRef=db.collection("users").doc(targetNickname);
+    await db.runTransaction(async tx=>{
+      const mySnap=await tx.get(myRef),targetSnap=await tx.get(targetRef);
+      if(!mySnap.exists)throw new Error("MY_ACCOUNT_NOT_FOUND");
+      if(!targetSnap.exists)throw new Error("TARGET_NOT_FOUND");
+      const myData=mySnap.data()||{},targetData=targetSnap.data()||{};
+      if(myData.sessionTokenHash!==sessionHash)throw new Error("SESSION_INVALID");
+      const myState={...(myData.gameState||{})},targetState={...(targetData.gameState||{})};
+      const currentMoney=normalizeMoney(myData.money??myState.money??0);
+      if(currentMoney<amount)throw new Error("NOT_ENOUGH_MONEY");
+      const senderMoneyAfter=normalizeMoney(currentMoney-amount),targetMoneyAfter=normalizeMoney((targetData.money??targetState.money??0)+amount);
+      const targetNotifications=(Array.isArray(targetState.notifications)?targetState.notifications:[]).slice(-49);
+      targetNotifications.push(`📢 알림\n\n${formatUserName(senderName,senderTitle)} 님이 ${amount.toLocaleString()}원을 송금했습니다.`);
+      const myRevision=Number(myData.cloudRevision||0)+1,targetRevision=Number(targetData.cloudRevision||0)+1;
+      const nextMyState={...myState,money:senderMoneyAfter};
+      tx.set(myRef,{money:senderMoneyAfter,cloudRevision:myRevision,gameState:nextMyState,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+      tx.set(targetRef,{money:targetMoneyAfter,cloudRevision:targetRevision,gameState:{...targetState,money:targetMoneyAfter,notifications:targetNotifications},updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+      committed={state:nextMyState,revision:myRevision};
     });
-
-    await db.collection("serverAlerts").add({
-      type: "fishTransfer",
-      from: currentUser,
-      fromTitle: getCurrentTitle(),
-      to: targetNickname,
-      fishName: transferredFish.name,
-      fishGrade: transferredFish.grade,
-      fishSize: transferredFish.size,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-      createdAtMillis: Date.now()
-    });
-
-    await refreshMyCloudData();
-    print(targetNickname + " 님에게 " + lineFish(transferredFish) + objParticle(transferredFish.name) + " 전송하였습니다.");
+    if(!committed)throw new Error("TRANSFER_NOT_COMMITTED");
+    finishOnlineTransferState(committed.state,committed.revision);
+    db.collection("serverAlerts").add({type:"moneyTransfer",from:currentUser,fromTitle:getCurrentTitle(),to:targetNickname,amount,createdAt:firebase.firestore.FieldValue.serverTimestamp(),createdAtMillis:Date.now()}).catch(console.error);
+    const message=`${targetNickname} 님에게 ${amount.toLocaleString()}원을 송금하였습니다.`;
+    print(message);
+    return {ok:true,targetNickname,amount,message};
   }catch(e){
     console.error(e);
-    if(e.message === "TARGET_NOT_FOUND") print("존재하지 않는 닉네임입니다.");
-    else if(e.message === "FISH_NOT_FOUND") print("존재하지 않는 번호입니다.");
-    else if(e.message === "FISH_LOCKED") print("잠금된 물고기는 전송할 수 없습니다.");
-    else if(e.message === "MY_ACCOUNT_NOT_FOUND") print("현재 계정을 찾을 수 없습니다. 다시 로그인해주세요.");
-    else print("전송 중 오류가 발생했습니다.");
-  }finally{
-    isOnlineActionRunning = false;
-  }
+    if(e.message==="TARGET_NOT_FOUND")return transferFailure("존재하지 않는 닉네임입니다.");
+    if(e.message==="NOT_ENOUGH_MONEY")return transferFailure("돈이 부족합니다.");
+    if(e.message==="MY_ACCOUNT_NOT_FOUND")return transferFailure("현재 계정을 찾을 수 없습니다. 다시 로그인해주세요.");
+    if(e.message==="SYNC_REQUIRED")return transferFailure("최신 데이터를 저장하지 못했습니다. 네트워크를 확인한 뒤 다시 시도해주세요.");
+    return transferFailure("송금 중 오류가 발생했습니다.");
+  }finally{isOnlineActionRunning=false;}
+}
+
+async function sendFish(targetNickname,displayNumber){
+  if(isOnlineActionRunning)return transferFailure("처리 중입니다. 잠시만 기다려주세요.");
+  if(!currentUser)return transferFailure("로그인 후 사용 가능합니다.");
+  targetNickname=cleanNickname(targetNickname);
+  displayNumber=Number(displayNumber);
+  if(!targetNickname||!Number.isInteger(displayNumber)||displayNumber<=0)return transferFailure("받는 사람과 전송할 물고기를 선택해주세요.");
+  if(targetNickname===currentUser)return transferFailure("자기 자신에게는 전송할 수 없습니다.");
+  isOnlineActionRunning=true;
+  let committed=null,transferredFish=null;
+  try{
+    await saveCloudData();
+    if(hasPendingLocalCloudChanges())throw new Error("SYNC_REQUIRED");
+    const sessionHash=await getCurrentSessionHash();
+    if(!sessionHash)throw new Error("SESSION_INVALID");
+    const senderName=currentUser,senderTitle=getCurrentTitle();
+    const myRef=db.collection("users").doc(senderName),targetRef=db.collection("users").doc(targetNickname);
+    await db.runTransaction(async tx=>{
+      const mySnap=await tx.get(myRef),targetSnap=await tx.get(targetRef);
+      if(!mySnap.exists)throw new Error("MY_ACCOUNT_NOT_FOUND");
+      if(!targetSnap.exists)throw new Error("TARGET_NOT_FOUND");
+      const myData=mySnap.data()||{},targetData=targetSnap.data()||{};
+      if(myData.sessionTokenHash!==sessionHash)throw new Error("SESSION_INVALID");
+      const myState={...(myData.gameState||{})},targetState={...(targetData.gameState||{})};
+      const myBucket=Array.isArray(myState.bucket)?[...myState.bucket]:[],targetBucket=Array.isArray(targetState.bucket)?[...targetState.bucket]:[];
+      const currentList=sortBucketEntries(myBucket,bucketSortOrder),displayItem=currentList[displayNumber-1];
+      if(!displayItem||!myBucket[displayItem.originalIndex])throw new Error("FISH_NOT_FOUND");
+      const sourceFish=myBucket[displayItem.originalIndex];
+      if(sourceFish.locked)throw new Error("FISH_LOCKED");
+      const mainIds=new Set([String(myState.fusionMainFishId||""),...Object.values(myState.fusionMainFishIds&&typeof myState.fusionMainFishIds==="object"?myState.fusionMainFishIds:{}).map(String)]);
+      if(mainIds.has(String(sourceFish.id||"")))throw new Error("FISH_IS_MAIN");
+      myBucket.splice(displayItem.originalIndex,1);
+      const targetIds=new Set(targetBucket.map(f=>String(f?.id||""))),newId=targetIds.has(String(sourceFish.id||""))?makeFishId():String(sourceFish.id||makeFishId());
+      const movedFish={...sourceFish,id:newId,locked:false,isNewCatch:true,time:`${new Date().toLocaleString()} · ${senderName}에게 받은 선물`,transferredFrom:senderName,transferredAtMillis:Date.now()};
+      transferredFish=movedFish;
+      targetBucket.push(movedFish);
+      const myPresets=normalizePartyPresets(myState.partyPresets);
+      myPresets.boss=myPresets.boss.filter(id=>String(id)!==String(sourceFish.id));
+      myPresets.pvp=myPresets.pvp.filter(id=>String(id)!==String(sourceFish.id));
+      const targetNotifications=(Array.isArray(targetState.notifications)?targetState.notifications:[]).slice(-49);
+      targetNotifications.push(`📢 알림\n\n${formatUserName(senderName,senderTitle)} 님이 ${lineFish(movedFish)}${objParticle(movedFish.name)} 전송했습니다.`);
+      const targetCollection={...(targetState.collection||{})},oldEntry=targetCollection[movedFish.name];
+      if(!oldEntry)targetCollection[movedFish.name]={count:1,bestSize:movedFish.size??null,bestGrade:movedFish.grade};
+      const nextMyState={...myState,bucket:myBucket,pvpPrepIndexes:[],partyPresets:myPresets};
+      const myRevision=Number(myData.cloudRevision||0)+1,targetRevision=Number(targetData.cloudRevision||0)+1;
+      tx.set(myRef,{cloudRevision:myRevision,gameState:nextMyState,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+      tx.set(targetRef,{cloudRevision:targetRevision,gameState:{...targetState,bucket:targetBucket,collection:targetCollection,notifications:targetNotifications},updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+      committed={state:nextMyState,revision:myRevision};
+    });
+    if(!committed||!transferredFish)throw new Error("TRANSFER_NOT_COMMITTED");
+    finishOnlineTransferState(committed.state,committed.revision);
+    db.collection("serverAlerts").add({type:"fishTransfer",from:currentUser,fromTitle:getCurrentTitle(),to:targetNickname,fishName:transferredFish.name,fishGrade:transferredFish.grade,fishSize:transferredFish.size,createdAt:firebase.firestore.FieldValue.serverTimestamp(),createdAtMillis:Date.now()}).catch(console.error);
+    const message=`${targetNickname} 님에게 ${lineFish(transferredFish)}${objParticle(transferredFish.name)} 전송하였습니다.`;
+    print(message);
+    return {ok:true,targetNickname,fish:transferredFish,message};
+  }catch(e){
+    console.error(e);
+    if(e.message==="TARGET_NOT_FOUND")return transferFailure("존재하지 않는 닉네임입니다.");
+    if(e.message==="FISH_NOT_FOUND")return transferFailure("존재하지 않는 번호입니다.");
+    if(e.message==="FISH_LOCKED")return transferFailure("잠금된 물고기는 전송할 수 없습니다.");
+    if(e.message==="FISH_IS_MAIN")return transferFailure("합성 본체는 해제한 뒤 전송할 수 있습니다.");
+    if(e.message==="MY_ACCOUNT_NOT_FOUND")return transferFailure("현재 계정을 찾을 수 없습니다. 다시 로그인해주세요.");
+    if(e.message==="SYNC_REQUIRED")return transferFailure("최신 데이터를 저장하지 못했습니다. 네트워크를 확인한 뒤 다시 시도해주세요.");
+    return transferFailure("전송 중 오류가 발생했습니다.");
+  }finally{isOnlineActionRunning=false;}
 }
 
 async function showNewMessages(){
