@@ -1,0 +1,2266 @@
+﻿function updateWallet(){
+  const shownMoney = currentUser ? money : 0;
+  const wallet = document.getElementById("wallet");
+  wallet.replaceChildren();
+  const moneyBold = document.createElement("b");
+  const userBold = document.createElement("b");
+  moneyBold.textContent = formatMoney(shownMoney);
+  userBold.textContent = currentUser ? currentUser : "로그인 안 됨";
+  wallet.append("현재 돈 : ", moneyBold, document.createElement("br"), "계정 : ", userBold);
+}
+
+function getUpgradeCost(level){
+  const points = [
+    [1, 1000],[100, 7500],[200, 30000],[300, 150000],[400, 750000],
+    [500, 3500000],[600, 15000000],[700, 75000000],[800, 300000000],
+    [900, 1500000000],[950, 4000000000],[1000, 50000000000],
+    [1100, 100000000000],[1200, 200000000000],[1300, 400000000000],
+    [1400, 700000000000],[1500, 1000000000000],[1550, 1500000000000],
+    [1600, 2000000000000],[1650, 3000000000000],[1700, 4000000000000],
+    [1750, 5000000000000]
+  ];
+
+  if(level <= 1) return points[0][1];
+  if(level >= MAX_ROD) return points[points.length - 1][1];
+
+  for(let i = 0; i < points.length - 1; i++){
+    const [l1, c1] = points[i];
+    const [l2, c2] = points[i + 1];
+
+    if(level >= l1 && level <= l2){
+      const t = (level - l1) / (l2 - l1);
+      return Math.floor(c1 * Math.pow(c2 / c1, t));
+    }
+  }
+
+  return 1000;
+}
+
+function getUpgradeSuccessRate(level){
+  if(level >= MAX_ROD) return 0;
+  if(level < 1000){
+    const t = (level - 1) / (999 - 1);
+    return 100 - (90 * t);
+  }
+  return 100;
+}
+
+function getCurrentPlayableMaxRod(){
+  return MAX_ROD;
+}
+
+function getBossMaterialRequirement(level){
+  if(level < 1000) return null;
+  if(level >= getCurrentPlayableMaxRod()) return "LOCKED";
+
+  let item = "";
+  let start = 1000;
+
+  if(level < 1050){ item = "심연의 촉수"; start = 1000; }
+  else if(level < 1100){ item = "히드라의 독니"; start = 1050; }
+  else if(level < 1150){ item = "리바이어던의 코어"; start = 1100; }
+  else if(level < 1200){ item = "고대의 비늘"; start = 1150; }
+  else if(level < 1250){ item = "불멸의 깃털"; start = 1200; }
+  else if(level < 1300){ item = "용왕의 심장"; start = 1250; }
+  else if(level < 1350){ item = "혼돈의 파편"; start = 1300; }
+  else if(level < 1400){ item = "세계뱀의 비늘"; start = 1350; }
+  else if(level < 1450){ item = "글레이프니르의 파편"; start = 1400; }
+  else if(level < 1500){ item = "무스펠의 불꽃"; start = 1450; }
+  else if(level < 1550){ item = "명계의 송곳니"; start = 1500; }
+  else if(level < 1600){ item = "세계수의 썩은 뿌리"; start = 1550; }
+  else if(level < 1650){ item = "다마반드의 사슬"; start = 1600; }
+  else if(level < 1700){ item = "폭풍의 심장"; start = 1650; }
+  else if(level < 1750){ item = "파멸의 근원"; start = 1700; }
+  else return "LOCKED";
+
+  const amount = Math.floor((level - start) / 25) + 1;
+  return {item, amount};
+}
+
+function getRequiredBossMaterials(level){
+  const req = getBossMaterialRequirement(level);
+  if(!req || req === "LOCKED") return [];
+  return [{name:req.item, count:req.amount}];
+}
+
+function hasRequiredBossMaterials(level){
+  return getRequiredBossMaterials(level).every(m => (bossProgress.materials[m.name] || 0) >= m.count);
+}
+
+function formatRequiredBossMaterials(level){
+  const req = getRequiredBossMaterials(level);
+  if(req.length === 0) return "";
+  return req.map(m => m.name + " x" + m.count).join("\n");
+}
+
+function consumeRequiredBossMaterials(level){
+  getRequiredBossMaterials(level).forEach(m => {
+    bossProgress.materials[m.name] = Math.max(0, (bossProgress.materials[m.name] || 0) - m.count);
+  });
+}
+
+function getLockedUpgradeMessage(){
+  return "낚싯대가 최대 강화 레벨인 " + MAX_ROD + "레벨에 도달했습니다.";
+}
+
+function tryUpgradeSuccess(level){
+  return Math.random() * 100 < getUpgradeSuccessRate(level);
+}
+
+function getRawGradeChances(){
+  if(rodLevel <= 1000){
+    const t = (rodLevel - 1) / (1000 - 1);
+    return [
+      {name:"쓰레기", chance: 18 - 17.5 * t},
+      {name:"일반", chance: 55 - 43 * t},
+      {name:"희귀", chance: 25 - 1 * t},
+      {name:"영웅", chance: 8 + 27 * t},
+      {name:"전설", chance: 2.2 + 27.8 * t},
+      {name:"신화", chance: 0.7 + 13.3 * t},
+      {name:"초월", chance: 0.1 + 6.9 * t},
+      {name:"영원", chance: rodLevel >= 400 ? 0.1 + ((rodLevel - 400) / (1000 - 400)) * 1.4 : 0},
+      {name:"공허", chance:0}
+    ];
+  }
+
+  const base = {"쓰레기":0.40,"일반":9.68,"희귀":19.35,"영웅":28.23,"전설":24.19,"신화":11.29,"초월":5.65,"영원":1.21,"공허":0};
+  const target = {"쓰레기":0,"일반":3,"희귀":12,"영웅":20,"전설":25,"신화":23,"초월":11,"영원":4.5,"공허":1.5};
+  const t = Math.min(1, (rodLevel - 1000) / (1750 - 1000));
+  return Object.keys(target).map(name => ({name, chance: base[name] + (target[name] - base[name]) * t}));
+}
+
+const fishingTimingWeights = {
+  PERFECT:{"쓰레기":0.85,"일반":0.90,"희귀":0.95,"영웅":1.00,"전설":1.12,"신화":1.15,"초월":1.20,"영원":1.25,"공허":1.30},
+  GREAT:{"쓰레기":1,"일반":1,"희귀":1,"영웅":1,"전설":1,"신화":1,"초월":1,"영원":1,"공허":1},
+  GOOD:{"쓰레기":1.05,"일반":1.03,"희귀":1.02,"영웅":1.00,"전설":0.98,"신화":0.95,"초월":0.92,"영원":0.90,"공허":0.85},
+  BAD:{"쓰레기":2.00,"일반":1.80,"희귀":1.25,"영웅":0.90,"전설":0.60,"신화":0.50,"초월":0.30,"영원":0.15,"공허":0.05}
+};
+const fishingTimingEscapeMultipliers = {PERFECT:0.85,GREAT:1,GOOD:1.10,BAD:1.50};
+let pendingFishingTimingResult = "GREAT";
+
+function setFishingTimingResult(result){
+  pendingFishingTimingResult = fishingTimingWeights[result] ? result : "GREAT";
+}
+
+function takeFishingTimingResult(){
+  const result = fishingTimingWeights[pendingFishingTimingResult] ? pendingFishingTimingResult : "GREAT";
+  pendingFishingTimingResult = "GREAT";
+  return result;
+}
+
+function pickGrade(timingResult="GREAT"){
+  let chances = getRawGradeChances();
+  const timingWeights = fishingTimingWeights[timingResult] || fishingTimingWeights.GOOD;
+  chances = chances.map(x => ({...x, chance: Math.max(0, x.chance) * (timingWeights[x.name] || 1)}));
+  let total = chances.reduce((s,g)=>s+g.chance,0);
+  let r = Math.random()*total;
+  for(const c of chances){
+    if(r < c.chance) return grades.find(g=>g.name===c.name);
+    r -= c.chance;
+  }
+  return grades[1];
+}
+
+function pickName(grade){
+  const list=fishByGrade[grade];
+  return list[Math.floor(Math.random()*list.length)];
+}
+
+function makeSizeByName(name){
+  const range = sizeData[name];
+  if(range === null) return null;
+  if(Array.isArray(range)){
+    const base = Math.random() * (range[1] - range[0]) + range[0];
+    return Math.round((base + rodLevel * 0.02) * 10) / 10;
+  }
+  return Math.round((Math.random()*100 + 10) * 10) / 10;
+}
+
+function getEscapeChance(){
+  const t = Math.min(1, (rodLevel - 1) / (MAX_ROD - 1));
+  return 35 - (34 * t); // Lv.1 = 35%, Lv.1000 = 1%
+}
+
+function getCurrentGradeChances(){
+  let chances = getRawGradeChances();
+  chances = chances.map(x => ({...x, chance: Math.max(0, x.chance)}));
+  const total = chances.reduce((s,g)=>s+g.chance,0);
+  return chances.map(x => ({name:x.name, chance: total === 0 ? 0 : x.chance / total * 100}));
+}
+
+function makePrice(g,size){
+  if(g.name==="쓰레기") return Math.floor(Math.random()*30)+1;
+  const s = size === null ? 7777 : size;
+  return Math.floor(g.basePrice + s*gradePower[g.name]*1000 + Math.random()*g.basePrice*0.4);
+}
+
+function addCollection(f){
+  if(!collection[f.name]) collection[f.name]={count:0,bestSize:null,bestGrade:f.grade};
+  collection[f.name].count++;
+  if(f.size !== null){
+    if(collection[f.name].bestSize === null || f.size > collection[f.name].bestSize){
+      collection[f.name].bestSize=f.size;
+      collection[f.name].bestGrade=f.grade;
+    }
+  }
+}
+
+function fish(){
+  if(isFishing) return print("이미 낚시 중입니다.");
+  isFishing=true;
+  const castTimingResult = takeFishingTimingResult();
+  const castUser = currentUser;
+  const castSessionId = ++fishingSessionId;
+  const t=(rodLevel-1)/(MAX_ROD-1);
+  const timeMultiplier = getFishingTimeMultiplier();
+  const minTime=Math.floor((15000-(7000*t)) * timeMultiplier); // Lv1 15초 -> Lv1000 8초, 연구소 적용
+  const maxTime=Math.floor((30000-(15000*t)) * timeMultiplier); // Lv1 30초 -> Lv1000 15초, 연구소 적용
+  const wait=Math.floor(Math.random()*(maxTime-minTime))+minTime;
+  print("낚싯대를 던졌습니다.");
+  fishingTimer = setTimeout(()=>{
+    fishingTimer = null;
+    if(castSessionId !== fishingSessionId || currentUser !== castUser){
+      isFishing = false;
+      return;
+    }
+    const g=pickGrade(castTimingResult);
+    const name=pickName(g.name);
+    const size=makeSizeByName(name);
+    const price=makePrice(g,size);
+    const caught={id:makeFishId(),grade:g.name,name,size,price,locked:false,time:new Date().toLocaleString(),timingResult:castTimingResult};
+    caught.combat = makeCombatStats(caught);
+
+    const escapeGrades = ["일반","희귀","영웅","전설","신화"];
+    if(escapeGrades.includes(g.name)){
+      const escapeChance = getEscapeChance() * (fishingTimingEscapeMultipliers[castTimingResult] || 1);
+      if(Math.random() * 100 < escapeChance){
+        totalFishingCount++;
+        const newAchievements = updateAchievements();
+        checkSpecialTitles();
+        saveGame();
+        print(color("[" + g.name + "] " + name, g.name) + subjectParticle(name) + " 도주했습니다.");
+        printAchievementRewards(newAchievements);
+        isFishing=false;
+        fishingSessionId++;
+        return;
+      }
+    }
+
+    bucket.push(caught);
+    addCollection(caught);
+
+    totalFishingCount++;
+    gradeCounts[g.name] = (gradeCounts[g.name] || 0) + 1;
+
+    const newAchievements = updateAchievements();
+
+    checkSpecialTitles();
+    saveGame();
+    if(currentUser) saveCloudData();
+    print(color(lineFish(caught), caught.grade)+objParticle(caught.name)+" 낚았습니다.");
+    announceEternalCatch(caught);
+    printAchievementRewards(newAchievements);
+    isFishing=false;
+    fishingSessionId++;
+  }, wait);
+}
+
+
+let bucketSortOrder = localStorage.getItem("textFishingBucketSortOrder") || "등급";
+if(["오름차순", "내림차순", "공격력 오름차순", "공격력 내림차순", "체력 오름차순", "체력 내림차순"].includes(bucketSortOrder)){
+  if(bucketSortOrder.startsWith("공격력")) bucketSortOrder = "공격력";
+  else if(bucketSortOrder.startsWith("체력")) bucketSortOrder = "체력";
+  else bucketSortOrder = "등급";
+  localStorage.setItem("textFishingBucketSortOrder", bucketSortOrder);
+}
+
+function sortBucketEntries(source, order=bucketSortOrder){
+  return (source || []).map((fish, originalIndex) => ({fish, originalIndex})).sort((a,b)=>{
+    const gradeCompare = gradePower[b.fish.grade] - gradePower[a.fish.grade];
+    const nameCompare = a.fish.name.localeCompare(b.fish.name, "ko");
+    const attackA = Number(a.fish.combat && a.fish.combat.attack || 0);
+    const attackB = Number(b.fish.combat && b.fish.combat.attack || 0);
+    const hpA = Number(a.fish.combat && (a.fish.combat.maxHp ?? a.fish.combat.hp) || 0);
+    const hpB = Number(b.fish.combat && (b.fish.combat.maxHp ?? b.fish.combat.hp) || 0);
+
+    if(order === "공격력"){
+      return (attackB - attackA) || (hpB - hpA) || gradeCompare || nameCompare;
+    }
+
+    if(order === "체력"){
+      return (hpB - hpA) || (attackB - attackA) || gradeCompare || nameCompare;
+    }
+
+    return gradeCompare || nameCompare;
+  });
+}
+
+function sortedBucketList(){
+  return sortBucketEntries(bucket, bucketSortOrder);
+}
+
+function getBucketIndexByDisplayNumber(n){
+  const list = sortedBucketList();
+  const item = list[n-1];
+  return item ? item.originalIndex : -1;
+}
+
+function getDisplayNumberByBucketIndex(originalIndex){
+  const list = sortedBucketList();
+  const pos = list.findIndex(item => item.originalIndex === originalIndex);
+  return pos >= 0 ? pos + 1 : -1;
+}
+
+function buildBucketText(){
+  if(bucket.length===0) return "양동이가 비어있습니다.";
+  let s=(currentUser ? formatCurrentUserName() + " 님의 양동이" : "내 양동이") + "\n\n────┬────────────────────\n";
+  const list = sortedBucketList();
+  list.forEach((item,i)=>{
+    const f = item.fish;
+    const combat = f.combat || {};
+    const status = getCombatStatusText(f);
+    let statText = "";
+    if(bucketSortOrder.startsWith("공격력")) statText = " [공격력 " + Number(combat.attack || 0).toLocaleString() + "]";
+    if(bucketSortOrder.startsWith("체력")) statText = " [체력 " + Number(combat.maxHp ?? combat.hp ?? 0).toLocaleString() + "]";
+    const statusText = status !== "정상" ? " [상태 " + status + "]" : "";
+    s+=fullWidthNumber(i+1)+"│"+color(lineFish(f), f.grade)+statText+statusText+(f.locked?" [잠금]":"")+"\n";
+    if(i!==list.length-1) s+="────┼────────────────────\n";
+  });
+  s+="────┴────────────────────";
+  return s;
+}
+
+function buildOtherBucketText(nickname, otherBucket){
+  if(!otherBucket || otherBucket.length===0) return nickname + " 님의 양동이가 비어있습니다.";
+
+  let s=nickname + " 님의 양동이\n\n────┬────────────────────\n";
+  const list = [...otherBucket].sort((a,b)=>{
+    const gradeCompare = gradePower[b.grade] - gradePower[a.grade];
+    const nameCompare = a.name.localeCompare(b.name, "ko");
+    return gradeCompare || nameCompare;
+  });
+
+  list.forEach((f,i)=>{
+    s+=rankNumber(i+1)+"│"+color(lineFish(f), f.grade)+"\n";
+    if(i!==list.length-1) s+="────┼────────────────────\n";
+  });
+
+  s+="────┴────────────────────";
+  return s;
+}
+
+async function showOtherBucket(nickname){
+  nickname = cleanNickname(nickname);
+  if(!nickname) return print("사용법 : 양동이 닉네임");
+
+  try{
+    const snap = await db.collection("users").doc(nickname).get();
+    if(!snap.exists) return print("존재하지 않는 닉네임입니다.");
+
+    const data = snap.data();
+    const otherBucket = (data.gameState && data.gameState.bucket) ? data.gameState.bucket : [];
+    const totalValue = otherBucket.reduce((s,f)=>s+(f.price||0),0);
+
+    const displayName = formatUserName(nickname, data.title);
+    const summary =
+      "보유 물고기 : " + otherBucket.length + "마리\n" +
+      "총 기본 판매가 : " + formatMoney(totalValue) + "\n" +
+      "시세·감정 연구 보너스 제외";
+
+    printPreview(displayName + " 님의 양동이", summary, "양동이 전체보기", buildOtherBucketText(displayName, otherBucket));
+  }catch(e){
+    console.error(e);
+    print("양동이를 불러오는 중 오류가 발생했습니다.");
+  }
+}
+
+async function showBucket(){
+  if(currentUser) await refreshMyCloudData();
+  recoverStunnedFish();
+
+  if(bucket.length===0) return print("양동이가 비어있습니다.");
+  const lockedCount = bucket.filter(f=>f.locked).length;
+  const totalValue = bucket.reduce((s,f)=>s+applyMarketPrice(f),0);
+  const summary =
+    "보유 물고기 : " + bucket.length + "마리\n" +
+    "잠금 : " + lockedCount + "마리\n" +
+    "총 판매가 : " + formatMoney(totalValue);
+  const bucketTitle = formatCurrentUserName() + " 님의 양동이";
+  printPreview(bucketTitle, summary, "양동이 전체보기", buildBucketText());
+}
+
+function sortBucket(type){
+  const allowed = ["등급", "공격력", "체력"];
+  if(!allowed.includes(type)){
+    return print("정렬 명령어\n\n정렬 등급\n정렬 공격력\n정렬 체력");
+  }
+
+  bucketSortOrder = type;
+  localStorage.setItem("textFishingBucketSortOrder", bucketSortOrder);
+
+  const basis = type.startsWith("공격력") ? "공격력 1순위, 체력 2순위" :
+    type.startsWith("체력") ? "최대 체력 1순위, 공격력 2순위" : "등급 1순위, 가나다 2순위";
+  print("양동이 정렬을 " + type + "으로 설정했습니다.\n기준 : " + basis);
+  showBucket();
+}
+
+function getPresetFishList(type){
+  const ids = partyPresets[type] || [];
+  return ids.map(id => bucket.find(f => f && f.id === id)).filter(Boolean);
+}
+
+function cleanPartyPresets(){
+  const owned = new Set(bucket.filter(Boolean).map(f => f.id));
+  partyPresets.boss = (partyPresets.boss || []).filter(id => owned.has(id)).slice(0,5);
+  partyPresets.pvp = (partyPresets.pvp || []).filter(id => owned.has(id)).slice(0,3);
+}
+
+function removeFishIdsFromPresets(ids){
+  const removed = new Set(ids || []);
+  partyPresets.boss = (partyPresets.boss || []).filter(id => !removed.has(id));
+  partyPresets.pvp = (partyPresets.pvp || []).filter(id => !removed.has(id));
+}
+
+function isFishInPartyPreset(f){
+  if(!f || !f.id) return false;
+  return (partyPresets.boss || []).includes(f.id) || (partyPresets.pvp || []).includes(f.id);
+}
+
+function buildPartyPresetFullText(){
+  cleanPartyPresets();
+  let s = "파티 프리셋\n\n";
+  const sections = [
+    ["보스 프리셋", "boss", 5],
+    ["PVP 프리셋", "pvp", 3]
+  ];
+  sections.forEach(([title,type,max],sectionIndex) => {
+    const fishes = getPresetFishList(type);
+    s += "[" + title + "] " + fishes.length + " / " + max + "\n";
+    if(fishes.length === 0){
+      s += "비어 있음\n";
+    }else{
+      fishes.forEach((f,i) => {
+        s += fullWidthNumber(i+1) + "│" + color(lineFish(f),f.grade) + "\n";
+      });
+    }
+    if(sectionIndex === 0) s += "\n" + line() + "\n\n";
+  });
+  s += "\n명령어\n";
+  s += "파티저장 보스 / 파티불러오기 보스 / 파티해제 보스\n";
+  s += "파티저장 pvp / 파티불러오기 pvp / 파티해제 pvp";
+  return s;
+}
+
+function showPartyPresets(){
+  cleanPartyPresets();
+  const bossCount = getPresetFishList("boss").length;
+  const pvpCount = getPresetFishList("pvp").length;
+  printPreview("파티 프리셋", "보스 프리셋 : " + bossCount + " / 5\nPVP 프리셋 : " + pvpCount + " / 3", "파티 프리셋 전체보기", buildPartyPresetFullText());
+}
+
+function normalizePresetType(raw){
+  const value = String(raw || "").trim().toLowerCase();
+  if(value === "보스" || value === "boss") return "boss";
+  if(value === "pvp" || value === "피브이피") return "pvp";
+  return "";
+}
+
+function savePartyPreset(rawType){
+  ensureAllFishIds();
+  const type = normalizePresetType(rawType);
+  if(!type) return print("사용법 : 파티저장 보스 / 파티저장 pvp");
+  const indexes = type === "boss" ? bossPrepIndexes : pvpPrepIndexes;
+  const max = type === "boss" ? 5 : 3;
+  const fishes = indexes.map(i => bucket[i]).filter(f => f && f.grade !== "쓰레기").slice(0,max);
+  if(fishes.length === 0) return print((type === "boss" ? "보스" : "PVP") + " 준비 목록에 저장할 물고기가 없습니다.");
+  partyPresets[type] = fishes.map(f => f.id);
+  saveGame();
+  print((type === "boss" ? "보스" : "PVP") + " 프리셋 저장 완료\n\n" + fishes.length + " / " + max + "마리");
+}
+
+function loadPartyPreset(rawType){
+  const type = normalizePresetType(rawType);
+  if(!type) return print("사용법 : 파티불러오기 보스 / 파티불러오기 pvp");
+  cleanPartyPresets();
+  const fishes = getPresetFishList(type);
+  if(fishes.length === 0) return print("저장된 " + (type === "boss" ? "보스" : "PVP") + " 프리셋이 없습니다.");
+  const indexes = fishes.map(f => bucket.indexOf(f)).filter(i => i >= 0);
+  if(type === "boss"){
+    if(!isBossMenu) return print("보스 프리셋은 보스전에 입장한 뒤 불러올 수 있습니다.");
+    bossPrepIndexes = indexes.slice(0,5);
+    pendingRecoveryBattleConfirm = false;
+  }else{
+    pvpPrepIndexes = indexes.slice(0,3);
+  }
+  saveGame();
+  print((type === "boss" ? "보스" : "PVP") + " 프리셋을 불러왔습니다.\n\n편성 : " + indexes.length + "마리");
+}
+
+function clearPartyPreset(rawType){
+  const type = normalizePresetType(rawType);
+  if(!type) return print("사용법 : 파티해제 보스 / 파티해제 pvp");
+  partyPresets[type] = [];
+  saveGame();
+  print((type === "boss" ? "보스" : "PVP") + " 프리셋을 해제했습니다.");
+}
+
+function lockOne(n,lockState){
+  const idx=getBucketIndexByDisplayNumber(n);
+  if(idx < 0 || !bucket[idx]) return print("존재하지 않는 번호입니다.");
+  bucket[idx].locked=lockState;
+  saveGame();
+  let s="────┬────────────────────\n";
+  s+=fullWidthNumber(n)+"│"+color(lineFish(bucket[idx]), bucket[idx].grade)+(bucket[idx].locked?" [잠금]":"")+"\n";
+  s+="────┴────────────────────\n\n";
+  s+=lockState?"잠금되었습니다.":"잠금이 해제되었습니다.";
+  print(s);
+}
+
+function sellOne(n,confirmed=false){
+  const idx=getBucketIndexByDisplayNumber(n);
+  if(idx < 0 || !bucket[idx]) return print("존재하지 않는 번호입니다.");
+  if(bucket[idx].locked) return print("잠금된 물고기는 판매할 수 없습니다.");
+  if(isFishInPartyPreset(bucket[idx]) && !confirmed){
+    pendingPresetSaleId = bucket[idx].id;
+    pendingPresetSellAll = false;
+    return print("파티 프리셋에 편성된 물고기입니다.\n\n" + color(lineFish(bucket[idx]),bucket[idx].grade) + "\n\n정말 판매할까요?\n계속하려면 확인 을 입력하세요.");
+  }
+  const f=bucket.splice(idx,1)[0];
+  pendingPresetSaleId = "";
+  removeFishIdsFromPresets([f.id]);
+  pvpPrepIndexes=[];
+  const finalPrice = applyMarketPrice(f);
+  const bonus = getMarketBonus(f.name);
+
+  money=normalizeMoney(money + finalPrice);
+  totalEarned=normalizeMoney(totalEarned + finalPrice);
+  const newTitles = checkSpecialTitles();
+  saveGame();
+
+  let msg = color(lineFish(f), f.grade)+objParticle(f.name)+" 판매했습니다.\n\n";
+  if(bonus > 0 || getAppraisalResearchLevel() > 0){
+    msg += "기본가 : "+formatMoney(f.price)+"\n";
+    if(bonus > 0) msg += "시세 : +"+bonus+"%\n";
+    if(getAppraisalResearchLevel() > 0) msg += "감정 연구 : +"+getAppraisalBonus()+"%\n";
+    msg += "최종가 : "+formatMoney(finalPrice)+"\n";
+  }
+  msg += "+"+formatMoney(finalPrice);
+
+  print(msg);
+  if(newTitles.length > 0) print("칭호 획득!\n\n" + newTitles.map(x => "[" + x + "]").join("\n"));
+}
+
+function confirmPresetSale(){
+  const id = pendingPresetSaleId;
+  pendingPresetSaleId = "";
+  if(!id) return print("확인 대기 중인 판매가 없습니다.");
+  const idx = bucket.findIndex(f => f && f.id === id);
+  if(idx < 0) return print("판매할 물고기를 찾을 수 없습니다.");
+  const displayNumber = getDisplayNumberByBucketIndex(idx);
+  sellOne(displayNumber,true);
+}
+
+function sellAll(confirmed=false){
+  if(bucket.length===0) return print("팔 물고기가 없습니다.");
+  const sell=bucket.filter(f=>!f.locked);
+  const keep=bucket.filter(f=>f.locked);
+  if(sell.length===0) return print("판매할 수 있는 물고기가 없습니다. 전부 잠금 상태입니다.");
+  const presetFishes = sell.filter(isFishInPartyPreset);
+  if(presetFishes.length > 0 && !confirmed){
+    pendingPresetSellAll = true;
+    pendingPresetSaleId = "";
+    return print("일괄판매 대상에 파티 프리셋 물고기 " + presetFishes.length + "마리가 포함되어 있습니다.\n\n정말 판매할까요?\n계속하려면 확인 을 입력하세요.");
+  }
+  const baseTotal=sell.reduce((s,f)=>s+f.price,0);
+  const total=sell.reduce((s,f)=>s+applyMarketPrice(f),0);
+  const bonusTotal=total-baseTotal;
+
+  bucket=keep;
+  pendingPresetSellAll = false;
+  removeFishIdsFromPresets(sell.map(f => f.id));
+  pvpPrepIndexes=[];
+  money=normalizeMoney(money + total);
+  totalEarned=normalizeMoney(totalEarned + total);
+  const newTitles = checkSpecialTitles();
+  saveGame();
+
+  let msg = "잠금된 물고기를 제외한\n"+sell.length+"마리를 판매했습니다.\n\n";
+  if(bonusTotal > 0){
+    msg += "기본가 합계 : "+formatMoney(baseTotal)+"\n";
+    msg += "추가 보너스 : +"+formatMoney(bonusTotal)+"\n";
+    msg += "최종 판매가 : "+formatMoney(total)+"\n\n";
+  }
+  msg += "+"+formatMoney(total);
+  print(msg);
+  if(newTitles.length > 0) print("칭호 획득!\n\n" + newTitles.map(x => "[" + x + "]").join("\n"));
+}
+
+function confirmPresetSellAll(){
+  if(!pendingPresetSellAll) return print("확인 대기 중인 일괄판매가 없습니다.");
+  pendingPresetSellAll = false;
+  sellAll(true);
+}
+
+function confirmPendingPresetSale(){
+  if(pendingPresetSellAll) return confirmPresetSellAll();
+  if(pendingPresetSaleId) return confirmPresetSale();
+  print("확인 대기 중인 판매가 없습니다.");
+}
+
+function buildFishCollectionText(){
+  let s="물고기도감\n\n";
+  let index=1;
+  for(const grade of Object.keys(fishByGrade)){
+    s+=color("["+grade+"]", grade)+"\n";
+    s+="────┬────────────────────\n";
+    const names = [...fishByGrade[grade]].sort((a,b)=>a.localeCompare(b,"ko"));
+    names.forEach((name,i)=>{
+      const c=collection[name];
+      const shown = c ? color("["+grade+"] "+displayFishName(name), grade) : color("???", grade);
+      s+=fullWidthNumber(index)+"│"+shown+"\n";
+      if(i!==names.length-1) s+="────┼────────────────────\n";
+      index++;
+    });
+    s+="────┴────────────────────\n\n";
+  }
+  s+="도감 진행률 : "+Object.keys(collection).length+"/"+allFishCount();
+  return s;
+}
+
+function showFishCollection(){
+  const got = Object.keys(collection).length;
+  const total = allFishCount();
+  const percent = total === 0 ? 0 : (got / total * 100).toFixed(1);
+  printPreview("물고기도감", "물고기도감 진행률\n\n" + got + " / " + total + "\n" + percent + "%", "물고기도감 전체보기", buildFishCollectionText());
+}
+
+function buildCoreCollectionText(){
+  let s="코어도감\n\n";
+  s+="────┬────────────────────\n";
+  bossList.forEach((boss,i)=>{
+    const owned = (bossProgress.materials && bossProgress.materials[boss.drop]) || 0;
+    const shown = owned > 0 || bossProgress.defeated[boss.id] ? boss.drop + " x" + owned.toLocaleString() : "???";
+    s+=fullWidthNumber(i+1)+"│"+shown+"\n";
+    if(i!==bossList.length-1) s+="────┼────────────────────\n";
+  });
+  s+="────┴────────────────────";
+  return s;
+}
+
+function showCoreCollection(){
+  const got = bossList.filter(b => ((bossProgress.materials && bossProgress.materials[b.drop]) || 0) > 0 || bossProgress.defeated[b.id]).length;
+  const total = bossList.length;
+  printPreview("코어도감", "코어도감 진행률\n\n" + got + " / " + total, "코어도감 전체보기", buildCoreCollectionText());
+}
+
+function buildCollectionText(){
+  return "도감\n\n물고기도감\n코어도감\n\n명령어 : 물고기도감 / 코어도감";
+}
+
+function showCollection(){
+  print(buildCollectionText());
+}
+
+async function showWallet(){
+  if(currentUser) await refreshMyCloudData();
+
+  const title = formatCurrentUserName() + " 님의 지갑";
+  const content = title + "\n\n현재 돈 : " + formatMoney(money);
+
+  printWalletPreview(title, "지갑 전체보기", content);
+}
+
+async function showOtherWallet(nickname){
+  nickname = cleanNickname(nickname);
+  if(!nickname) return print("사용법 : 지갑 닉네임");
+
+  try{
+    const snap = await db.collection("users").doc(nickname).get();
+    if(!snap.exists) return print("존재하지 않는 닉네임입니다.");
+
+    const data = snap.data();
+    const title = formatUserName(nickname, data.title) + " 님의 지갑";
+    const content = title + "\n\n현재 돈 : " + formatMoney(data.money || 0);
+
+    printWalletPreview(title, "지갑 전체보기", content);
+  }catch(e){
+    console.error(e);
+    print("지갑을 불러오는 중 오류가 발생했습니다.");
+  }
+}
+
+function upgradeOne(){
+  if(rodLevel>=getCurrentPlayableMaxRod()) return print(getLockedUpgradeMessage());
+
+  const materialReq = getBossMaterialRequirement(rodLevel);
+  if(materialReq === "LOCKED") return print(getLockedUpgradeMessage());
+
+  const cost=getUpgradeCost(rodLevel);
+  const rate=getUpgradeSuccessRate(rodLevel);
+
+  if(money<cost) return print("돈이 부족합니다.\n강화 비용 : "+formatMoney(cost));
+
+  if(!hasRequiredBossMaterials(rodLevel)){
+    const need = getRequiredBossMaterials(rodLevel)[0];
+    const owned = need ? (bossProgress.materials[need.name] || 0) : 0;
+    return print("강화 재료가 부족합니다.\n\n필요 : " + need.name + " x" + need.count + "\n보유 : " + owned.toLocaleString() + "개");
+  }
+
+  const before=rodLevel;
+  const usedMaterials = formatRequiredBossMaterials(before);
+  money=normalizeMoney(money - cost);
+  consumeRequiredBossMaterials(before);
+
+  if(tryUpgradeSuccess(before)){
+    rodLevel++;
+    saveGame();
+    print("강화 성공\n\nLv."+before+" → Lv."+rodLevel+"\n성공 확률 : "+rate.toFixed(1)+"%\n사용 금액 : "+formatMoney(cost)+(usedMaterials ? "\n사용 재료\n"+usedMaterials : ""));
+  } else {
+    saveGame();
+    print("강화 실패\n\nLv."+before+" → Lv."+rodLevel+"\n성공 확률 : "+rate.toFixed(1)+"%\n사용 금액 : "+formatMoney(cost)+(usedMaterials ? "\n사용 재료\n"+usedMaterials : ""));
+  }
+}
+
+function upgradeMax(){
+  if(rodLevel>=getCurrentPlayableMaxRod()) return print(getLockedUpgradeMessage());
+
+  const before=rodLevel;
+  let spent=0;
+  let success=0;
+  let fail=0;
+  let attempts=0;
+  let usedMaterials = {};
+
+  while(rodLevel<getCurrentPlayableMaxRod()){
+    const cost=getUpgradeCost(rodLevel);
+    if(money<cost) break;
+    if(!hasRequiredBossMaterials(rodLevel)) break;
+
+    const levelBefore=rodLevel;
+    const req = getRequiredBossMaterials(levelBefore);
+    req.forEach(m => {
+      usedMaterials[m.name] = (usedMaterials[m.name] || 0) + m.count;
+    });
+
+    money=normalizeMoney(money - cost);
+    consumeRequiredBossMaterials(levelBefore);
+    spent+=cost;
+    attempts++;
+
+    if(tryUpgradeSuccess(levelBefore)){
+      rodLevel++;
+      success++;
+    } else {
+      fail++;
+    }
+
+    if(before < 1000 && rodLevel >= 1000) break;
+
+    if(attempts >= 10000) break;
+  }
+
+  if(spent===0){
+    if(rodLevel>=1000 && !hasRequiredBossMaterials(rodLevel)){
+      const need = getRequiredBossMaterials(rodLevel)[0];
+      const owned = need ? (bossProgress.materials[need.name] || 0) : 0;
+      return print("강화 재료가 부족합니다.\n\n필요 : " + need.name + " x" + need.count + "\n보유 : " + owned.toLocaleString() + "개");
+    }
+
+    return print("돈이 부족합니다.\n강화 비용 : "+formatMoney(getUpgradeCost(rodLevel)));
+  }
+
+  saveGame();
+
+  let msg = "일괄강화 결과\n\n";
+  msg += "Lv."+before+" → Lv."+rodLevel+"\n\n";
+  msg += "시도 : "+attempts.toLocaleString()+"회\n";
+  msg += "성공 : "+success.toLocaleString()+"회\n";
+  msg += "실패 : "+fail.toLocaleString()+"회\n\n";
+  msg += "사용 금액 : "+formatMoney(spent)+"\n";
+
+  const materialEntries = Object.entries(usedMaterials);
+  if(materialEntries.length > 0){
+    msg += "사용 재료\n";
+    materialEntries.forEach(([name,count]) => {
+      msg += name + " x" + count.toLocaleString() + "\n";
+    });
+  }
+
+  msg += "남은 돈 : "+formatMoney(money);
+
+  if(rodLevel>=getCurrentPlayableMaxRod()){
+    msg += "\n\n" + getLockedUpgradeMessage();
+  } else if(before < 1000 && rodLevel === 1000){
+    msg += "\n\n1000레벨에 도달하여 일괄강화를 멈췄습니다.\n계속 강화하려면 일괄강화를 다시 입력해주세요.";
+  } else if(rodLevel<MAX_ROD && attempts>=10000){
+    msg += "\n\n시도 횟수가 너무 많아 자동 중단되었습니다.";
+  } else if(rodLevel>=1000 && !hasRequiredBossMaterials(rodLevel)){
+    msg += "\n\n강화 재료가 부족하여 중단되었습니다.\n필요 재료\n" + formatRequiredBossMaterials(rodLevel);
+  }
+
+  print(msg.trim());
+}
+
+
+
+function getPvpDocId(a,b){
+  const x = cleanNickname(a);
+  const y = cleanNickname(b);
+  return [x,y].sort().join("__");
+}
+
+function getMyActivePvpRef(){
+  if(!currentUser) return null;
+  return db.collection("pvpActive").doc(currentUser);
+}
+
+async function getMyActivePvp(){
+  if(!currentUser) return null;
+  const snap = await getMyActivePvpRef().get();
+  if(!snap.exists) return null;
+  const data = snap.data() || {};
+  if(data.status === "cancelled" || data.status === "finished" || data.status === "rejected") return null;
+  return data;
+}
+
+async function setBothActivePvp(roomId, a, b, data){
+  const batch = db.batch();
+  batch.set(db.collection("pvpActive").doc(a), {roomId, opponent:b, ...data}, {merge:true});
+  batch.set(db.collection("pvpActive").doc(b), {roomId, opponent:a, ...data}, {merge:true});
+  await batch.commit();
+}
+
+async function clearBothActivePvp(a,b){
+  const batch = db.batch();
+  if(a) batch.delete(db.collection("pvpActive").doc(a));
+  if(b) batch.delete(db.collection("pvpActive").doc(b));
+  await batch.commit();
+}
+
+async function updateOnlinePresence(){
+  if(!currentUser) return;
+  try{
+    const ref = db.collection("onlineUsers").doc(currentUser);
+    await ref.set({
+      nickname: currentUser,
+      title: getCurrentTitle(),
+      updatedAtMillis: Date.now(),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, {merge:true});
+    const snap = await ref.get();
+    const serverStamp = snap.exists && snap.data().updatedAt;
+    if(serverStamp && typeof serverStamp.toMillis === "function"){
+      serverTimeOffsetMs = serverStamp.toMillis() - Date.now();
+      serverTimeAtSync = serverStamp.toMillis();
+      monotonicAtSync = typeof performance !== "undefined" ? performance.now() : 0;
+      hasServerTime = true;
+    }
+  }catch(e){
+    console.error(e);
+  }
+}
+
+function startOnlinePresence(){
+  if(!currentUser) return;
+  updateOnlinePresence();
+  if(onlinePresenceTimer) clearInterval(onlinePresenceTimer);
+  onlinePresenceTimer = setInterval(updateOnlinePresence, 20000);
+}
+
+function stopOnlinePresence(){
+  if(onlinePresenceTimer){
+    clearInterval(onlinePresenceTimer);
+    onlinePresenceTimer = null;
+  }
+  if(currentUser){
+    db.collection("onlineUsers").doc(currentUser).delete().catch(e=>console.error(e));
+  }
+}
+
+async function isUserOnline(nickname){
+  nickname = cleanNickname(nickname);
+  if(!nickname) return false;
+  try{
+    const snap = await db.collection("onlineUsers").doc(nickname).get();
+    if(!snap.exists) return false;
+    const data = snap.data() || {};
+    const stamp = data.updatedAt;
+    const updated = stamp && typeof stamp.toMillis === "function" ? stamp.toMillis() : Number(data.updatedAtMillis || 0);
+    const age = getTrustedNowMs() - updated;
+    return age >= 0 && age <= 45000;
+  }catch(e){
+    console.error(e);
+    return false;
+  }
+}
+
+function getPvpPreparedFishes(){
+  return pvpPrepIndexes
+    .map(i => bucket[i])
+    .filter(f => f && f.grade !== "쓰레기");
+}
+
+function cloneForPvp(f, levels){
+  const c = JSON.parse(JSON.stringify(f || {}));
+  const raw = JSON.parse(JSON.stringify(ensureCombatStats(f)));
+  const lv = levels || trainingLevels || {attack:0,hp:0,critDamage:0};
+
+  const baseAttack = Number(raw._baseAttack ?? raw.attack ?? 0);
+  const baseMaxHp = Number(raw._baseMaxHp ?? raw.maxHp ?? raw.hp ?? 1);
+  const baseCritDamage = Number(raw._baseCritDamage ?? raw.critDamage ?? 0);
+
+  raw.attack = Math.max(0, Math.floor(baseAttack * (1 + Number(lv.attack || 0) * 0.10)));
+  raw.maxHp = Math.max(1, Math.floor(baseMaxHp * (1 + Number(lv.hp || 0) * 0.10)));
+  raw.hp = raw.maxHp;
+  raw.critDamage = Math.floor(baseCritDamage + Number(lv.critDamage || 0) * 20);
+  raw.status = "정상";
+
+  c.combat = raw;
+  return c;
+}
+
+function buildPvpTeamFromIndexes(indexes, sourceBucket, levels){
+  const team = [];
+
+  (indexes || []).forEach(rawIndex => {
+    const idx = Number(rawIndex);
+    const f = sourceBucket[idx];
+
+    if(f && f.grade !== "쓰레기"){
+      team.push(cloneForPvp(f, levels));
+    }
+  });
+
+  return team.slice(0,3);
+}
+
+function pvpDisplayName(name,title){
+  return title ? "[" + title + "] " + name : name;
+}
+
+function pvpTeamLine(team){
+  return team.map((f,i)=>(i+1)+". "+pvpFishLabel(f)).join("\n");
+}
+
+function pvpAlive(team){
+  return team.find(f => f && f.combat && f.combat.hp > 0 && !f.combat._pvp?.gone);
+}
+
+function pvpFishLabel(f){
+  return activePvpFishLabeler ? activePvpFishLabeler(f) : color(lineFish(f), f.grade);
+}
+
+function pvpSubjectLabel(f){
+  return pvpFishLabel(f) + subjectParticle(lineFish(f));
+}
+
+function pvpHpBar(cur,max){
+  cur = Math.max(0, Math.floor(cur));
+  max = Math.max(1, Math.floor(max));
+  const ratio = Math.max(0, Math.min(1, cur / max));
+  const filled = Math.round(ratio * 10);
+  return "HP " + cur.toLocaleString() + " / " + max.toLocaleString() + "\n" +
+    "█".repeat(filled) + "░".repeat(10-filled) + " " + Math.floor(ratio*100) + "%";
+}
+
+function simulatePvpBattle({leftName,leftTitle,leftTeam,rightName,rightTitle,rightTeam}){
+  const left = (leftTeam || []).map(f => JSON.parse(JSON.stringify(f))).slice(0,3);
+  const right = (rightTeam || []).map(f => JSON.parse(JSON.stringify(f))).slice(0,3);
+  const allPvpFishes = left.concat(right);
+  setBattleDisplayNumbers(left);
+  setBattleDisplayNumbers(right);
+  const pvpSideByFish = new WeakMap();
+  left.forEach(f => pvpSideByFish.set(f, "left"));
+  right.forEach(f => pvpSideByFish.set(f, "right"));
+  const viewerSide = currentUser === rightName ? "right" : "left";
+  activePvpFishLabeler = f => {
+    if(!f) return "";
+    const side = pvpSideByFish.get(f);
+    const marker = side ? (side === viewerSide ? " (아군)" : " (적)") : "";
+    return color(lineFish(f) + marker, f.grade);
+  };
+  const state = {
+    left:{team:left,damage:0,lightPool:0,rewriteUsed:false,deletedAttackerId:"",deletedAttackerUntil:0,deletedAttackerUsed:false,sealNext:false,timePending:false,timeUsed:false,period:false,periodSentences:0,observedId:"",observedUntil:0,history:[],lastPair:""},
+    right:{team:right,damage:0,lightPool:0,rewriteUsed:false,deletedAttackerId:"",deletedAttackerUntil:0,deletedAttackerUsed:false,sealNext:false,timePending:false,timeUsed:false,period:false,periodSentences:0,observedId:"",observedUntil:0,history:[],lastPair:""}
+  };
+
+  allPvpFishes.forEach((f,i)=>{
+    if(!f.id) f.id = "pvp_" + i + "_" + Math.random().toString(36).slice(2);
+    const c=f.combat;
+    c._pvp={originalMaxHp:c.maxHp,originalCritDamage:c.critDamage};
+  });
+
+  let logText = "";
+  logText += "다중 대전 시작\n\n";
+  logText += pvpDisplayName(leftName,leftTitle) + "\n" + pvpTeamLine(left) + "\n\n";
+  logText += "VS\n\n";
+  logText += pvpDisplayName(rightName,rightTitle) + "\n" + pvpTeamLine(right) + "\n\n";
+  logText += "━━━━━━━━━━━━━━\n\n";
+
+  let turn = 1;
+  const firstSide = Math.random() < 0.5 ? "left" : "right";
+  logText += "선공 : " + (firstSide === "left" ? pvpDisplayName(leftName,leftTitle) : pvpDisplayName(rightName,rightTitle)) + "\n\n";
+  logText += "━━━━━━━━━━━━━━\n\n";
+
+  function sideTitle(side){ return side === "left" ? pvpDisplayName(leftName,leftTitle) : pvpDisplayName(rightName,rightTitle); }
+  function otherSide(side){ return side === "left" ? "right" : "left"; }
+  function teamOf(side){ return state[side].team; }
+  function alive(team){ return team.filter(f=>f&&f.combat&&f.combat.hp>0&&!f.combat._pvp?.gone); }
+  function livingSide(side){ return alive(teamOf(side)); }
+  function hasFish(side,name){ return livingSide(side).some(f=>f.name===name); }
+  function pvpState(f){ if(!f.combat._pvp) f.combat._pvp={originalMaxHp:f.combat.maxHp,originalCritDamage:f.combat.critDamage}; return f.combat._pvp; }
+  function pvpPreAttackText(f){
+    const stateText=getCyclingTraitStateText(f,pvpState(f));
+    return stateText ? stateText + "\n" : "";
+  }
+  function teamHpRate(side){
+    const max=teamOf(side).reduce((s,f)=>s+Number(f.combat?.maxHp||0),0);
+    const hp=teamOf(side).reduce((s,f)=>s+Math.max(0,Number(f.combat?.hp||0)),0);
+    return max>0?hp/max:0;
+  }
+  function snapshotSide(side){
+    return new Map(teamOf(side).map(f=>[f.id,{combat:JSON.parse(JSON.stringify(f.combat))}]));
+  }
+  function restoreSide(side,snap){
+    teamOf(side).forEach(f=>{
+      const s=snap&&snap.get(f.id); if(!s)return;
+      f.combat=JSON.parse(JSON.stringify(s.combat));
+    });
+  }
+  function restorePvpHealthAndStatuses(f,snap){
+    if(!f||!snap||!snap.combat)return;
+    const past=snap.combat,c=f.combat;
+    c.hp=Math.max(0,Math.min(c.maxHp,Number(past.hp||0)));
+    c.status=past.status||"정상";
+    ["whiteFlame","burnStacks","poisonStacks","azhiCurses","ratatoskrRedirect"].forEach(key=>{
+      if(past[key]!==undefined)c[key]=JSON.parse(JSON.stringify(past[key]));
+      else delete c[key];
+    });
+  }
+  function clearOnePvpStatus(f){
+    const c=f&&f.combat;if(!c)return "";
+    if(c.whiteFlame){delete c.whiteFlame;return "백염";}
+    if(c.burnStacks){delete c.burnStacks;return "화상";}
+    if(c.poisonStacks){delete c.poisonStacks;return "독";}
+    const curse=Object.keys(c.azhiCurses||{}).find(k=>c.azhiCurses[k]);
+    if(curse){delete c.azhiCurses[curse];return "재앙";}
+    if(c.ratatoskrRedirect){delete c.ratatoskrRedirect;return "이간질";}
+    if(c.status&&c.status!=="정상"){const removed=c.status;c.status="정상";return removed;}
+    return "";
+  }
+  function getStormEye(side){
+    if(!hasFish(side,"휘몰아치는 마음")) return null;
+    return livingSide(side).sort((a,b)=>Number(a.combat.attack||0)-Number(b.combat.attack||0))[0]||null;
+  }
+  function chooseTarget(defSide){
+    let candidates=livingSide(defSide).filter(f=>!pvpState(f).ashRemnant);
+    const eye=getStormEye(defSide);
+    if(eye&&candidates.length>1)candidates=candidates.filter(f=>f!==eye);
+    if(candidates.length===0)return null;
+    return candidates[Math.floor(Math.random()*candidates.length)];
+  }
+  function registerPvpStatus(side){
+    const dragon=livingSide(side).find(f=>f.name==="청룡"); if(!dragon)return "";
+    const st=pvpState(dragon); st.raindrops=Number(st.raindrops||0)+1;
+    if(st.raindrops<3)return "";
+    st.raindrops=0;
+    const logs=[];
+    livingSide(side).forEach(f=>{
+      const c=f.combat,heal=Math.floor(c.maxHp*0.1);
+      const removed=clearOnePvpStatus(f);
+      c.hp=Math.min(c.maxHp,c.hp+heal);
+      logs.push(pvpFishLabel(f)+(removed?" · "+removed+" 해제":"")+" · "+heal.toLocaleString()+" 회복");
+    });
+    return traitUseByFish(dragon, logs.join("\n"))+"\n\n";
+  }
+  function pvpIncoming(defSide,target,raw,attacker,atkSide){
+    const c=target.combat, st=pvpState(target);
+    let dmg=Math.max(0,Math.floor(raw)), extraLog="";
+    if(target.name==="금빛 보름달 드래곤"&&st.moonPhase===0)dmg=Math.floor(dmg*0.8);
+    if(target.name==="불타는 마음"&&getBurningHeartStageByCombat(c)>=3)dmg=Math.floor(dmg*1.2);
+    if(target.name==="기묘한 기운 🌀"&&dmg>Number(c.attack||0)&&Math.random()<0.2){
+      st.numericStored=dmg; dmg=Math.max(0,Math.floor(c.attack||0));
+      extraLog+=traitUseByFish(target, "받을 피해와 공격 수치가 뒤바뀌었습니다.")+"\n\n";
+    }
+    const letters=hasFish(defSide,"잃어버린 첫 번째 편지 조각 ✉️")&&hasFish(defSide,"잃어버린 두 번째 편지 조각 ✉️")&&hasFish(defSide,"잃어버린 세 번째 편지 조각 ✉️");
+    if(dmg>=c.hp&&letters&&!state[defSide].rewriteUsed){
+      state[defSide].rewriteUsed=true; dmg=0;
+      extraLog+=traitUseByFish(livingSide(defSide).find(f=>f.name==="잃어버린 첫 번째 편지 조각 ✉️"), pvpSubjectLabel(target)+" 쓰러지는 사건이 삭제되었습니다.", "다시 쓰인 편지")+"\n\n";
+    }else if(dmg>=c.hp&&target.name==="잿빛 밤하늘 드래곤"&&!st.ashUsed){
+      st.ashUsed=true; st.ashRemnant=true; st.ashTurns=3; dmg=Math.max(0,c.hp-1);
+      extraLog+=traitUseByFish(target, pvpFishLabel(target)+"\n3턴 동안 재의 잔영으로 남습니다.")+"\n\n";
+    }else if(dmg>=c.hp&&hasFish(defSide,"빛나는 마음")){
+      const required=Math.max(1,Math.floor(c.maxHp*0.3));
+      if(state[defSide].lightPool>=required){
+        state[defSide].lightPool-=required; dmg=Math.max(0,c.hp-1);st.afterHeal=required;st.skipLightGain=true;
+        extraLog+=traitUseByFish(livingSide(defSide).find(f=>f.name==="빛나는 마음"), pvpFishLabel(target)+"의 죽음을 막고 "+required.toLocaleString()+" 회복합니다.")+"\n\n";
+      }
+    }
+    return {dmg,extraLog};
+  }
+  function applyPvpDamage(defSide,target,raw,attacker,atkSide,reason){
+    if(!target||!target.combat||target.combat.hp<=0)return "";
+    const before=target.combat.hp;
+    const inc=pvpIncoming(defSide,target,raw,attacker,atkSide);
+    target.combat.hp=Math.max(0,target.combat.hp-inc.dmg);
+    if(pvpState(target).afterHeal){target.combat.hp=Math.min(target.combat.maxHp,target.combat.hp+pvpState(target).afterHeal);delete pvpState(target).afterHeal;}
+    const actual=Math.min(before,inc.dmg);
+    if(actual>0)state[atkSide].damage+=actual;
+    if(actual>0&&!pvpState(target).skipLightGain&&hasFish(defSide,"빛나는 마음"))state[defSide].lightPool+=Math.floor(actual*0.25);
+    delete pvpState(target).skipLightGain;
+    if(target.name==="무한한 시간"&&target.combat.hp<=0&&!state[defSide].timeUsed)state[defSide].timePending=true;
+    const reasonLine = reason === "" ? "" : (reason || "피해") + "\n";
+    let s=inc.extraLog+reasonLine+inc.dmg.toLocaleString()+" 피해\n\n"+pvpFishLabel(target)+"\n"+pvpHpBar(target.combat.hp,target.combat.maxHp)+"\n\n";
+    if(attacker&&actual>0){
+      const st=pvpState(target);
+      if(st.lastAttackerId===attacker.id&&target.name==="흑룡"){
+        const reflect=Math.floor(actual*0.3);
+        st.scaleEmpowered=true;
+        if(reflect>0){
+          s+=applyPvpDamage(atkSide,attacker,reflect,null,defSide,traitUseByFish(target, "역린이 피해를 반사했습니다."));
+        }
+        s+=traitUseByFish(target, "다음 공격이 강화됩니다.")+"\n\n";
+      }
+      st.lastAttackerId=attacker.id;
+    }
+    if(target.combat.hp<=0)s+=pvpFishLabel(target)+" 쓰러짐\n\n";
+    return s;
+  }
+  function attackValue(side,f){
+    const c=f.combat,st=pvpState(f);
+    let atk=Number(c.attack||1),critDmg=Number(c.critDamage||150),mult=1,extra=0,replaced=false,preLog="";
+    if(st.ashRemnant)mult*=0.5;
+    if(f.name==="핏빛 초승달 드래곤"){
+      const cost=Math.min(Math.max(0,c.hp-1),Math.floor(c.hp*0.05)); c.hp-=cost; extra+=Math.floor(cost*1.5);
+      if(cost>0)preLog+=traitUseByFish(f, "체력 "+cost.toLocaleString()+" 소모")+"\n\n";
+    }
+    if(f.name==="금빛 보름달 드래곤"&&st.moonPhase===2)mult*=1.5;
+    if(st.ascended)mult*=1.3;
+    if(st.scaleEmpowered){mult*=1.5;delete st.scaleEmpowered;}
+    if(f.name==="해신룡"&&st.tideHigh)mult*=st.tideStored?1.7:1.4;
+    if(f.name==="불타는 마음"){
+      st.heartbeatCost=consumeBurningHeartHp(c);
+      const stage=getBurningHeartStageByCombat(c);
+      st.heartbeatStage=stage;
+      if(stage===1){mult*=1.15;critDmg+=30;}
+      else if(stage===2){mult*=1.25;critDmg+=60;}
+      else if(stage>=3){mult*=1.35;critDmg+=100;}
+    }
+    if(f.name==="바다를 삼킨 태양")mult*=[1.1,1.2,1.35,1.5,1.8][Math.max(0,Number(st.sunStage||1)-1)];
+    if(Number(st.observedWeakUntil||0)>=turn)mult*=0.8;
+    const eye=getStormEye(side); if(eye&&eye!==f){extra+=Math.floor(Number(eye.combat.attack||0)*0.2);preLog+=traitUseByFish(livingSide(side).find(x=>x.name==="휘몰아치는 마음"), pvpFishLabel(eye)+"가 폭풍의 중심이 되어 이번 공격에 힘을 보탰습니다.")+"\n\n";}
+    if(st.numericStored){atk=st.numericStored;mult=1;extra=0;replaced=true;delete st.numericStored;}
+    return {atk,critDmg,mult,extra,replaced,preLog};
+  }
+  function recordOutcome(side,outcome,enemySide,logParts){
+    const galaxy=livingSide(side).find(f=>f.name==="호수에 비친 은하수");
+    if(galaxy){
+      const st=pvpState(galaxy); if(!st.constellation)st.constellation={hit:false,crit:false,miss:false}; st.constellation[outcome]=true;
+      if(st.constellation.hit&&st.constellation.crit&&st.constellation.miss){
+        st.constellation={hit:false,crit:false,miss:false};
+        const raw=livingSide(side).reduce((sum,f)=>sum+Math.floor(Number(f.combat.attack||0)*0.3),0);
+        const target=chooseTarget(enemySide);
+        if(target)logParts.push(applyPvpDamage(enemySide,target,raw,null,side,traitUseByFish(galaxy, "일반 적중, 치명타, 빗나감을 모두 기록해 별자리가 완성되었습니다.\n살아 있는 아군의 힘이 별빛으로 이어집니다.")));
+      }
+    }
+    const wish=livingSide(side).find(f=>f.name==="호수에 비친 별");
+    if(wish){
+      const st=pvpState(wish);
+      if(st.wish===outcome){st.wishCount++;const need=outcome==="crit"?3:outcome==="dodge"?2:1;if(st.wishCount>=need){state[enemySide].sealNext=true;st.wish="";st.wishCount=0;logParts.push(traitUseByFish(wish, "소원 성취\n상대의 다음 공격 1회를 봉인합니다.")+"\n\n");}}
+    }
+    if(state[side].period&&(outcome==="hit"||outcome==="crit")&&pvpAlive(teamOf(enemySide))){
+      state[side].periodSentences=Math.min(5,Number(state[side].periodSentences||0)+(outcome==="crit"?2:1));
+      logParts.push(traitUseByFish(teamOf(side).find(f=>f.name==="잃어버린 세 번째 편지 조각 ✉️"), "문장 "+state[side].periodSentences+" / 5")+"\n\n");
+      if(state[side].periodSentences>=5){
+        teamOf(enemySide).forEach(f=>f.combat.hp=0);
+        logParts.push("마지막 문장에 마침표가 찍혔습니다.\n"+sideTitle(enemySide)+subjectParticle(sideTitle(enemySide))+" 전투에서 사라졌습니다.\n\n");
+      }
+    }
+  }
+  function afterHit(side,f,enemySide,target,logParts){
+    if(!f||!f.combat||f.combat.hp<=0)return;
+    if(f.name==="푸른 눈의 백염룡"&&target&&target.combat.hp>0){
+      target.combat.whiteFlame=Number(target.combat.whiteFlame||0)+1;
+      logParts.push(registerPvpStatus(enemySide));
+      if(target.combat.whiteFlame>=3){target.combat.whiteFlame=0;logParts.push(applyPvpDamage(enemySide,target,Number(f.combat.attack||0)*1.5,null,side,traitUseByFish(f, "백염이 3중첩이 되어 폭발했습니다.")));}
+      else logParts.push(traitUseByFish(f, "백염 "+target.combat.whiteFlame+" / 3")+"\n\n");
+    }
+    if(f.name==="해신룡"){
+      const st=pvpState(f);
+      if(st.tideHigh&&target&&target.combat.hp>0){logParts.push(applyPvpDamage(enemySide,target,Number(f.combat.attack||0)*0.4,null,side,traitUseByFish(f, "밀물의 파도가 이어져 추가 피해가 들어갑니다.")));st.tideStored=false;}
+      else if(!st.tideHigh)st.tideStored=true;
+    }
+    if(f.name==="바다를 삼킨 태양"&&pvpState(f).sunStage===5){const t=chooseTarget(enemySide);if(t)logParts.push(applyPvpDamage(enemySide,t,Number(f.combat.attack||0)*2,null,side,traitUseByFish(f, "태양 주기가 태양 폭발 단계에 도달했습니다.")));}
+    if(f.name==="불타는 마음"&&Number(pvpState(f).heartbeatStage||0)>=2){
+      const stage=Number(pvpState(f).heartbeatStage||0), t=chooseTarget(enemySide);
+      const chance=stage>=3?0.5:0.3, ratio=stage>=3?0.5:0.4;
+      if(t&&Math.random()<chance)logParts.push(applyPvpDamage(enemySide,t,Number(f.combat.attack||0)*ratio,null,side,traitUseByFish(f, "심장이 한 번 더 뛰었습니다.")));
+    }
+    if(f.name==="불타는 마음"&&Number(pvpState(f).heartbeatStage||0)>=3){
+      const c=f.combat,cap=Math.floor(c.maxHp*0.3);
+      if(c.hp>0&&c.hp<cap&&Math.random()<0.25){
+        const heal=Math.min(Math.floor(c.hp*0.3),cap-c.hp);
+        if(heal>0){c.hp=Math.min(cap,c.hp+heal);logParts.push(traitUseByFish(f, "꺼져가던 심장이 다시 불붙었습니다.\n체력 "+heal.toLocaleString()+" 회복")+"\n\n");}
+      }
+    }
+  }
+  function startPvpTurn(side){
+    const stSide=state[side];
+    const turnLogs=[];
+    stSide.history.push({turn,states:snapshotSide(side)}); if(stSide.history.length>7)stSide.history.shift();
+    const wish=livingSide(side).find(f=>f.name==="호수에 비친 별");
+    if(wish&&!pvpState(wish).wish){
+      const st=pvpState(wish),kinds=["crit","dodge","low"];
+      st.wish=kinds[Math.floor(Math.random()*kinds.length)];st.wishCount=0;
+      const label=st.wish==="crit"?"아군 치명타 3회":st.wish==="dodge"?"아군 회피 2회":"빈사 상태로 1턴 생존";
+      turnLogs.push(traitUseByFish(wish, "목표 : "+label)+"\n\n");
+    }
+    if(turn%4===0&&hasFish(side,"호수에 비친 달")){
+      const past=stSide.history.find(x=>x.turn===turn-2);
+      const target=livingSide(side).sort((a,b)=>a.combat.hp/a.combat.maxHp-b.combat.hp/b.combat.maxHp)[0];
+      if(past&&target&&past.states.get(target.id)){
+        restorePvpHealthAndStatuses(target,past.states.get(target.id));
+        turnLogs.push(traitUseByFish(livingSide(side).find(f=>f.name==="호수에 비친 달"), pvpFishLabel(target)+"\n2턴 전 상태를 되찾았습니다.")+"\n\n");
+      }
+    }
+    livingSide(side).forEach(f=>{
+      const c=f.combat,st=pvpState(f);
+      if(f.name==="이무기"&&turn>=7&&!st.ascended){
+        st.ascended=true;const oldMax=c.maxHp;c.maxHp=Math.floor(oldMax*1.2);c.hp=Math.min(c.maxHp,c.hp+Math.floor(oldMax*0.3));
+        turnLogs.push(traitUseByFish(f, pvpFishLabel(f)+"\n최대 체력 20% 증가, 체력 30% 회복, 공격력과 회피율이 상승했습니다.")+"\n\n");
+      }
+      if(f.name==="금빛 보름달 드래곤"){
+        st.moonPhase=(turn-1)%3;
+        if(st.moonPhase===1){
+          const t=livingSide(side).sort((a,b)=>a.combat.hp/a.combat.maxHp-b.combat.hp/b.combat.maxHp)[0];
+          if(t){const heal=Math.floor(t.combat.maxHp*0.1);t.combat.hp=Math.min(t.combat.maxHp,t.combat.hp+heal);turnLogs.push(traitUseByFish(f,"반달\n"+pvpFishLabel(t)+" "+heal.toLocaleString()+" 회복")+"\n\n");}
+        }else if(st.moonPhase===2){
+          const t=livingSide(side).find(x=>clearOnePvpStatus(x));
+          if(t)turnLogs.push(traitUseByFish(f,"보름달\n"+pvpFishLabel(t)+"의 상태이상을 해제했습니다.")+"\n\n");
+        }
+      }
+      if(f.name==="바다를 삼킨 태양")st.sunStage=((turn-1)%5)+1;
+      if(f.name==="해신룡")st.tideHigh=turn%2===1;
+    });
+    return turnLogs.join("");
+  }
+  function sideAttack(side){
+    const enemySide=otherSide(side);
+    const sideLog=[];
+    if(turn%4===0&&hasFish(enemySide,"잃어버린 두 번째 편지 조각 ✉️")){
+      return traitUseByFish(livingSide(enemySide).find(f=>f.name==="잃어버린 두 번째 편지 조각 ✉️"), sideTitle(side)+"의 이번 페이지에는 아무 내용도 적혀 있지 않습니다.\n이번 턴에 행동하지 못합니다.")+"\n\n";
+    }
+    sideLog.push('<span style="font-weight:700">' + sideTitle(side) + '의 턴</span>\n\n');
+    const attackers=livingSide(side).slice();
+    for(const attacker of attackers){
+      if(!attacker.combat||attacker.combat.hp<=0||pvpState(attacker).ashRemnant&&pvpState(attacker).ashTurns<=0)continue;
+      const firstLetter=livingSide(enemySide).find(f=>f.name==="잃어버린 첫 번째 편지 조각 ✉️");
+      if(state[enemySide].deletedAttackerId===attacker.id&&turn<=state[enemySide].deletedAttackerUntil){
+        sideLog.push(traitUseByFish(teamOf(enemySide).find(f=>f.name==="잃어버린 첫 번째 편지 조각 ✉️"), pvpFishLabel(attacker)+"의 공격이 이야기에서 삭제되어 사용할 수 없습니다.")+"\n\n");continue;
+      }
+      if(firstLetter&&!state[enemySide].deletedAttackerUsed){
+        state[enemySide].deletedAttackerUsed=true;state[enemySide].deletedAttackerId=attacker.id;state[enemySide].deletedAttackerUntil=turn+3;
+        sideLog.push(traitUseByFish(firstLetter, pvpFishLabel(attacker)+"의 공격이 이야기에서 삭제되어 3턴 동안 사용할 수 없습니다.")+"\n\n");continue;
+      }
+      if(state[side].sealNext){state[side].sealNext=false;sideLog.push(traitUseByFish(livingSide(enemySide).find(f=>f.name==="호수에 비친 별"), pvpFishLabel(attacker)+"의 공격이 봉인되었습니다.")+"\n\n");continue;}
+      if(state[enemySide].observedId===attacker.id&&turn<=state[enemySide].observedUntil&&hasFish(enemySide,"수상한 기운 👁️")){
+        const observer=livingSide(enemySide).find(f=>f.name==="수상한 기운 👁️"),healLogs=[];
+        livingSide(enemySide).forEach(ally=>{const heal=Math.max(1,Math.floor(ally.combat.maxHp*0.15)),removed=clearOnePvpStatus(ally);ally.combat.hp=Math.min(ally.combat.maxHp,ally.combat.hp+heal);healLogs.push(pvpFishLabel(ally)+(removed?" · "+removed+" 해제":"")+" · "+heal.toLocaleString()+" 회복");});
+        pvpState(attacker).observedWeakUntil=turn+3;state[enemySide].observedId="";state[enemySide].observedUntil=0;
+        sideLog.push(traitUseByFish(observer, pvpFishLabel(attacker)+"의 공격 효과가 뒤집혔습니다.\n"+healLogs.join("\n")+"\n"+pvpFishLabel(attacker)+"의 공격력이 3턴 동안 20% 감소합니다.")+"\n\n");continue;
+      }
+      const target=chooseTarget(enemySide); if(!target)break;
+      const pair=attacker.id+":"+target.id;
+      if(hasFish(enemySide,"얼어붙은 마음")&&state[enemySide].lastPair===pair){state[enemySide].lastPair="";sideLog.push(traitUseByFish(livingSide(enemySide).find(f=>f.name==="얼어붙은 마음"), "같은 공격 흐름이 얼어붙어 "+pvpFishLabel(attacker)+"의 공격이 취소되었습니다.")+"\n\n");continue;}
+      state[enemySide].lastPair=pair;
+      const av=attackValue(side,attacker); sideLog.push(av.preLog); sideLog.push(pvpPreAttackText(attacker));
+      let dodge=Number(target.combat.dodge||0);
+      if(livingSide(side).some(f=>f.name==="바다를 삼킨 태양"&&pvpState(f).sunStage===3))dodge=0;
+      if(livingSide(side).some(f=>f.name==="해신룡"&&pvpState(f).tideHigh))dodge=Math.max(0,dodge-10);
+      if(target.name==="해신룡"&&!pvpState(target).tideHigh)dodge+=15;
+      if(Math.random()*100<dodge){sideLog.push(pvpFishLabel(attacker)+" 공격\n"+pvpFishLabel(target)+" 회피!\n\n");recordOutcome(side,"miss",enemySide,sideLog);recordOutcome(enemySide,"dodge",side,sideLog);continue;}
+      let dmg=av.replaced?av.atk:av.atk;
+      const crit=!av.replaced&&Math.random()*100<Number(attacker.combat.critRate||0);
+      if(crit)dmg=Math.floor(dmg*av.critDmg/100);
+      dmg=Math.max(1,Math.floor(dmg*av.mult+av.extra));
+      if(state[enemySide].period)dmg=Math.floor(dmg*1.3);
+      sideLog.push(pvpFishLabel(attacker)+" 공격!\n"+(crit?"치명타!\n\n":"\n"));
+      if(hasFish(enemySide,"영롱한 다이아몬드")&&!state[enemySide].diamondUsed){
+        state[enemySide].diamondUsed=true;
+        const targets=livingSide(enemySide);
+        const split=Math.max(1,Math.floor(dmg*0.7/targets.length));
+        sideLog.push(traitUseByFish(livingSide(enemySide).find(f=>f.name==="영롱한 다이아몬드"), "피해를 30% 줄이고 분산합니다.")+"\n\n");
+        targets.forEach(t=>sideLog.push(applyPvpDamage(enemySide,t,split,attacker,side,pvpFishLabel(attacker)+"의 굴절 공격")));
+      }else sideLog.push(applyPvpDamage(enemySide,target,dmg,attacker,side,""));
+      recordOutcome(side,crit?"crit":"hit",enemySide,sideLog);
+      if(attacker.combat&&attacker.combat.hp>0) afterHit(side,attacker,enemySide,target,sideLog);
+      if(hasFish(enemySide,"수상한 기운 👁️")&&(!state[enemySide].observedId||turn>state[enemySide].observedUntil)){
+        state[enemySide].observedId=attacker.id;state[enemySide].observedUntil=turn+3;
+        sideLog.push(traitUseByFish(livingSide(enemySide).find(f=>f.name==="수상한 기운 👁️"), pvpFishLabel(attacker)+"의 공격을 3턴 동안 관측합니다.")+"\n\n");
+      }
+      if(!pvpAlive(teamOf(enemySide)))break;
+    }
+    if(hasFish(side,"황룡")){
+      const al=livingSide(side).filter(f=>!pvpState(f).ashRemnant),total=al.reduce((s,f)=>s+f.combat.hp,0),maxTotal=al.reduce((s,f)=>s+f.combat.maxHp,0);
+      if(al.length&&maxTotal>0){let leftHp=total;al.forEach((f,i)=>{const v=i===al.length-1?leftHp:Math.floor(total*f.combat.maxHp/maxTotal);f.combat.hp=Math.max(1,Math.min(f.combat.maxHp,v));leftHp-=f.combat.hp;});sideLog.push(traitUseByFish(livingSide(side).find(f=>f.name==="황룡"), "아군 체력을 재분배했습니다.")+"\n\n");}
+    }
+    return sideLog.join("");
+  }
+  function finishPvpTurn(){
+    ["left","right"].forEach(side=>{
+      state[side].diamondUsed=false;
+      const lowLogs=[];
+      livingSide(side).forEach(f=>{
+        const st=pvpState(f);
+        if(st.ashRemnant){st.ashTurns--;if(st.ashTurns<=0){f.combat.hp=0;st.gone=true;}}
+        if(f.combat.hp>0&&f.combat.hp/f.combat.maxHp<=0.15)recordOutcome(side,"low",otherSide(side),lowLogs);
+      });
+      if(lowLogs.length)logText+=lowLogs.join("");
+      const enemy=otherSide(side);
+      if(!state[side].period&&hasFish(side,"잃어버린 세 번째 편지 조각 ✉️")&&teamHpRate(enemy)<=0.15&&pvpAlive(teamOf(enemy))){
+        state[side].period=true;state[side].periodSentences=0;
+        logText+=traitUseByFish(livingSide(side).find(f=>f.name==="잃어버린 세 번째 편지 조각 ✉️"), sideTitle(enemy)+"의 마지막 문장이 시작되었습니다.\n문장 0 / 5\n상대의 공격력이 30% 증가합니다.")+"\n\n";
+      }
+    });
+    ["left","right"].forEach(side=>{
+      const timeFish=teamOf(side).find(f=>f.name==="무한한 시간");
+      if(timeFish&&timeFish.combat.hp<=0&&!state[side].timeUsed)state[side].timePending=true;
+      if(state[side].timePending&&!state[side].timeUsed&&state[side].history.length){
+        const target=state[side].history.find(x=>x.turn===turn-5)||state[side].history[0];
+        if(target&&timeFish){state[side].timeUsed=true;state[side].timePending=false;restoreSide(side,target.states);const rewound=Math.max(0,turn-target.turn);logText+=traitUseByFish(timeFish, "무한한 시간의 죽음과 함께 시간이 되감겼습니다.\n파티가 "+rewound+"턴 전 상태로 돌아왔습니다.")+"\n\n";}
+      }
+    });
+  }
+
+  while(pvpAlive(left) && pvpAlive(right) && turn <= 200){
+    logText += "턴 " + turn + "\n\n";
+    logText += startPvpTurn("left"); logText += startPvpTurn("right");
+    const order = firstSide === "left" ? ["left","right"] : ["right","left"];
+    for(const side of order){
+      if(!pvpAlive(teamOf(side))||!pvpAlive(teamOf(otherSide(side))))break;
+      logText += sideAttack(side);
+    }
+    finishPvpTurn();
+    logText += "━━━━━━━━━━━━━━\n\n";
+    turn++;
+  }
+
+  const leftWin = !!pvpAlive(left) && !pvpAlive(right);
+  const rightWin = !!pvpAlive(right) && !pvpAlive(left);
+  let winner = "무승부";
+  if(leftWin) winner = pvpDisplayName(leftName,leftTitle);
+  if(rightWin) winner = pvpDisplayName(rightName,rightTitle);
+
+  const summary =
+    "대전 결과\n\n" +
+    "승자 : " + winner + "\n" +
+    "전투 방식 : 다중 전투\n" +
+    "총 턴 : " + Math.min(turn,200) + "\n" +
+    pvpDisplayName(leftName,leftTitle) + " 피해량 : " + state.left.damage.toLocaleString() + "\n" +
+    pvpDisplayName(rightName,rightTitle) + " 피해량 : " + state.right.damage.toLocaleString();
+
+  logText += "전투 종료\n\n" + summary;
+  clearBattleDisplayNumbers(allPvpFishes);
+  activePvpFishLabeler = null;
+  return {summary, fullLog:logText};
+}
+
+function printPvpResultPreview(summary, fullLog){
+  printPreview("대전 결과", summary, "대전 전체보기", fullLog);
+}
+
+function swapPvpPerspectiveLog(fullLog){
+  return String(fullLog || "")
+    .replaceAll("(아군)", "__PVP_ALLY__")
+    .replaceAll("(적)", "(아군)")
+    .replaceAll("__PVP_ALLY__", "(적)");
+}
+
+async function requestPvp(nickname){
+  if(!currentUser) return print("로그인 후 사용 가능합니다.");
+
+  nickname = cleanNickname(nickname);
+  if(!nickname) return print("사용법 : 대전 닉네임");
+  if(nickname === currentUser) return print("자기 자신에게는 대전을 신청할 수 없습니다.");
+
+  try{
+    const userSnap = await db.collection("users").doc(nickname).get();
+    if(!userSnap.exists) return print("존재하지 않는 닉네임입니다.");
+
+    const online = await isUserOnline(nickname);
+    if(!online) return print("현재 접속 중인 유저가 아닙니다.");
+
+    const myActive = await getMyActivePvp();
+    if(myActive) return print("이미 진행 중인 대전이 있습니다.\n\n대전취소 로 취소할 수 있습니다.");
+
+    const targetActiveSnap = await db.collection("pvpActive").doc(nickname).get();
+    if(targetActiveSnap.exists){
+      const targetActive = targetActiveSnap.data() || {};
+      if(!["cancelled","finished","rejected"].includes(targetActive.status)){
+        return print("상대가 대전중인 상태입니다.");
+      }
+    }
+
+    const roomId = getPvpDocId(currentUser, nickname);
+    const roomRef = db.collection("pvpRooms").doc(roomId);
+    const oldRoomSnap = await roomRef.get();
+    if(oldRoomSnap.exists && (oldRoomSnap.data() || {}).status === "requested"){
+      return print("이미 대전 신청을 보냈습니다.");
+    }
+
+    await roomRef.set({
+      roomId,
+      from: currentUser,
+      fromTitle: getCurrentTitle(),
+      to: nickname,
+      toTitle: "",
+      users: [currentUser, nickname],
+      status: "requested",
+      createdAtMillis: Date.now(),
+      updatedAtMillis: Date.now(),
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    await setBothActivePvp(roomId, currentUser, nickname, {
+      status:"requested",
+      requester:currentUser,
+      accepted:false,
+      ready:false,
+      prepIndexes:[],
+      updatedAtMillis:Date.now()
+    });
+
+    await db.collection("serverAlerts").add({
+      type:"pvpRequest",
+      roomId,
+      from:currentUser,
+      fromTitle:getCurrentTitle(),
+      to:nickname,
+      createdAtMillis:Date.now(),
+      createdAt:firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    pvpPrepIndexes = [];
+    saveGame();
+    print(nickname + " 님에게 대전 신청을 보냈습니다.\n\n상대가 대전수락 하면 대전준비를 할 수 있습니다.");
+  }catch(e){
+    console.error(e);
+    print("대전 신청 중 오류가 발생했습니다.");
+  }
+}
+
+async function acceptLatestPvpRequest(){
+  if(!currentUser) return print("로그인 후 사용 가능합니다.");
+  try{
+    const active = await getMyActivePvp();
+    if(!active || active.status !== "requested" || active.requester === currentUser){
+      return print("수락할 대전 신청이 없습니다.");
+    }
+
+    const roomRef = db.collection("pvpRooms").doc(active.roomId);
+    const roomSnap = await roomRef.get();
+    if(!roomSnap.exists) return print("대전 신청을 찾을 수 없습니다.");
+    const room = roomSnap.data() || {};
+    if(room.status !== "requested") return print("이미 처리된 대전 신청입니다.");
+
+    await roomRef.set({
+      status:"accepted",
+      acceptedAtMillis:Date.now(),
+      updatedAtMillis:Date.now(),
+      toTitle:getCurrentTitle(),
+      [currentUser + "_ready"]: false,
+      [room.from + "_ready"]: false,
+      [currentUser + "_team"]: [],
+      [room.from + "_team"]: []
+    }, {merge:true});
+
+    await setBothActivePvp(active.roomId, room.from, room.to, {
+      status:"accepted",
+      requester:room.from,
+      accepted:true,
+      ready:false,
+      prepIndexes:[],
+      updatedAtMillis:Date.now()
+    });
+
+    await db.collection("serverAlerts").add({
+      type:"pvpAccepted",
+      roomId:active.roomId,
+      from:currentUser,
+      fromTitle:getCurrentTitle(),
+      to:room.from,
+      createdAtMillis:Date.now(),
+      createdAt:firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    pvpPrepIndexes = [];
+    saveGame();
+    print("대전을 수락했습니다.\n\n이제 대전준비 번호 로 물고기를 고르고 대전준비완료 를 입력하세요.");
+  }catch(e){
+    console.error(e);
+    print("대전 수락 중 오류가 발생했습니다.");
+  }
+}
+
+async function rejectLatestPvpRequest(){
+  if(!currentUser) return print("로그인 후 사용 가능합니다.");
+  try{
+    const active = await getMyActivePvp();
+    if(!active || active.status !== "requested" || active.requester === currentUser){
+      return print("거절할 대전 신청이 없습니다.");
+    }
+
+    const roomRef = db.collection("pvpRooms").doc(active.roomId);
+    const roomSnap = await roomRef.get();
+    if(roomSnap.exists){
+      const room = roomSnap.data() || {};
+      await roomRef.set({status:"rejected", rejectedAtMillis:Date.now(), updatedAtMillis:Date.now()}, {merge:true});
+      await clearBothActivePvp(room.from, room.to);
+      await db.collection("serverAlerts").add({
+        type:"pvpRejected",
+        from:currentUser,
+        fromTitle:getCurrentTitle(),
+        to:room.from,
+        createdAtMillis:Date.now(),
+        createdAt:firebase.firestore.FieldValue.serverTimestamp()
+      });
+    }else{
+      await getMyActivePvpRef().delete();
+    }
+
+    print("대전 신청을 거절했습니다.");
+  }catch(e){
+    console.error(e);
+    print("대전 거절 중 오류가 발생했습니다.");
+  }
+}
+
+async function cancelPvpRequest(){
+  if(!currentUser) return print("로그인 후 사용 가능합니다.");
+  try{
+    const active = await getMyActivePvp();
+    if(!active) return print("취소할 대전이 없습니다.");
+
+    const roomRef = db.collection("pvpRooms").doc(active.roomId);
+    const roomSnap = await roomRef.get();
+    if(!roomSnap.exists){
+      await getMyActivePvpRef().delete();
+      return print("대전 상태를 정리했습니다.");
+    }
+
+    const room = roomSnap.data() || {};
+    const opponent = currentUser === room.from ? room.to : room.from;
+
+    await roomRef.set({status:"cancelled", cancelledBy:currentUser, cancelledAtMillis:Date.now(), updatedAtMillis:Date.now()}, {merge:true});
+    await clearBothActivePvp(room.from, room.to);
+
+    await db.collection("serverAlerts").add({
+      type:"pvpCancelled",
+      from:currentUser,
+      fromTitle:getCurrentTitle(),
+      to:opponent,
+      createdAtMillis:Date.now(),
+      createdAt:firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    pvpPrepIndexes = [];
+    saveGame();
+    print("대전을 취소했습니다.");
+  }catch(e){
+    console.error(e);
+    print("대전 취소 중 오류가 발생했습니다.");
+  }
+}
+
+async function preparePvpFish(n){
+  const active = await getMyActivePvp();
+  if(!active || active.status !== "accepted"){
+    return print("대전이 성립된 후에 준비할 수 있습니다.\\n\\n먼저 대전 닉네임 또는 대전수락 을 진행하세요.");
+  }
+
+  const displayNo = Number(n);
+  if(!Number.isInteger(displayNo) || displayNo < 1){
+    return print("사용법 : 대전준비 양동이번호");
+  }
+
+  const idx = getBucketIndexByDisplayNumber(displayNo);
+  const f = bucket[idx];
+
+  if(idx < 0 || !f) return print("존재하지 않는 양동이 번호입니다.");
+  if(f.grade === "쓰레기") return print("쓰레기는 대전에 참가할 수 없습니다.");
+
+  if(pvpPrepIndexes.includes(idx)){
+    return print("이미 대전 준비된 물고기입니다.\\n\\n양동이 " + displayNo + "번\\n" + color(lineFish(f), f.grade));
+  }
+
+  if(pvpPrepIndexes.length >= 3){
+    return print("대전에는 최대 3마리까지만 출전할 수 있습니다.");
+  }
+
+  pvpPrepIndexes.push(idx);
+  saveGame();
+
+  await getMyActivePvpRef().set({
+    prepIndexes:pvpPrepIndexes,
+    ready:false,
+    updatedAtMillis:Date.now()
+  }, {merge:true});
+
+  print("대전 준비 완료\n\n" + color(lineFish(f), f.grade));
+}
+
+async function unpreparePvpFish(n){
+  const active = await getMyActivePvp();
+  if(!active || active.status !== "accepted"){
+    return print("대전이 성립된 후에 해제할 수 있습니다.");
+  }
+
+  const displayNo = Number(n);
+  if(!Number.isInteger(displayNo) || displayNo < 1) return print("사용법 : 대전해제 양동이번호");
+
+  const idx = getBucketIndexByDisplayNumber(displayNo);
+  const pos = pvpPrepIndexes.indexOf(idx);
+
+  if(idx < 0 || pos === -1) return print("해당 양동이 번호는 대전 준비 목록에 없습니다.");
+
+  const f = bucket[idx];
+  pvpPrepIndexes.splice(pos,1);
+  saveGame();
+
+  await getMyActivePvpRef().set({
+    prepIndexes:pvpPrepIndexes,
+    ready:false,
+    updatedAtMillis:Date.now()
+  }, {merge:true});
+
+  print("대전 준비가 해제되었습니다.\n\n" + (f ? color(lineFish(f), f.grade) : ""));
+}
+
+async function showPvpPrepList(){
+  const active = await getMyActivePvp();
+  if(!active) return print("진행 중인 대전이 없습니다.");
+
+  let s = "대전목록\\n\\n";
+  s += "상대 : " + active.opponent + "\\n";
+  s += "상태 : " + (active.status === "requested" ? "수락 대기중" : active.status === "accepted" ? "준비중" : active.status) + "\\n\\n";
+
+  if(active.status !== "accepted"){
+    s += "상대가 대전수락을 하면 준비할 수 있습니다.";
+    return print(s);
+  }
+
+  if(pvpPrepIndexes.length === 0){
+    s += "준비한 물고기가 없습니다.\\n\\n대전준비 양동이번호";
+    return print(s);
+  }
+
+  s += "출전 물고기\\n\\n";
+  pvpPrepIndexes.forEach((bucketIndex,i)=>{
+    const f = bucket[bucketIndex];
+    const displayNo = getDisplayNumberByBucketIndex(bucketIndex);
+    if(f){
+      s += (i+1) + ". 양동이 " + (displayNo > 0 ? displayNo : bucketIndex+1) + "번 " + color(lineFish(f), f.grade) + "\\n";
+    }
+  });
+  s += "\\n대전준비완료 를 입력하면 준비 완료됩니다.";
+  print(s.trim());
+}
+
+async function finishPvpReady(){
+  const active = await getMyActivePvp();
+  if(!active || active.status !== "accepted"){
+    return print("대전이 성립된 후에 준비완료할 수 있습니다.");
+  }
+
+  if(pvpPrepIndexes.length === 0){
+    return print("대전 준비 물고기가 없습니다.\n\n대전준비 양동이번호 를 먼저 입력하세요.");
+  }
+
+  const team = buildPvpTeamFromIndexes(pvpPrepIndexes, bucket, trainingLevels);
+  if(team.length === 0) return print("대전에 참가할 수 있는 물고기가 없습니다.");
+
+  try{
+    const roomRef = db.collection("pvpRooms").doc(active.roomId);
+    const roomSnap = await roomRef.get();
+    if(!roomSnap.exists) return print("대전방을 찾을 수 없습니다.");
+
+    const room = roomSnap.data() || {};
+    const staleResolution = room.status === "resolving" && Number(room.resolvingAtMillis || 0) < Date.now() - 30000;
+    if(room.status !== "accepted" && !staleResolution) return print("현재 준비할 수 없는 대전 상태입니다.");
+
+    const myKey = currentUser + "_ready";
+    const myTeamKey = currentUser + "_team";
+    const opp = currentUser === room.from ? room.to : room.from;
+    const oppKey = opp + "_ready";
+    const oppTeamKey = opp + "_team";
+
+    await roomRef.set({
+      [myKey]: true,
+      [myTeamKey]: team,
+      updatedAtMillis:Date.now()
+    }, {merge:true});
+
+    await getMyActivePvpRef().set({
+      ready:true,
+      prepIndexes:pvpPrepIndexes,
+      updatedAtMillis:Date.now()
+    }, {merge:true});
+
+    const afterSnap = await roomRef.get();
+    const after = afterSnap.data() || {};
+    const bothReady = !!after[myKey] && !!after[oppKey];
+
+    await db.collection("serverAlerts").add({
+      type:"pvpReady",
+      from:currentUser,
+      fromTitle:getCurrentTitle(),
+      to:opp,
+      createdAtMillis:Date.now(),
+      createdAt:firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    if(!bothReady){
+      return print("대전 준비완료\n\n상대 대기중...");
+    }
+
+    let claimedRoom = null;
+    await db.runTransaction(async tx => {
+      claimedRoom = null;
+      const latestSnap = await tx.get(roomRef);
+      if(!latestSnap.exists) return;
+
+      const latest = latestSnap.data() || {};
+      const leftReady = !!latest[(latest.from || room.from) + "_ready"];
+      const rightReady = !!latest[(latest.to || room.to) + "_ready"];
+      const canClaim = latest.status === "accepted" ||
+        (latest.status === "resolving" && Number(latest.resolvingAtMillis || 0) < Date.now() - 30000);
+      if(!canClaim || !leftReady || !rightReady) return;
+
+      claimedRoom = latest;
+      tx.set(roomRef, {
+        status:"resolving",
+        resolvedBy:currentUser,
+        resolvingAtMillis:Date.now(),
+        updatedAtMillis:Date.now()
+      }, {merge:true});
+    });
+
+    if(!claimedRoom){
+      return print("상대 브라우저에서 대전 결과를 계산 중입니다.");
+    }
+
+    const leftName = claimedRoom.from;
+    const rightName = claimedRoom.to;
+    const result = simulatePvpBattle({
+      leftName,
+      leftTitle: claimedRoom.fromTitle || "",
+      leftTeam: claimedRoom[leftName + "_team"] || [],
+      rightName,
+      rightTitle: claimedRoom.toTitle || "",
+      rightTeam: claimedRoom[rightName + "_team"] || []
+    });
+    const opponentLog = swapPvpPerspectiveLog(result.fullLog);
+
+    await roomRef.set({
+      status:"finished",
+      finishedAtMillis:Date.now(),
+      resultSummary:result.summary,
+      resultLog:result.fullLog,
+      resultLogByResolver:result.fullLog,
+      resultLogByOpponent:opponentLog,
+      updatedAtMillis:Date.now()
+    }, {merge:true});
+
+    await clearBothActivePvp(room.from, room.to);
+
+    pvpPrepIndexes = [];
+    saveGame();
+
+    await db.collection("serverAlerts").add({
+      type:"pvpResult",
+      to:opp,
+      summary:result.summary,
+      fullLog:opponentLog,
+      createdAtMillis:Date.now(),
+      createdAt:firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    printPvpResultPreview(result.summary, result.fullLog);
+  }catch(e){
+    console.error(e);
+    print("대전 준비완료 중 오류가 발생했습니다.");
+  }
+}
+
+
+
+function showCommands(){
+  if(!currentUser){
+    return print(`명령어 목록
+
+[계정]
+회원가입
+로그인`);
+  }
+
+  print(`명령어 목록
+
+[낚시]
+낚시
+
+[정보]
+양동이
+양동이 닉네임
+도감
+물고기도감
+코어도감
+물고기특성
+내정보
+정보 번호
+보스전
+보스정보
+보스정보 번호
+보스목록
+보스선택 번호
+인벤토리
+준비 번호
+준비해제 번호
+전투
+전투 확인
+나가기
+지갑
+지갑 닉네임
+메세지 닉네임
+연구소
+연구소1 강화
+연구소2 강화
+훈련소
+훈련소1 강화
+훈련소2 강화
+훈련소3 강화
+업적
+칭호
+칭호 장착 번호
+칭호 장착해제
+시세
+랭킹
+
+[계정]
+회원가입
+로그인
+로그아웃
+탈퇴
+
+[온라인]
+송금 닉네임 금액
+전송 닉네임 번호
+대전 닉네임
+대전준비 번호
+대전해제 번호
+대전목록
+대전수락
+대전거절
+
+[강화]
+강화
+일괄강화
+
+[정렬]
+정렬 등급
+정렬 공격력
+정렬 체력
+
+[잠금]
+잠금 1
+잠금해제 1
+
+[판매]
+판매 1
+확인
+일괄판매
+
+[파티 프리셋]
+파티프리셋
+파티저장 보스
+파티불러오기 보스
+파티해제 보스
+파티저장 pvp
+파티불러오기 pvp
+파티해제 pvp`);
+}
+
+function buildGameInfoText(){
+  const chanceLines = getCurrentGradeChances()
+    .map(x => x.name + " : " + x.chance.toFixed(["영원","공허"].includes(x.name) ? 2 : 1) + "%")
+    .join("\n");
+
+  return `내정보
+
+[기본 정보]
+
+현재 돈 : ${formatMoney(money)}
+총 수익 : ${formatMoney(totalEarned)}
+낚싯대 레벨 : ${rodLevel}/${MAX_ROD}
+현재 강화 가능 레벨 : ${getCurrentPlayableMaxRod()}
+낚시 횟수 : ${totalFishingCount.toLocaleString()}회
+현재 칭호 : ${getCurrentTitle() || "없음"}
+업적 달성률 : ${getCurrentCompletedAchievements().length}/${achievementList.length}
+
+[강화]
+
+강화 성공률 : ${rodLevel>=getCurrentPlayableMaxRod() ? (rodLevel>=MAX_ROD ? "최대 레벨" : "보스 처치 필요") : getUpgradeSuccessRate(rodLevel).toFixed(1)+"%"}
+다음 강화 비용 : ${rodLevel>=getCurrentPlayableMaxRod() ? (rodLevel>=MAX_ROD ? "최대 레벨" : "보스 처치 후 해금") : formatMoney(getUpgradeCost(rodLevel))}
+
+[연구소]
+
+낚시 기술 연구 : Lv.${getFishingResearchLevel()}/${MAX_RESEARCH}
+효과 : 낚시시간 -${getFishingTimeReduction()}%
+다음 비용 : ${getFishingResearchLevel()>=MAX_RESEARCH ? "최대 레벨" : formatMoney(getResearchCost(getFishingResearchLevel()))}
+
+감정 연구 : Lv.${getAppraisalResearchLevel()}/${MAX_RESEARCH}
+효과 : 판매가 +${getAppraisalBonus()}%
+다음 비용 : ${getAppraisalResearchLevel()>=MAX_RESEARCH ? "최대 레벨" : formatMoney(getResearchCost(getAppraisalResearchLevel()))}
+
+[훈련소]
+
+공격 훈련 : Lv.${getTrainingLevel("attack")}/${MAX_TRAINING}
+효과 : 공격력 +${getTrainingAttackBonus()}%
+다음 비용 : ${getTrainingLevel("attack")>=MAX_TRAINING ? "최대 레벨" : formatMoney(getTrainingCost(getTrainingLevel("attack")))}
+
+체력 훈련 : Lv.${getTrainingLevel("hp")}/${MAX_TRAINING}
+효과 : 체력 +${getTrainingHpBonus()}%
+다음 비용 : ${getTrainingLevel("hp")>=MAX_TRAINING ? "최대 레벨" : formatMoney(getTrainingCost(getTrainingLevel("hp")))}
+
+치명타 피해 훈련 : Lv.${getTrainingLevel("critDamage")}/${MAX_TRAINING}
+효과 : 치명타 피해 +${getTrainingCritDamageBonus()}%
+다음 비용 : ${getTrainingLevel("critDamage")>=MAX_TRAINING ? "최대 레벨" : formatMoney(getTrainingCost(getTrainingLevel("critDamage")))}
+
+[현재 등장 확률]
+
+${chanceLines}
+
+[도주 확률]
+
+일반~신화 : ${getEscapeChance().toFixed(1)}%
+쓰레기/초월/영원/공허 : 0%
+
+[시세]
+
+전설~영원 물고기 중 10종
+10분마다 갱신
++보너스만 적용`;
+}
+
+function showGameInfo(){
+  const summary =
+    "현재 돈 : " + formatMoney(money) + "\n" +
+    "낚싯대 : Lv." + rodLevel + "/" + MAX_ROD + " (현재 " + getCurrentPlayableMaxRod() + "까지 강화 가능)\n" +
+    "연구소 : 낚시기술 Lv." + getFishingResearchLevel() + " / 감정 Lv." + getAppraisalResearchLevel() + "\n" +
+    "훈련소 : 공격 Lv." + getTrainingLevel("attack") + " / 체력 Lv." + getTrainingLevel("hp") + " / 치피 Lv." + getTrainingLevel("critDamage");
+
+  printPreview("내정보", summary, "내정보 전체보기", buildGameInfoText());
+}
+
+async function sendMoney(targetNickname, amount){
+  if(isOnlineActionRunning) return print("처리 중입니다. 잠시만 기다려주세요.");
+  if(!currentUser) return print("로그인 후 사용 가능합니다.");
+
+  targetNickname = cleanNickname(targetNickname);
+  amount = Number(amount);
+
+  if(!targetNickname || !Number.isSafeInteger(amount) || amount <= 0) return print("송금 금액은 1 이상의 안전한 정수로 입력해주세요.");
+  if(targetNickname === currentUser) return print("자기 자신에게는 송금할 수 없습니다.");
+
+  isOnlineActionRunning = true;
+
+  try{
+    await refreshMyCloudData();
+    const sessionHash = await getCurrentSessionHash();
+    if(!sessionHash) throw new Error("SESSION_INVALID");
+
+    if(money < amount){
+      isOnlineActionRunning = false;
+      return print("돈이 부족합니다.");
+    }
+
+    const myRef = db.collection("users").doc(currentUser);
+    const targetRef = db.collection("users").doc(targetNickname);
+
+    await db.runTransaction(async (tx)=>{
+      const mySnap = await tx.get(myRef);
+      const targetSnap = await tx.get(targetRef);
+
+      if(!mySnap.exists) throw new Error("MY_ACCOUNT_NOT_FOUND");
+      if(!targetSnap.exists) throw new Error("TARGET_NOT_FOUND");
+
+      const myData = mySnap.data();
+      const targetData = targetSnap.data();
+      if(myData.sessionTokenHash !== sessionHash) throw new Error("SESSION_INVALID");
+
+      const myState = myData.gameState || {};
+      const targetState = targetData.gameState || {};
+      const currentMoney = myData.money || 0;
+      const senderMoneyAfter = normalizeMoney(currentMoney - amount);
+      const targetMoneyAfter = normalizeMoney((targetData.money || 0) + amount);
+
+      if(currentMoney < amount) throw new Error("NOT_ENOUGH_MONEY");
+
+      const targetNotifications = targetState.notifications || [];
+      targetNotifications.push("📢 알림\n\n" + formatCurrentUserName() + " 님이 " + amount.toLocaleString() + "원을 송금했습니다.");
+
+      myState.money = senderMoneyAfter;
+
+      tx.set(myRef, {
+        money: senderMoneyAfter,
+        cloudRevision: Number(myData.cloudRevision || 0) + 1,
+        gameState: myState,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, {merge:true});
+
+      tx.set(targetRef, {
+        money: targetMoneyAfter,
+        cloudRevision: Number(targetData.cloudRevision || 0) + 1,
+        gameState: {...targetState, money:targetMoneyAfter, notifications: targetNotifications},
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, {merge:true});
+    });
+
+    await db.collection("serverAlerts").add({
+      type: "moneyTransfer",
+      from: currentUser,
+      fromTitle: getCurrentTitle(),
+      to: targetNickname,
+      amount: amount,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      createdAtMillis: Date.now()
+    });
+
+    await refreshMyCloudData();
+    print(targetNickname + " 님에게 " + amount.toLocaleString() + "원을 송금하였습니다.");
+  }catch(e){
+    console.error(e);
+    if(e.message === "TARGET_NOT_FOUND") print("존재하지 않는 닉네임입니다.");
+    else if(e.message === "NOT_ENOUGH_MONEY") print("돈이 부족합니다.");
+    else if(e.message === "MY_ACCOUNT_NOT_FOUND") print("현재 계정을 찾을 수 없습니다. 다시 로그인해주세요.");
+    else print("송금 중 오류가 발생했습니다.");
+  }finally{
+    isOnlineActionRunning = false;
+  }
+}
+
+async function sendFish(targetNickname, displayNumber){
+  if(isOnlineActionRunning) return print("처리 중입니다. 잠시만 기다려주세요.");
+  if(!currentUser) return print("로그인 후 사용 가능합니다.");
+
+  targetNickname = cleanNickname(targetNickname);
+
+  if(!targetNickname) return print("사용법 : 전송 닉네임 번호");
+  if(targetNickname === currentUser) return print("자기 자신에게는 전송할 수 없습니다.");
+
+  isOnlineActionRunning = true;
+
+  try{
+    await refreshMyCloudData();
+    const sessionHash = await getCurrentSessionHash();
+    if(!sessionHash) throw new Error("SESSION_INVALID");
+
+    const idx = getBucketIndexByDisplayNumber(Number(displayNumber));
+    if(idx < 0 || !bucket[idx]){
+      isOnlineActionRunning = false;
+      return print("존재하지 않는 번호입니다.");
+    }
+
+    if(bucket[idx].locked){
+      isOnlineActionRunning = false;
+      return print("잠금된 물고기는 전송할 수 없습니다.");
+    }
+
+    let transferredFish = null;
+
+    const myRef = db.collection("users").doc(currentUser);
+    const targetRef = db.collection("users").doc(targetNickname);
+
+    await db.runTransaction(async (tx)=>{
+      const mySnap = await tx.get(myRef);
+      const targetSnap = await tx.get(targetRef);
+
+      if(!mySnap.exists) throw new Error("MY_ACCOUNT_NOT_FOUND");
+      if(!targetSnap.exists) throw new Error("TARGET_NOT_FOUND");
+
+      const myData = mySnap.data();
+      const targetData = targetSnap.data();
+      if(myData.sessionTokenHash !== sessionHash) throw new Error("SESSION_INVALID");
+
+      const myState = myData.gameState || {};
+      const targetState = targetData.gameState || {};
+      const myBucket = myState.bucket || [];
+      const targetBucket = targetState.bucket || [];
+      const targetNotifications = targetState.notifications || [];
+
+      const currentList = sortBucketEntries(myBucket, bucketSortOrder);
+
+      const displayItem = currentList[Number(displayNumber)-1];
+      if(!displayItem || !myBucket[displayItem.originalIndex]) throw new Error("FISH_NOT_FOUND");
+      if(myBucket[displayItem.originalIndex].locked) throw new Error("FISH_LOCKED");
+
+      const movedFish = {...myBucket.splice(displayItem.originalIndex,1)[0], locked:false};
+      transferredFish = movedFish;
+      const myPresets = normalizePartyPresets(myState.partyPresets);
+      myPresets.boss = myPresets.boss.filter(id => id !== movedFish.id);
+      myPresets.pvp = myPresets.pvp.filter(id => id !== movedFish.id);
+
+      targetBucket.push(movedFish);
+      targetNotifications.push("📢 알림\n\n" + formatCurrentUserName() + " 님이 " + lineFish(movedFish) + objParticle(movedFish.name) + " 전송했습니다.");
+
+      tx.set(myRef, {
+        cloudRevision: Number(myData.cloudRevision || 0) + 1,
+        gameState: {...myState, bucket: myBucket, pvpPrepIndexes:[], partyPresets:myPresets},
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, {merge:true});
+
+      tx.set(targetRef, {
+        cloudRevision: Number(targetData.cloudRevision || 0) + 1,
+        gameState: {...targetState, bucket: targetBucket, notifications: targetNotifications},
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, {merge:true});
+    });
+
+    await db.collection("serverAlerts").add({
+      type: "fishTransfer",
+      from: currentUser,
+      fromTitle: getCurrentTitle(),
+      to: targetNickname,
+      fishName: transferredFish.name,
+      fishGrade: transferredFish.grade,
+      fishSize: transferredFish.size,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      createdAtMillis: Date.now()
+    });
+
+    await refreshMyCloudData();
+    print(targetNickname + " 님에게 " + lineFish(transferredFish) + objParticle(transferredFish.name) + " 전송하였습니다.");
+  }catch(e){
+    console.error(e);
+    if(e.message === "TARGET_NOT_FOUND") print("존재하지 않는 닉네임입니다.");
+    else if(e.message === "FISH_NOT_FOUND") print("존재하지 않는 번호입니다.");
+    else if(e.message === "FISH_LOCKED") print("잠금된 물고기는 전송할 수 없습니다.");
+    else if(e.message === "MY_ACCOUNT_NOT_FOUND") print("현재 계정을 찾을 수 없습니다. 다시 로그인해주세요.");
+    else print("전송 중 오류가 발생했습니다.");
+  }finally{
+    isOnlineActionRunning = false;
+  }
+}
+
+async function showNewMessages(){
+  if(!messages || messages.length === 0) return;
+
+  const list = [...messages].sort((a,b)=>(a.createdAtMillis || 0) - (b.createdAtMillis || 0));
+
+  let full = "메세지\n\n";
+  full += "────┬────────────────────\n";
+
+  list.forEach((m,i)=>{
+    const sender = formatUserName(m.from || "알 수 없음", m.fromTitle || "");
+    full += rankNumber(i+1) + "│" + sender + "\n";
+    full += "    " + formatDateTime(m.createdAtMillis || Date.now()) + "\n";
+    full += "    " + safeMessageText(m.text) + "\n";
+    if(i !== list.length - 1) full += "────┼────────────────────\n";
+  });
+
+  full += "────┴────────────────────";
+
+  printPreview(
+    "메세지",
+    "새로운 메세지가 " + list.length + "개 도착했습니다.",
+    "메세지 전체보기",
+    full
+  );
+
+  messages = [];
+  saveGame();
+  if(currentUser) await saveCloudData();
+}
+
+async function sendMessage(targetNickname){
+  if(isOnlineActionRunning) return print("처리 중입니다. 잠시만 기다려주세요.");
+  if(!currentUser) return print("로그인 후 사용 가능합니다.");
+
+  targetNickname = cleanNickname(targetNickname);
+  if(!targetNickname) return print("사용법 : 메세지 닉네임");
+  if(targetNickname === currentUser) return print("자기 자신에게는 메세지를 보낼 수 없습니다.");
+
+  const text = safeMessageText(prompt("보낼 메세지를 입력하세요."));
+  if(!text) return print("메세지 전송이 취소되었습니다.");
+  if(text.length > 300) return print("메세지는 300자 이하로 입력해주세요.");
+
+  isOnlineActionRunning = true;
+
+  try{
+    const targetRef = db.collection("users").doc(targetNickname);
+    const targetSnap = await targetRef.get();
+
+    if(!targetSnap.exists){
+      isOnlineActionRunning = false;
+      return print("존재하지 않는 닉네임입니다.");
+    }
+
+    const messageId = "msg_" + Date.now() + "_" + Math.random().toString(36).slice(2);
+    const payload = {
+      id: messageId,
+      from: currentUser,
+      fromTitle: getCurrentTitle(),
+      text: text,
+      createdAtMillis: Date.now()
+    };
+
+    await db.runTransaction(async (tx)=>{
+      const snap = await tx.get(targetRef);
+      if(!snap.exists) throw new Error("TARGET_NOT_FOUND");
+
+      const data = snap.data();
+      const state = data.gameState || {};
+      const targetMessages = Array.isArray(state.messages) ? state.messages : [];
+
+      targetMessages.push(payload);
+
+      tx.set(targetRef, {
+        cloudRevision: Number(data.cloudRevision || 0) + 1,
+        gameState: {
+          ...state,
+          messages: targetMessages
+        },
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, {merge:true});
+    });
+
+    await db.collection("serverAlerts").add({
+      type: "userMessage",
+      from: currentUser,
+      fromTitle: getCurrentTitle(),
+      to: targetNickname,
+      text: text,
+      messageId: messageId,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      createdAtMillis: payload.createdAtMillis
+    });
+
+    print(targetNickname + " 님에게 메세지를 보냈습니다.\n\n" + text);
+  }catch(e){
+    console.error(e);
+    if(e.message === "TARGET_NOT_FOUND") print("존재하지 않는 닉네임입니다.");
+    else print("메세지 전송 중 오류가 발생했습니다.");
+  }finally{
+    isOnlineActionRunning = false;
+  }
+}
+
+function requireLoginForCommand(cmd){
+  const allowed = ["명령어", "회원가입", "로그인"];
+
+  if(allowed.includes(cmd)) return true;
+
+  // 다른 사람 정보 조회/랭킹도 로그인 없이 막음
+  return false;
+}
+
+
