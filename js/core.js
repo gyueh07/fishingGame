@@ -1401,7 +1401,7 @@ function sanitizeGameHtml(value){
   template.innerHTML = String(value ?? "");
   const allowedTags = new Set(["SPAN", "B", "BR"]);
   const battleClasses = new Set([
-    "battle-event", "battle-event--skill", "battle-event--crazy", "battle-event--passive",
+    "battle-event", "battle-event--skill", "battle-event--crazy", "battle-event--passive", "battle-event--ally",
     "battle-event__eyebrow", "battle-event__body"
   ]);
 

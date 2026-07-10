@@ -991,7 +991,7 @@ function traitUseByFish(f, body="", titleOverride=""){
   const title = titleOverride || (trait ? trait.name : "특성");
   if(f){
     const fishLabel = activePvpFishLabeler ? activePvpFishLabeler(f) : color(lineFish(f), f.grade);
-    return traitUseText(fishLabel + "의 " + title, body);
+    return `<span class="battle-event battle-event--ally"><span class="battle-event__eyebrow">ALLY SKILL</span><b>${fishLabel} · ${escapeHtml(title)}</b>${body?`<span class="battle-event__body">${body}</span>`:""}</span>`;
   }
   return traitUseText(title, body);
 }

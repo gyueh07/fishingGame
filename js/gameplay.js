@@ -160,9 +160,9 @@ function takeFishingTimingResult(){
   return result;
 }
 
-function pickGrade(timingResult="GREAT"){
+function getTimingGradeChances(timingResult="GREAT"){
   let chances = getRawGradeChances();
-  const timingWeights = fishingTimingWeights[timingResult] || fishingTimingWeights.GOOD;
+  const timingWeights = fishingTimingWeights[timingResult] || fishingTimingWeights.GREAT;
   chances = chances.map(x => ({...x, chance: Math.max(0, x.chance) * (timingWeights[x.name] || 1)}));
 
   // BAD 판정에서는 만렙에서도 쓰레기가 최종 확률 10% 이상 나오게 한다.
@@ -173,6 +173,13 @@ function pickGrade(timingResult="GREAT"){
     if(trash && trash.chance < minimumTrashWeight) trash.chance = minimumTrashWeight;
   }
 
+  const total = chances.reduce((s,g)=>s+g.chance,0);
+  if(total<=0)return grades.map(grade=>({name:grade.name,chance:grade.name==="일반"?100:0}));
+  return chances.map(item=>({...item,chance:item.chance/total*100}));
+}
+
+function pickGrade(timingResult="GREAT"){
+  const chances=getTimingGradeChances(timingResult);
   let total = chances.reduce((s,g)=>s+g.chance,0);
   let r = Math.random()*total;
   for(const c of chances){
@@ -207,10 +214,7 @@ function getEscapeChance(){
 }
 
 function getCurrentGradeChances(){
-  let chances = getRawGradeChances();
-  chances = chances.map(x => ({...x, chance: Math.max(0, x.chance)}));
-  const total = chances.reduce((s,g)=>s+g.chance,0);
-  return chances.map(x => ({name:x.name, chance: total === 0 ? 0 : x.chance / total * 100}));
+  return getTimingGradeChances("GREAT");
 }
 
 function makePrice(g,size){
