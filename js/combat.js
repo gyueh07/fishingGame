@@ -173,8 +173,17 @@ function makeCombatStats(f, fixedStars=null){
   };
 }
 
+const KNOCKOUT_MINUTES = 5;
+const INJURY_RECOVERY_MINUTES = 10;
+const LEGACY_KNOCKOUT_MINUTES = 10;
+const KNOCKOUT_DURATION_VERSION = 2;
+
 function getStunMinutes(grade){
-  return 10;
+  return KNOCKOUT_MINUTES;
+}
+
+function getInjuryRecoveryMinutes(grade){
+  return INJURY_RECOVERY_MINUTES;
 }
 
 function formatRemain(ms){
@@ -204,11 +213,12 @@ function markRecoveringIfDamaged(f,force=false){
   const now = Date.now();
   const maxHp = Math.max(1, Number(c.maxHp || 1));
   const hpRate = clamp(Number(c.hp || 0) / maxHp, 0, 1);
-  const fullDuration = getStunMinutes(f.grade) * 60 * 1000;
+  const fullDuration = getInjuryRecoveryMinutes(f.grade) * 60 * 1000;
   const duration = Math.max(1000, Math.ceil(fullDuration * (1 - hpRate)));
 
   c.status = "회복 중";
   delete c.knockedOut;
+  delete c.stunDurationVersion;
   c.recoveryStartAt = now;
   c.recoveryStartHp = Math.max(1, Math.floor(c.hp));
   c.stunUntil = now + duration;
@@ -221,13 +231,26 @@ function updateRecoveringFishHp(f){
   let changed = false;
   const now = Date.now();
   const maxHp = Math.max(1, c.maxHp || 1);
-  const knockedOut=!!c.knockedOut||(Number(c.hp||0)<=0&&["기절","회복 중"].includes(c.status)&&Number(c.stunUntil||0)>now);
+  const knockedOut=f.grade!=="쓰레기"&&(!!c.knockedOut||c.status==="기절"||Number(c.hp||0)<=0);
 
   if(knockedOut){
     if(!c.knockedOut||c.status!=="기절"||c.hp!==0)changed=true;
     c.knockedOut=true;
     c.status="기절";
     c.hp=0;
+    const knockoutDuration=getStunMinutes(f.grade)*60*1000;
+    if(Number(c.stunDurationVersion||0)<KNOCKOUT_DURATION_VERSION){
+      const legacyUntil=Number(c.stunUntil||0);
+      const inferredStart=Number(c.recoveryStartAt||0)||(legacyUntil>0?legacyUntil-LEGACY_KNOCKOUT_MINUTES*60*1000:now);
+      c.recoveryStartAt=Math.min(now,Math.max(0,inferredStart||now));
+      c.stunUntil=c.recoveryStartAt+knockoutDuration;
+      c.stunDurationVersion=KNOCKOUT_DURATION_VERSION;
+      changed=true;
+    }else{
+      if(!Number(c.recoveryStartAt||0)){c.recoveryStartAt=now;changed=true;}
+      const maximumUntil=Number(c.recoveryStartAt)+knockoutDuration;
+      if(!Number(c.stunUntil||0)||Number(c.stunUntil)>maximumUntil){c.stunUntil=maximumUntil;changed=true;}
+    }
     if(!c.stunUntil||now>=c.stunUntil){
       c.hp=maxHp;
       c.status="정상";
@@ -235,6 +258,7 @@ function updateRecoveringFishHp(f){
       delete c.stunUntil;
       delete c.recoveryStartAt;
       delete c.recoveryStartHp;
+      delete c.stunDurationVersion;
       return true;
     }
     return changed;
@@ -257,6 +281,7 @@ function updateRecoveringFishHp(f){
     delete c.recoveryStartAt;
     delete c.recoveryStartHp;
     delete c.knockedOut;
+    delete c.stunDurationVersion;
     return true;
   }
 
@@ -271,10 +296,11 @@ function updateRecoveringFishHp(f){
     delete c.recoveryStartAt;
     delete c.recoveryStartHp;
     delete c.knockedOut;
+    delete c.stunDurationVersion;
     return true;
   }
 
-  const recoveryStartAt = Number(c.recoveryStartAt || (c.stunUntil - getStunMinutes(f.grade) * 60 * 1000));
+  const recoveryStartAt = Number(c.recoveryStartAt || (c.stunUntil - getInjuryRecoveryMinutes(f.grade) * 60 * 1000));
   const recoveryStartHp = Number(c.recoveryStartHp || 0);
   const duration = Math.max(1, c.stunUntil - recoveryStartAt);
   const ratio = clamp((now - recoveryStartAt) / duration, 0, 1);
@@ -286,6 +312,7 @@ function updateRecoveringFishHp(f){
     delete c.recoveryStartAt;
     delete c.recoveryStartHp;
     delete c.knockedOut;
+    delete c.stunDurationVersion;
     return true;
   }
 
@@ -862,6 +889,7 @@ function calcDamage(attackerAttack, critRate, critDamage){
 
 function stunFish(f){
   const c = ensureCombatStats(f);
+  const now=Date.now();
   c.hp = 0;
   c.status = "기절";
   c.knockedOut = true;
@@ -877,9 +905,10 @@ function stunFish(f){
       });
     }
   }
-  c.recoveryStartAt = Date.now();
+  c.recoveryStartAt = now;
   c.recoveryStartHp = 0;
-  c.stunUntil = Date.now() + getStunMinutes(f.grade) * 60 * 1000;
+  c.stunUntil = now + getStunMinutes(f.grade) * 60 * 1000;
+  c.stunDurationVersion = KNOCKOUT_DURATION_VERSION;
 }
 
 
@@ -994,6 +1023,7 @@ function snapshotFishTraitState(f){
   return {
     hp:Number(c.hp || 0), maxHp:Number(c.maxHp || 1), status:c.status,
     stunUntil:c.stunUntil, battleDown:!!c.battleDown, knockedOut:!!c.knockedOut,
+    recoveryStartAt:c.recoveryStartAt,recoveryStartHp:c.recoveryStartHp,stunDurationVersion:c.stunDurationVersion,
     burnStacks:Number(c.burnStacks || 0), poisonStacks:Number(c.poisonStacks || 0),
     azhiCurses:c.azhiCurses ? {...c.azhiCurses} : null,
     ratatoskrRedirect:c.ratatoskrRedirect,
@@ -1011,6 +1041,9 @@ function restoreFishTraitState(f, snap){
   if(snap.battleDown) c.battleDown=true; else delete c.battleDown;
   if(snap.knockedOut) c.knockedOut=true; else delete c.knockedOut;
   if(snap.stunUntil !== undefined) c.stunUntil=snap.stunUntil; else delete c.stunUntil;
+  if(snap.recoveryStartAt !== undefined) c.recoveryStartAt=snap.recoveryStartAt; else delete c.recoveryStartAt;
+  if(snap.recoveryStartHp !== undefined) c.recoveryStartHp=snap.recoveryStartHp; else delete c.recoveryStartHp;
+  if(snap.stunDurationVersion !== undefined) c.stunDurationVersion=snap.stunDurationVersion; else delete c.stunDurationVersion;
   if(snap.burnStacks) c.burnStacks=snap.burnStacks; else delete c.burnStacks;
   if(snap.poisonStacks) c.poisonStacks=snap.poisonStacks; else delete c.poisonStacks;
   if(snap.azhiCurses) c.azhiCurses={...snap.azhiCurses}; else delete c.azhiCurses;
@@ -2288,6 +2321,29 @@ const CRAZY_BOSS_SKILL_NAMES={
   bahamut:"용왕의 역린",tiamat:"오색 용의 숨결",jormungandr:"독 폭발",fenrir:"라그나로크의 포효",surtr:"불꽃검 재련",
   cerberus:"명계의 문",nidhogg:"시체 포식",azhi_dahaka:"여섯 눈의 응시",typhon:"폭풍 장벽",angra_mainyu:"생명의 종언",
   erebos:"빛이 존재하지 않는 세계",chronos:"시간선 말소",nyarlathotep:"천 번째 얼굴",yog_sothoth:"모든 차원의 종착점",azathoth:"잠든 신의 개안"
+};
+
+const CRAZY_BOSS_SKILL_DESCRIPTIONS={
+  kraken:"전투력이 높은 물고기 2마리를 다음 턴까지 행동 불가로 만듭니다.",
+  hydra:"전체 공격력 1.2배 피해를 주고 살아남은 모든 물고기에게 독 2중첩을 부여합니다.",
+  leviathan:"살아 있는 모든 물고기의 최대 체력을 전투 중 12% 감소시킵니다.",
+  behemoth:"전체 공격력 1.2배 피해를 주고 가장 강한 물고기의 공격력을 3턴 동안 25% 감소시킵니다.",
+  phoenix:"모든 화상을 흡수해 체력을 15~50% 회복하고 화상 수에 따라 공격력을 강화합니다.",
+  bahamut:"다음 3회 받는 피해를 50% 줄이고 공격자에게 받은 피해의 30%를 반사합니다.",
+  tiamat:"무작위 대상을 향해 공격력 0.6배의 숨결을 5번 연속 사용합니다.",
+  jormungandr:"모든 독을 폭발시켜 중첩당 최대 체력 6%, 최대 18% 피해를 주고 독을 제거합니다.",
+  fenrir:"모든 물고기의 공격력과 치명타율을 2턴 동안 20% 감소시킵니다.",
+  surtr:"불꽃검 내구도를 20~35% 복구한 뒤 모든 물고기에게 전체 공격을 사용합니다.",
+  cerberus:"가장 강한 물고기를 2턴 동안 명계로 추방해 행동할 수 없게 만듭니다.",
+  nidhogg:"쓰러진 물고기가 있으면 체력 20%를 회복하고, 없으면 전체 공격과 최대 체력 감소를 사용합니다.",
+  azhi_dahaka:"가장 강한 물고기의 고유 특성·회피·치명타를 3턴 동안 봉인합니다.",
+  typhon:"최대 체력 4%의 폭풍 장벽을 생성하며 보호막은 2턴 동안 유지됩니다.",
+  angra_mainyu:"모든 물고기에게 최대 체력 5% 피해를 주고 3턴 동안 회복을 봉인합니다.",
+  erebos:"모든 물고기에게 최대 체력 20% 피해를 주고 2턴 동안 암흑과 치명타 봉인을 부여합니다.",
+  chronos:"최근 받은 피해를 이용해 체력을 5~15% 되찾고 공격력 1.4배 공격을 2번 사용합니다.",
+  nyarlathotep:"가장 강한 물고기의 공격력 150%·체력 50%를 가진 공허 복제체를 소환하고 특성을 봉인합니다.",
+  yog_sothoth:"전투력이 높은 절반을 2턴 추방하고 회피 불가 전체 공격력 2.5배 피해를 줍니다.",
+  azathoth:"전체 최대 체력 15% 피해 후 3턴 동안 공격력 증가·2회 행동·전체 공격·회피 무시 상태가 됩니다."
 };
 
 function damageFishByMaxHp(f,rate,battleLog,skillName){

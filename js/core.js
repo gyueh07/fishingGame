@@ -28,9 +28,30 @@ let cloudSaveChain=Promise.resolve();
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
-const GAME_VERSION = "2026-07-10-fishinglife-evolution-replay-v17";
+const GAME_VERSION = "2026-07-10-fishinglife-boss-intel-v19";
 const UPDATE_NOTICE_TITLE = "📢 업데이트 안내";
 const UPDATE_NOTICES = [
+  {
+    id:"2026-07-10-fishinglife-boss-intel-19",
+    title:"레이드 전 보스 스킬 정보 업데이트",
+    lines:[
+      "보스 난이도·출전 파티 선택 화면에서 선택한 보스의 패시브와 기본 스킬을 미리 확인할 수 있습니다.",
+      "기본 스킬 확률은 일반·어려움·크레이지의 실제 확률 보정값을 반영해 표시합니다.",
+      "크레이지 전용 패시브와 궁극기 효과·발동 조건은 크레이지 난이도를 선택했을 때만 표시됩니다.",
+      "PC에서는 스킬 카드를 2열로, 모바일에서는 읽기 쉬운 1열로 배치합니다."
+    ]
+  },
+  {
+    id:"2026-07-10-fishinglife-stun-hp-18",
+    title:"기절 5분·레이드 체력 정밀 표시 업데이트",
+    lines:[
+      "물고기 기절 시간이 전 등급 공통 10분에서 5분으로 줄어듭니다.",
+      "이미 기절 중인 물고기도 기절 시작 시각을 기준으로 새 5분 제한이 자동 적용됩니다.",
+      "HP 0인데 기절 정보가 일부 누락된 저장 데이터도 즉시 부활하지 않고 정상적인 5분 기절로 복구됩니다.",
+      "부분 부상 회복 속도는 기존과 동일하며 기절 시간만 줄어듭니다.",
+      "레이드의 보스·아군·소환물·스킬 결과 체력을 억 단위로 뭉개지 않고 만 단위까지 표시합니다."
+    ]
+  },
   {
     id:"2026-07-10-fishinglife-evolution-replay-17",
     title:"진화 성장 강화·보스 스킬 연출 개선 업데이트",
