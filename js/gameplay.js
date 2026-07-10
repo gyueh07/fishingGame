@@ -129,9 +129,29 @@ function getRawGradeChances(){
   return Object.keys(target).map(name => ({name, chance: base[name] + (target[name] - base[name]) * t}));
 }
 
-function pickGrade(){
+const fishingTimingWeights = {
+  PERFECT:{"쓰레기":0.45,"일반":0.60,"희귀":0.90,"영웅":1.35,"전설":2.00,"신화":2.60,"초월":3.30,"영원":4.00,"공허":5.00},
+  GREAT:{"쓰레기":0.75,"일반":0.82,"희귀":1.05,"영웅":1.20,"전설":1.45,"신화":1.70,"초월":2.00,"영원":2.40,"공허":2.80},
+  GOOD:{"쓰레기":1,"일반":1,"희귀":1,"영웅":1,"전설":1,"신화":1,"초월":1,"영원":1,"공허":1},
+  BAD:{"쓰레기":1.35,"일반":1.20,"희귀":1,"영웅":0.80,"전설":0.65,"신화":0.55,"초월":0.45,"영원":0.40,"공허":0.35}
+};
+const fishingTimingEscapeMultipliers = {PERFECT:0.25,GREAT:0.55,GOOD:1,BAD:1.35};
+let pendingFishingTimingResult = "GOOD";
+
+function setFishingTimingResult(result){
+  pendingFishingTimingResult = fishingTimingWeights[result] ? result : "GOOD";
+}
+
+function takeFishingTimingResult(){
+  const result = fishingTimingWeights[pendingFishingTimingResult] ? pendingFishingTimingResult : "GOOD";
+  pendingFishingTimingResult = "GOOD";
+  return result;
+}
+
+function pickGrade(timingResult="GOOD"){
   let chances = getRawGradeChances();
-  chances = chances.map(x => ({...x, chance: Math.max(0, x.chance)}));
+  const timingWeights = fishingTimingWeights[timingResult] || fishingTimingWeights.GOOD;
+  chances = chances.map(x => ({...x, chance: Math.max(0, x.chance) * (timingWeights[x.name] || 1)}));
   let total = chances.reduce((s,g)=>s+g.chance,0);
   let r = Math.random()*total;
   for(const c of chances){
@@ -188,6 +208,7 @@ function addCollection(f){
 function fish(){
   if(isFishing) return print("이미 낚시 중입니다.");
   isFishing=true;
+  const castTimingResult = takeFishingTimingResult();
   const castUser = currentUser;
   const castSessionId = ++fishingSessionId;
   const t=(rodLevel-1)/(MAX_ROD-1);
@@ -202,16 +223,16 @@ function fish(){
       isFishing = false;
       return;
     }
-    const g=pickGrade();
+    const g=pickGrade(castTimingResult);
     const name=pickName(g.name);
     const size=makeSizeByName(name);
     const price=makePrice(g,size);
-    const caught={id:makeFishId(),grade:g.name,name,size,price,locked:false,time:new Date().toLocaleString()};
+    const caught={id:makeFishId(),grade:g.name,name,size,price,locked:false,time:new Date().toLocaleString(),timingResult:castTimingResult};
     caught.combat = makeCombatStats(caught);
 
     const escapeGrades = ["일반","희귀","영웅","전설","신화"];
     if(escapeGrades.includes(g.name)){
-      const escapeChance = getEscapeChance();
+      const escapeChance = getEscapeChance() * (fishingTimingEscapeMultipliers[castTimingResult] || 1);
       if(Math.random() * 100 < escapeChance){
         totalFishingCount++;
         const newAchievements = updateAchievements();

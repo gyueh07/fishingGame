@@ -25,9 +25,21 @@ let cloudSaveChain=Promise.resolve();
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
-const GAME_VERSION = "2026-07-10-responsive-ui-core-drop-v1";
+const GAME_VERSION = "2026-07-10-fishinglife-timing-training-v2";
 const UPDATE_NOTICE_TITLE = "📢 업데이트 안내";
 const UPDATE_NOTICES = [
+  {
+    id: "2026-07-10-fishinglife-timing-training-2",
+    title: "FishingLife 게임 UI 업데이트",
+    lines: [
+      "게임 이름이 FishingLife로 변경되었습니다.",
+      "낚시 타이밍 미니게임과 PERFECT, GREAT, GOOD, BAD 판정이 추가되었습니다.",
+      "타이밍 판정에 따라 물고기 등급 확률과 도주 확률이 달라집니다.",
+      "훈련소가 구간별 누적 성장 방식으로 상향되어 기존 양동이 물고기에도 적용됩니다.",
+      "채팅형 명령어 화면을 제거하고 시세, 도감, 보스전, 대전 메뉴를 게임형 화면으로 변경했습니다.",
+      "양동이에서 최근 획득한 물고기 10마리를 확인할 수 있습니다."
+    ]
+  },
   {
     id: "2026-07-10-responsive-ui-core-drop-1",
     title: "새 게임 화면과 보스 코어 보상",
@@ -1904,16 +1916,24 @@ function getTrainingCost(level){
   return trainingCostTable[level];
 }
 
+function getProgressiveTrainingBonus(level){
+  level = Math.min(MAX_TRAINING, Math.max(0, Number(level || 0)));
+  const first = Math.min(level, 5) * 20;
+  const middle = Math.min(Math.max(level - 5, 0), 5) * 50;
+  const final = Math.min(Math.max(level - 10, 0), 5) * 100;
+  return first + middle + final;
+}
+
 function getTrainingAttackBonus(){
-  return getTrainingLevel("attack") * 10;
+  return getProgressiveTrainingBonus(getTrainingLevel("attack"));
 }
 
 function getTrainingHpBonus(){
-  return getTrainingLevel("hp") * 10;
+  return getProgressiveTrainingBonus(getTrainingLevel("hp"));
 }
 
 function getTrainingCritDamageBonus(){
-  return getTrainingLevel("critDamage") * 20;
+  return getProgressiveTrainingBonus(getTrainingLevel("critDamage"));
 }
 
 function buildTrainingLine(num, name, level, effectText){
@@ -2004,10 +2024,10 @@ function applyTrainingBonusesToCombat(c){
   const hpLevel = getTrainingLevel("hp");
   const critDamageLevel = getTrainingLevel("critDamage");
 
-  c.attack = Math.floor(c._baseAttack * (1 + attackLevel * 0.10));
+  c.attack = Math.floor(c._baseAttack * (1 + getProgressiveTrainingBonus(attackLevel) / 100));
 
   const oldMaxHp = Math.max(1, Number(c.maxHp || c._baseMaxHp || 1));
-  const newMaxHp = Math.max(1, Math.floor(c._baseMaxHp * (1 + hpLevel * 0.10)));
+  const newMaxHp = Math.max(1, Math.floor(c._baseMaxHp * (1 + getProgressiveTrainingBonus(hpLevel) / 100)));
 
   if(c._trainingHpLevel !== hpLevel || c.maxHp !== newMaxHp){
     const hpRatio = oldMaxHp > 0 ? clamp(Number(c.hp || oldMaxHp) / oldMaxHp, 0, 1) : 1;
@@ -2019,7 +2039,7 @@ function applyTrainingBonusesToCombat(c){
     c.maxHp = newMaxHp;
   }
 
-  c.critDamage = Math.floor(c._baseCritDamage + critDamageLevel * 20);
+  c.critDamage = Math.floor(c._baseCritDamage + getProgressiveTrainingBonus(critDamageLevel));
 
   return c;
 }
