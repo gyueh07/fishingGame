@@ -25,9 +25,27 @@ let cloudSaveChain=Promise.resolve();
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
-const GAME_VERSION = "2026-07-10-fishinglife-timing-training-v2";
+const GAME_VERSION = "2026-07-10-fishinglife-bad-penalty-v4";
 const UPDATE_NOTICE_TITLE = "📢 업데이트 안내";
 const UPDATE_NOTICES = [
+  {
+    id: "2026-07-10-fishinglife-bad-penalty-4",
+    title: "BAD 판정 페널티 강화",
+    lines: [
+      "BAD 판정에서 일반과 희귀 등급의 비중이 크게 증가합니다.",
+      "초월, 영원, 공허 등급 확률이 크게 감소하고 도주 확률은 기본의 150%가 적용됩니다.",
+      "GREAT는 기존 낚싯대 확률을 그대로 사용하는 기본 판정으로 유지됩니다."
+    ]
+  },
+  {
+    id: "2026-07-10-fishinglife-timing-balance-3",
+    title: "낚시 타이밍 밸런스 조정",
+    lines: [
+      "GREAT 판정이 기존 낚싯대 확률을 그대로 사용하는 기본 판정으로 변경되었습니다.",
+      "PERFECT는 소폭의 상위 등급 보너스, GOOD과 BAD는 단계별 페널티가 적용됩니다.",
+      "타이밍 판정의 도주 확률 보정 폭을 줄여 낚싯대 성장 효과가 중심이 되도록 조정했습니다."
+    ]
+  },
   {
     id: "2026-07-10-fishinglife-timing-training-2",
     title: "FishingLife 게임 UI 업데이트",

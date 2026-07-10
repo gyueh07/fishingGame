@@ -130,25 +130,25 @@ function getRawGradeChances(){
 }
 
 const fishingTimingWeights = {
-  PERFECT:{"쓰레기":0.45,"일반":0.60,"희귀":0.90,"영웅":1.35,"전설":2.00,"신화":2.60,"초월":3.30,"영원":4.00,"공허":5.00},
-  GREAT:{"쓰레기":0.75,"일반":0.82,"희귀":1.05,"영웅":1.20,"전설":1.45,"신화":1.70,"초월":2.00,"영원":2.40,"공허":2.80},
-  GOOD:{"쓰레기":1,"일반":1,"희귀":1,"영웅":1,"전설":1,"신화":1,"초월":1,"영원":1,"공허":1},
-  BAD:{"쓰레기":1.35,"일반":1.20,"희귀":1,"영웅":0.80,"전설":0.65,"신화":0.55,"초월":0.45,"영원":0.40,"공허":0.35}
+  PERFECT:{"쓰레기":0.85,"일반":0.90,"희귀":0.95,"영웅":1.00,"전설":1.12,"신화":1.15,"초월":1.20,"영원":1.25,"공허":1.30},
+  GREAT:{"쓰레기":1,"일반":1,"희귀":1,"영웅":1,"전설":1,"신화":1,"초월":1,"영원":1,"공허":1},
+  GOOD:{"쓰레기":1.05,"일반":1.03,"희귀":1.02,"영웅":1.00,"전설":0.98,"신화":0.95,"초월":0.92,"영원":0.90,"공허":0.85},
+  BAD:{"쓰레기":2.00,"일반":1.80,"희귀":1.25,"영웅":0.90,"전설":0.60,"신화":0.50,"초월":0.30,"영원":0.15,"공허":0.05}
 };
-const fishingTimingEscapeMultipliers = {PERFECT:0.25,GREAT:0.55,GOOD:1,BAD:1.35};
-let pendingFishingTimingResult = "GOOD";
+const fishingTimingEscapeMultipliers = {PERFECT:0.85,GREAT:1,GOOD:1.10,BAD:1.50};
+let pendingFishingTimingResult = "GREAT";
 
 function setFishingTimingResult(result){
-  pendingFishingTimingResult = fishingTimingWeights[result] ? result : "GOOD";
+  pendingFishingTimingResult = fishingTimingWeights[result] ? result : "GREAT";
 }
 
 function takeFishingTimingResult(){
-  const result = fishingTimingWeights[pendingFishingTimingResult] ? pendingFishingTimingResult : "GOOD";
-  pendingFishingTimingResult = "GOOD";
+  const result = fishingTimingWeights[pendingFishingTimingResult] ? pendingFishingTimingResult : "GREAT";
+  pendingFishingTimingResult = "GREAT";
   return result;
 }
 
-function pickGrade(timingResult="GOOD"){
+function pickGrade(timingResult="GREAT"){
   let chances = getRawGradeChances();
   const timingWeights = fishingTimingWeights[timingResult] || fishingTimingWeights.GOOD;
   chances = chances.map(x => ({...x, chance: Math.max(0, x.chance) * (timingWeights[x.name] || 1)}));

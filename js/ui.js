@@ -134,7 +134,7 @@
   }
 
   function showCatchCelebration(fish) {
-    const rating = fish.timingResult || "GOOD";
+    const rating = fish.timingResult || "GREAT";
     const layer = $("#catchCelebration");
     $("#celebrationRating").textContent = rating;
     $("#celebrationRating").style.color = ratingColors[rating] || ratingColors.GOOD;
@@ -167,7 +167,7 @@
       $("#catchGrade").textContent = `[${latest.grade}] 최근 획득`;
       $("#catchGrade").style.color = grades.find(item => item.name === latest.grade)?.color || "";
       $("#catchName").textContent = latest.name;
-      $("#catchMeta").textContent = `${latest.timingResult || "GOOD"} · ${latest.size === null ? "특별 개체" : `${formatSize(latest.size)}cm`} · ${formatMoney(latest.price || 0)}`;
+      $("#catchMeta").textContent = `${latest.timingResult || "기존 기록"} · ${latest.size === null ? "특별 개체" : `${formatSize(latest.size)}cm`} · ${formatMoney(latest.price || 0)}`;
     }
     if (state.initialized && bucket.length > state.previousBucketCount && latest) {
       $("#catchSpotlight").classList.remove("caught");
@@ -229,7 +229,7 @@
     $("#recentCatchGrid").hidden = recent.length === 0;
     $("#recentCatchGrid").innerHTML = recent.map((fish, index) => `
       <article class="recent-catch-item ${gradeClass(fish.grade)}" data-tooltip="${safe(fish.time || "최근 획득")}">
-        <span>${fishIcon(fish)}</span><div><b>${safe(fish.name)}</b><small>${safe(fish.grade)} · ${fish.timingResult || "GOOD"}</small></div><em>${index + 1}회 전</em>
+        <span>${fishIcon(fish)}</span><div><b>${safe(fish.name)}</b><small>${safe(fish.grade)} · ${fish.timingResult || "기존 기록"}</small></div><em>${index + 1}회 전</em>
       </article>`).join("");
   }
 
