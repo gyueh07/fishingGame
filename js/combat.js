@@ -189,10 +189,15 @@ function hasMissingCombatHp(f){
   return c.hp > 0 && c.maxHp > 0 && c.hp < c.maxHp;
 }
 
-function markRecoveringIfDamaged(f){
+function isFishInActiveBattle(f){
+  return !!(activeTraitBattle && Array.isArray(activeTraitBattle.participants) && activeTraitBattle.participants.includes(f));
+}
+
+function markRecoveringIfDamaged(f,force=false){
+  if(isFishInActiveBattle(f) && !force) return false;
   if(!hasMissingCombatHp(f)) return false;
   const c = ensureCombatStats(f);
-  if(c.status === "회복 중" && c.stunUntil) return false;
+  if(c.status === "회복 중" && c.stunUntil && !force) return false;
 
   const now = Date.now();
   const maxHp = Math.max(1, Number(c.maxHp || 1));
@@ -201,6 +206,7 @@ function markRecoveringIfDamaged(f){
   const duration = Math.max(1000, Math.ceil(fullDuration * (1 - hpRate)));
 
   c.status = "회복 중";
+  delete c.knockedOut;
   c.recoveryStartAt = now;
   c.recoveryStartHp = Math.max(1, Math.floor(c.hp));
   c.stunUntil = now + duration;
@@ -209,7 +215,28 @@ function markRecoveringIfDamaged(f){
 
 function updateRecoveringFishHp(f){
   const c = ensureCombatStats(f);
+  if(isFishInActiveBattle(f)) return false;
   let changed = false;
+  const now = Date.now();
+  const maxHp = Math.max(1, c.maxHp || 1);
+  const knockedOut=!!c.knockedOut||(Number(c.hp||0)<=0&&["기절","회복 중"].includes(c.status)&&Number(c.stunUntil||0)>now);
+
+  if(knockedOut){
+    if(!c.knockedOut||c.status!=="기절"||c.hp!==0)changed=true;
+    c.knockedOut=true;
+    c.status="기절";
+    c.hp=0;
+    if(!c.stunUntil||now>=c.stunUntil){
+      c.hp=maxHp;
+      c.status="정상";
+      delete c.knockedOut;
+      delete c.stunUntil;
+      delete c.recoveryStartAt;
+      delete c.recoveryStartHp;
+      return true;
+    }
+    return changed;
+  }
 
   if(c.status === "기절"){
     c.status = "회복 중";
@@ -221,15 +248,13 @@ function updateRecoveringFishHp(f){
 
   if(c.status !== "회복 중") return false;
 
-  const now = Date.now();
-  const maxHp = Math.max(1, c.maxHp || 1);
-
   if(c.hp >= maxHp){
     c.hp = maxHp;
     c.status = "정상";
     delete c.stunUntil;
     delete c.recoveryStartAt;
     delete c.recoveryStartHp;
+    delete c.knockedOut;
     return true;
   }
 
@@ -243,6 +268,7 @@ function updateRecoveringFishHp(f){
     c.hp = maxHp;
     delete c.recoveryStartAt;
     delete c.recoveryStartHp;
+    delete c.knockedOut;
     return true;
   }
 
@@ -257,6 +283,7 @@ function updateRecoveringFishHp(f){
     delete c.stunUntil;
     delete c.recoveryStartAt;
     delete c.recoveryStartHp;
+    delete c.knockedOut;
     return true;
   }
 
@@ -357,7 +384,14 @@ function statStars(value, grade, stat, combat=null){
 
 function getCombatStatusText(f){
   const c = ensureCombatStats(f);
-  updateRecoveringFishHp(f);
+  if(!isFishInActiveBattle(f)) updateRecoveringFishHp(f);
+
+  if(isFishInActiveBattle(f) && (c.hp<=0 || c.battleDown)) return "쓰러짐";
+
+  if(c.knockedOut&&c.stunUntil){
+    const left=c.stunUntil-Date.now();
+    if(left>0)return "기절 ("+formatRemain(left)+")";
+  }
 
   if(c.status === "회복 중" && c.stunUntil){
     const left = c.stunUntil - Date.now();
@@ -777,7 +811,10 @@ function prepareBossFish(displayNumber){
   const c = ensureCombatStats(f);
 
   if(f.grade === "쓰레기") return print("쓰레기 등급은 전투에 참가할 수 없습니다.");
-  if(c.status === "기절") c.status = "회복 중";
+  if(c.knockedOut||c.status==="기절"||c.hp<=0){
+    const left=Math.max(0,Number(c.stunUntil||0)-Date.now());
+    return print("기절한 물고기는 전투에 참가할 수 없습니다."+(left>0?"\n\n남은 시간 : "+formatRemain(left):""));
+  }
 
   bossPrepIndexes.push(idx);
   pendingRecoveryBattleConfirm = false;
@@ -816,7 +853,8 @@ function calcDamage(attackerAttack, critRate, critDamage){
 function stunFish(f){
   const c = ensureCombatStats(f);
   c.hp = 0;
-  c.status = "회복 중";
+  c.status = "기절";
+  c.knockedOut = true;
   if(activeTraitBattle && activeTraitBattle.participants && activeTraitBattle.participants.includes(f)){
     c.battleDown = true;
     delete c.rootLinkedPeers;
@@ -885,8 +923,7 @@ function getAlivePreparedFishes(){
       if(!f || f.grade === "쓰레기") return false;
       updateRecoveringFishHp(f);
       const c = ensureCombatStats(f);
-      if(c.status === "회복 중" && c.hp <= 0) c.hp = 1;
-      return c.hp > 0;
+      return c.hp > 0 && !c.knockedOut && c.status !== "기절";
     });
 }
 
@@ -906,7 +943,7 @@ function isBattleActionableFish(f){
   const c = ensureCombatStats(f);
   const turn=activeTraitBattle?Number(activeTraitBattle.turn||0):0;
   const notBanished=!Number(c.voidBanishedUntil||0)||Number(c.voidBanishedUntil||0)<turn;
-  return c.hp > 0 && c.status !== "기절" && !c.battleDown && !c.devouredByFenrir && notBanished && !(c._traitBattle && c._traitBattle.ashRemnant);
+  return c.hp > 0 && c.status !== "기절" && !c.knockedOut && !c.battleDown && !c.devouredByFenrir && notBanished && !(c._traitBattle && c._traitBattle.ashRemnant);
 }
 
 function isFishTraitSealed(f){
@@ -946,7 +983,7 @@ function snapshotFishTraitState(f){
   const c = ensureCombatStats(f);
   return {
     hp:Number(c.hp || 0), maxHp:Number(c.maxHp || 1), status:c.status,
-    stunUntil:c.stunUntil, battleDown:!!c.battleDown,
+    stunUntil:c.stunUntil, battleDown:!!c.battleDown, knockedOut:!!c.knockedOut,
     burnStacks:Number(c.burnStacks || 0), poisonStacks:Number(c.poisonStacks || 0),
     azhiCurses:c.azhiCurses ? {...c.azhiCurses} : null,
     ratatoskrRedirect:c.ratatoskrRedirect,
@@ -962,6 +999,7 @@ function restoreFishTraitState(f, snap){
   c.hp = Math.max(0, Math.min(c.maxHp, Number(snap.hp ?? 0)));
   c.status = snap.status || "정상";
   if(snap.battleDown) c.battleDown=true; else delete c.battleDown;
+  if(snap.knockedOut) c.knockedOut=true; else delete c.knockedOut;
   if(snap.stunUntil !== undefined) c.stunUntil=snap.stunUntil; else delete c.stunUntil;
   if(snap.burnStacks) c.burnStacks=snap.burnStacks; else delete c.burnStacks;
   if(snap.poisonStacks) c.poisonStacks=snap.poisonStacks; else delete c.poisonStacks;
@@ -1024,7 +1062,14 @@ function initTraitBattle(participants,boss,battleLog){
     periodStarted:false,periodSentences:0,timeRewindPending:false,timeRewindUsed:false,diamondTurn:0};
   participants.forEach(f=>{
     const c=ensureCombatStats(f);
-    c._traitBattle={originalMaxHp:c.maxHp,originalCritDamage:c.critDamage};
+    c._traitBattle={
+      originalMaxHp:c.maxHp,
+      originalCritDamage:c.critDamage,
+      battleStartHp:c.hp,
+      battleStartMaxHp:c.maxHp,
+      battleStartStatus:c.status,
+      battleStartStunUntil:c.stunUntil
+    };
   });
 }
 
@@ -2487,17 +2532,13 @@ function cleanupBattleEffects(participants){
     delete c.healingBlockedUntil;
     delete c.healingPenalty;
     if(c._preErosionMaxHp){
-      const oldMaxHp = Math.max(1, Number(c.maxHp || c._preErosionMaxHp || 1));
-      const hpRate = c.hp > 0 ? clamp(Number(c.hp || 0) / oldMaxHp, 0, 1) : 0;
       c.maxHp = c._preErosionMaxHp;
-      if(c.hp > 0) c.hp = Math.max(1, Math.min(c.maxHp, Math.floor(c.maxHp * hpRate)));
+      if(c.hp > 0) c.hp = Math.max(1, Math.min(c.maxHp, Math.floor(c.hp)));
       delete c._preErosionMaxHp;
     }
     if(c._traitBattle){
-      const oldMaxHp = Math.max(1, Number(c.maxHp || c._traitBattle.originalMaxHp || 1));
-      const hpRate = c.hp > 0 ? clamp(Number(c.hp || 0) / oldMaxHp, 0, 1) : 0;
       if(c._traitBattle.originalMaxHp) c.maxHp=c._traitBattle.originalMaxHp;
-      if(c.hp>0) c.hp=Math.max(1, Math.min(c.maxHp, Math.floor(c.maxHp * hpRate)));
+      if(c.hp>0) c.hp=Math.max(1, Math.min(c.maxHp, Math.floor(c.hp)));
       delete c._traitBattle;
     }
   });
@@ -2520,15 +2561,45 @@ function createBossBattleLog(boss,participants){
         turn:activeTraitBattle?Number(activeTraitBattle.turn||0):0,
         bossHp:Math.max(0,Number(boss._currentHp??boss.hp)),
         bossMaxHp:Number(boss.hp||1),
-        fish:participants.map((f,index)=>{const c=ensureCombatStats(f);return {
+        fish:participants.map((f,index)=>{const c=ensureCombatStats(f),displayMaxHp=Math.max(Number(c.maxHp||1),Number(c._traitBattle?.originalMaxHp||1));return {
           key:String(f.id||index),name:String(f.name||""),displayName:displayFishName(f.name),grade:f.grade,
-          hp:Math.max(0,Number(c.hp||0)),maxHp:Math.max(1,Number(c.maxHp||1)),status:getCombatStatusText(f)
+          hp:Math.max(0,Number(c.hp||0)),maxHp:Math.max(1,displayMaxHp),status:getCombatStatusText(f)
         };})
       });
     });
     return log.length;
   };
   return log;
+}
+
+function captureBattleHealthStarts(participants){
+  return participants.map(f=>{
+    const c=ensureCombatStats(f),state=c._traitBattle||{};
+    return {
+      fish:f,
+      startHp:Math.max(0,Number(state.battleStartHp??c.hp??0)),
+      startMaxHp:Math.max(1,Number(state.battleStartMaxHp??state.originalMaxHp??c.maxHp??1))
+    };
+  });
+}
+
+function createBattleHealthReport(starts){
+  const now=Date.now();
+  return starts.map(item=>{
+    const f=item.fish,c=ensureCombatStats(f);
+    const endHp=Math.max(0,Math.min(Number(c.maxHp||1),Number(c.hp||0)));
+    const maxHp=Math.max(1,Number(c.maxHp||item.startMaxHp||1));
+    const lostHp=Math.max(0,item.startHp-endHp);
+    return {
+      key:String(f.id||f.name),name:String(f.name||""),grade:f.grade,
+      startHp:item.startHp,endHp,maxHp,lostHp,
+      lostRate:item.startHp>0?lostHp/item.startHp*100:0,
+      remainingRate:endHp/maxHp*100,
+      recoveryUntil:Number(c.stunUntil||0),
+      recoveryMs:Math.max(0,Number(c.stunUntil||0)-now),
+      status:c.knockedOut||c.hp<=0?"기절":c.status||"정상"
+    };
+  });
 }
 
 function runBossBattle(){
@@ -2958,7 +3029,9 @@ function runBossBattle(){
     battleLog.push(bossColor(boss.name, boss) + "의 체력이 최대 체력으로 회복되었습니다.\n다음 전투는 처음부터 다시 시작됩니다.");
   }
 
+  const battleHealthStarts=captureBattleHealthStarts(participants);
   cleanupBattleEffects(participants);
+  activeTraitBattle=null;
   participants.forEach(f => {
     const c = ensureCombatStats(f);
     if(c.hp > 0){
@@ -2969,17 +3042,17 @@ function runBossBattle(){
         delete c.recoveryStartAt;
         delete c.recoveryStartHp;
       }else{
-        markRecoveringIfDamaged(f);
+        markRecoveringIfDamaged(f,true);
       }
     }
   });
-  activeTraitBattle=null;
+  const healthReport=createBattleHealthReport(battleHealthStarts);
 
-  const resultText = buildBattleResultText(boss, participants, totalDamage, result, rewardMoney, rewardDrop, rewardDropCount, battleLog);
-  const summary = buildBattleSummaryText(boss, result, rewardMoney, rewardDrop, rewardDropCount);
+  const resultText = buildBattleResultText(boss, participants, totalDamage, result, rewardMoney, rewardDrop, rewardDropCount, battleLog,healthReport);
+  const summary = buildBattleSummaryText(boss, result, rewardMoney, rewardDrop, rewardDropCount,healthReport);
   globalThis.pendingBossBattleReplay={
     boss:{id:boss.id,name:boss.name,grade:boss.grade,color:boss.color,difficulty:boss.difficultyName||"일반",maxHp:boss.hp},
-    frames:battleLog.replayFrames.slice(),result,totalDamage,rewardMoney,rewardDrop,rewardDropCount,summary
+    frames:battleLog.replayFrames.slice(),result,totalDamage,rewardMoney,rewardDrop,rewardDropCount,summary,healthReport
   };
   clearBattleDisplayNumbers(participants);
 
@@ -2992,7 +3065,7 @@ function runBossBattle(){
   printPreview("전투 종료", summary, "전투 결과", resultText);
 }
 
-function buildBattleSummaryText(boss, result, rewardMoney, rewardDrop, rewardDropCount){
+function buildBattleSummaryText(boss, result, rewardMoney, rewardDrop, rewardDropCount,healthReport=[]){
   let s = line() + "\n\n";
   s += bossColor(boss.name, boss) + " ["+(boss.difficultyName||"일반")+"] " + result + "\n\n";
 
@@ -3006,11 +3079,20 @@ function buildBattleSummaryText(boss, result, rewardMoney, rewardDrop, rewardDro
     s += rewardDrop + " x" + rewardDropCount.toLocaleString() + "\n\n";
   }
 
+  if(healthReport.length){
+    s += "파티 체력 변화\n\n";
+    healthReport.forEach(item=>{
+      s += displayFishName(item.name)+" : "+Math.floor(item.startHp).toLocaleString()+" → "+Math.floor(item.endHp).toLocaleString()+" / "+Math.floor(item.maxHp).toLocaleString()+"\n";
+      s += "감소 "+item.lostRate.toFixed(1)+"% · 잔여 "+item.remainingRate.toFixed(1)+"%"+(item.recoveryMs>0?" · "+(item.status==="기절"?"기절 ":"회복 ")+formatRemain(item.recoveryMs):"")+"\n";
+    });
+    s += "\n";
+  }
+
   s += line();
   return s;
 }
 
-function buildBattleResultText(boss, participants, totalDamage, result, rewardMoney, rewardDrop, rewardDropCount, battleLog){
+function buildBattleResultText(boss, participants, totalDamage, result, rewardMoney, rewardDrop, rewardDropCount, battleLog,healthReport=[]){
   let s = "전투 결과\n\n";
   s += line() + "\n\n";
 
@@ -3026,8 +3108,13 @@ function buildBattleResultText(boss, participants, totalDamage, result, rewardMo
   if(participants.length === 0){
     s += "없음\n";
   } else {
-    participants.forEach(f => {
+    participants.forEach((f,index) => {
+      const health=healthReport[index];
       s += lineFish(f) + " (" + getCombatStatusText(f) + ")\n";
+      if(health){
+        s += "전투 전 "+Math.floor(health.startHp).toLocaleString()+" → 종료 "+Math.floor(health.endHp).toLocaleString()+" / "+Math.floor(health.maxHp).toLocaleString()+"\n";
+        s += "기존 체력 대비 "+health.lostRate.toFixed(1)+"% 감소 · 잔여 "+health.remainingRate.toFixed(1)+"%"+(health.recoveryMs>0?" · "+(health.status==="기절"?"기절 ":"회복 ")+formatRemain(health.recoveryMs):"")+"\n";
+      }
     });
   }
 

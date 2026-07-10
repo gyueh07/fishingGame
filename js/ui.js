@@ -209,8 +209,10 @@
 
   function finishBossBattleReplay(replay){
     const success=replay.result==="처치 성공",action=$("#battleActionCard"),arena=$("#bossBattleArena");
+    const healthRows=(replay.healthReport||[]).map(item=>{const recoveryLeft=Number(item.recoveryUntil||0)>0?Math.max(0,Number(item.recoveryUntil)-Date.now()):Number(item.recoveryMs||0),knockedOut=item.status==="기절"||Number(item.endHp||0)<=0;return `<div class="battle-health-row ${gradeClass(item.grade)} ${knockedOut?"knocked-out":""}"><span>${fishIcon(item)}</span><div><b>${safe(item.name)}</b><small>${compactNumber(item.startHp)} → ${compactNumber(item.endHp)} / ${compactNumber(item.maxHp)}</small><i><em style="width:${Math.max(0,Math.min(100,Number(item.remainingRate||0)))}%"></em></i></div><strong>-${Number(item.lostRate||0).toFixed(1)}%</strong><small>${recoveryLeft>0?`${knockedOut?"기절":"회복"} ${safe(formatRemain(recoveryLeft))}`:"정상"}</small></div>`;}).join("");
+    const healthSummary=healthRows?`<section class="battle-health-summary"><small>PARTY DAMAGE REPORT</small>${healthRows}</section>`:"";
     if(arena){arena.classList.remove("event-skill","event-crazy","event-passive","event-ally","hit-player","hit-boss");arena.classList.add(success?"battle-win":"battle-lose");}
-    if(action)action.innerHTML=`<div class="battle-finish-card ${success?"win":"lose"}"><small>${success?"RAID CLEAR":"RAID FAILED"}</small><strong>${success?"처치 성공":"처치 실패"}</strong><p>총 피해 ${Number(replay.totalDamage||0).toLocaleString()}</p>${success?`<p>${safe(replay.rewardDrop)} × ${Number(replay.rewardDropCount||0).toLocaleString()}${replay.rewardMoney>0?` · ${safe(formatMoney(replay.rewardMoney))}`:""}</p>`:""}<div class="battle-finish-actions"><button data-battle-replay>다시 보기</button><button data-battle-close>닫기</button></div></div>`;
+    if(action)action.innerHTML=`<div class="battle-finish-card ${success?"win":"lose"}"><small>${success?"RAID CLEAR":"RAID FAILED"}</small><strong>${success?"처치 성공":"처치 실패"}</strong><p>총 피해 ${Number(replay.totalDamage||0).toLocaleString()}</p>${success?`<p>${safe(replay.rewardDrop)} × ${Number(replay.rewardDropCount||0).toLocaleString()}${replay.rewardMoney>0?` · ${safe(formatMoney(replay.rewardMoney))}`:""}</p>`:""}${healthSummary}<div class="battle-finish-actions"><button data-battle-replay>다시 보기</button><button data-battle-close>닫기</button></div></div>`;
     const title=$("#modalTitle");if(title)title.textContent=success?"보스 레이드 승리":"보스 레이드 패배";
     const turnLabel=$("#battleTurnLabel");if(turnLabel)turnLabel.textContent="BATTLE END";
     if(success){playGameSound("victory");gameVibrate("victory");}
@@ -252,7 +254,12 @@
       frame("아자토스의 맹목의 핵동\n파티 전체가 피해를 받았습니다.",1,62000000000,1),frame('<span class="battle-event battle-event--passive"><span class="battle-event__eyebrow">PASSIVE SHIFT</span><b><span style="color:#d053ff">아자토스</span> · 두 번째 각성</b><span class="battle-event__body">회피를 무시하고 치명타율을 감소시킵니다.</span></span>',2,34000000000),frame('<span class="battle-event battle-event--ally"><span class="battle-event__eyebrow">ALLY SKILL</span><b>바다를 삼킨 태양 · 태양 폭발</b><span class="battle-event__body">태양 주기가 완성되어 전장을 밝힙니다.</span></span>',3,34000000000),frame("바다를 삼킨 태양 공격\n치명타!\n16,000,000,000 피해",3,18000000000),
       frame('<span class="battle-event battle-event--crazy"><span class="battle-event__eyebrow">CRAZY ULTIMATE</span><b><span style="color:#d053ff">아자토스</span> · 잠든 신의 개안</b><span class="battle-event__body">전투당 한 번만 사용하는 궁극기가 발동했습니다.</span></span>',3,18000000000),frame("아자토스를 쓰러뜨렸습니다.",4,0)
     ];
-    setTimeout(()=>openBossBattleReplay({boss,frames,result:"처치 성공",totalDamage:70000000000,rewardMoney:3000000000000000,rewardDrop:"혼돈의 핵",rewardDropCount:8}),80);
+    const healthReport=[
+      {name:"바다를 삼킨 태양",grade:"공허",startHp:4200000000,endHp:2100000000,maxHp:4200000000,lostRate:50,remainingRate:50,recoveryUntil:Date.now()+300000,recoveryMs:300000},
+      {name:"해신룡",grade:"영원",startHp:3600000000,endHp:0,maxHp:3600000000,lostRate:100,remainingRate:0,recoveryUntil:Date.now()+600000,recoveryMs:600000,status:"기절"},
+      {name:"휘몰아치는 마음",grade:"초월",startHp:2900000000,endHp:2900000000,maxHp:2900000000,lostRate:0,remainingRate:100,recoveryUntil:0,recoveryMs:0}
+    ];
+    setTimeout(()=>openBossBattleReplay({boss,frames,result:"처치 성공",totalDamage:70000000000,rewardMoney:3000000000000000,rewardDrop:"혼돈의 핵",rewardDropCount:8,healthReport}),80);
   }
 
   function applyLocalCosmeticDemo(){
@@ -488,11 +495,11 @@
     if (!bucket.length) { grid.replaceChildren(); return; }
     const list = sortedBucketList();
     grid.innerHTML = list.map((entry, index) => {
-      const fish = entry.fish, combat = ensureCombatStats(fish), no = index + 1, healthPercent=Math.floor(hpPercent(combat.hp,combat.maxHp));
+      const fish = entry.fish, combat = ensureCombatStats(fish), no = index + 1, healthPercent=Math.floor(hpPercent(combat.hp,combat.maxHp)),recoveryLeft=Math.max(0,Number(combat.stunUntil||0)-Date.now()),knockedOut=!!combat.knockedOut||combat.status==="기절"||combat.hp<=0;
       return `<article class="fish-card ${gradeClass(fish.grade)}">
         <div class="fish-card-top"><span class="fish-card-icon">${fishIcon(fish)}</span><span class="fish-card-index">NO.${no}${fish.locked ? " · 🔒" : ""}</span></div>
         <span class="fish-card-grade">${safe(fish.grade)}</span><h3>${safe(fish.name)}</h3><p>${fish.size === null ? "특별 개체" : `${formatSize(fish.size)}cm`}</p>
-        <div class="fish-stats"><div><small>공격력 ${combatStars(combat,"attack")}</small><b>${compactNumber(combat.attack)}</b></div><div><small>체력 ${combatStars(combat,"hp")} · ${healthPercent}%</small><b>${compactNumber(combat.hp)} / ${compactNumber(combat.maxHp)}</b><span class="bucket-hp-track"><i style="width:${healthPercent}%"></i></span></div></div>
+        <div class="fish-stats"><div><small>공격력 ${combatStars(combat,"attack")}</small><b>${compactNumber(combat.attack)}</b></div><div><small>체력 ${combatStars(combat,"hp")} · ${healthPercent}%</small><b>${compactNumber(combat.hp)} / ${compactNumber(combat.maxHp)}</b><span class="bucket-hp-track"><i style="width:${healthPercent}%"></i></span>${recoveryLeft>0?`<em class="bucket-recovery ${knockedOut?"knocked-out":""}" data-recovery-until="${Number(combat.stunUntil||0)}" data-recovery-kind="${knockedOut?"knockout":"recovery"}">${knockedOut?"💫 기절":"❤️‍🩹 회복"} ${safe(formatRemain(recoveryLeft))}</em>`:""}</div></div>
         <div class="fish-actions"><button data-fish-action="info" data-number="${no}" data-tooltip="능력치와 특성을 확인합니다">상세</button><button data-fish-action="lock" data-number="${no}" data-tooltip="${fish.locked ? "잠금을 해제합니다" : "판매되지 않도록 잠급니다"}">${fish.locked ? "잠금 해제" : "잠금"}</button><button class="sell" data-fish-action="sell" data-number="${no}" data-tooltip="현재 시세로 판매합니다" ${fish.locked ? "disabled" : ""}>판매</button></div>
       </article>`;
     }).join("");
@@ -571,8 +578,8 @@
       return combatPower(b.fish)-combatPower(a.fish)||b.originalIndex-a.originalIndex;
     }).slice(0,60);
     const fishCards = list.map(entry => {
-      const fish = entry.fish, no = getDisplayNumberByBucketIndex(entry.originalIndex), selected = bossPrepIndexes.includes(entry.originalIndex), c = ensureCombatStats(fish);
-      return `<article class="boss-party-fish ${gradeClass(fish.grade)} ${selected ? "selected" : ""}"><span>${fishIcon(fish)}</span><div><b>${safe(fish.name)}</b><small>⚔ ${compactNumber(c.attack)} ${combatStars(c,"attack")} · ❤️ ${compactNumber(c.maxHp)} ${combatStars(c,"hp")}</small></div><button data-boss-prep-number="${no}" data-selected="${selected ? 1 : 0}">${selected ? "해제" : "참가"}</button></article>`;
+      const fish = entry.fish, no = getDisplayNumberByBucketIndex(entry.originalIndex), selected = bossPrepIndexes.includes(entry.originalIndex), c = ensureCombatStats(fish), knockedOut=!!c.knockedOut||c.status==="기절"||c.hp<=0;
+      return `<article class="boss-party-fish ${gradeClass(fish.grade)} ${selected ? "selected" : ""} ${knockedOut?"knocked-out":""}"><span>${fishIcon(fish)}</span><div><b>${safe(fish.name)}</b><small>⚔ ${compactNumber(c.attack)} ${combatStars(c,"attack")} · ❤️ ${compactNumber(c.hp)} / ${compactNumber(c.maxHp)} ${combatStars(c,"hp")}${knockedOut?" · 기절":""}</small></div><button data-boss-prep-number="${no}" data-selected="${selected ? 1 : 0}" ${knockedOut?"disabled":""}>${knockedOut?"기절":selected?"해제":"참가"}</button></article>`;
     }).join("");
     const cooldown = getBossCooldownLeft(boss.id,difficultyId);
     const difficultyButtons=BOSS_DIFFICULTY_ORDER.map(id=>{const config=getBossDifficultyConfig(id),open=isBossDifficultyUnlocked(baseBoss,id),done=isBossDifficultyCleared(baseBoss,id);return `<button data-boss-difficulty="${id}" class="${id===difficultyId?"active":""}" ${open?"":"disabled"}>${config.name}${done?" ✓":open?"":" 🔒"}</button>`;}).join("");
@@ -587,6 +594,14 @@
     const left=getBossCooldownLeft(button.dataset.bossId,button.dataset.startBossDifficulty);
     button.disabled=left>0;
     button.textContent=left>0?`쿨타임 ${formatRemain(left)}`:`${button.dataset.bossDifficultyName||"선택한 난이도"} 레이드 시작`;
+  }
+
+  function updateBucketRecoveryCountdowns(){
+    $$("[data-recovery-until]").forEach(label=>{
+      const left=Math.max(0,Number(label.dataset.recoveryUntil||0)-Date.now());
+      const knockedOut=label.dataset.recoveryKind==="knockout";
+      label.textContent=left>0?`${knockedOut?"💫 기절":"❤️‍🩹 회복"} ${formatRemain(left)}`:"회복 완료";
+    });
   }
 
   function openMarket() {
@@ -777,5 +792,5 @@
   renderAll(true);
   installTooltips();
   maybeOpenLocalBattleReplayDemo();
-  setInterval(() => { renderAll(false); updateOpenBossCooldown(); if($("#log").textContent.length > 80000) $("#log").replaceChildren(); }, 800);
+  setInterval(() => { renderAll(false); updateOpenBossCooldown(); updateBucketRecoveryCountdowns(); if($("#log").textContent.length > 80000) $("#log").replaceChildren(); }, 800);
 })();
