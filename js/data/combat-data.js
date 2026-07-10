@@ -1,4 +1,7 @@
-﻿const COMBAT_VERSION = 14;
+﻿const COMBAT_VERSION = 15;
+const FISH_HP_BALANCE_VERSION = 1;
+const FISH_HP_BALANCE_MULTIPLIER = 3;
+const BOSS_ATTACK_BALANCE_MULTIPLIER = 2.7;
 
 const combatAttackRanges = {
   "일반":[30,150], "희귀":[100,500], "영웅":[500,2000], "전설":[2000,8000],
@@ -6,8 +9,8 @@ const combatAttackRanges = {
 };
 
 const combatHpRanges = {
-  "일반":[150,900], "희귀":[500,3000], "영웅":[2500,12000], "전설":[10000,80000],
-  "신화":[40000,180000], "초월":[120000,500000], "영원":[600000,1500000], "공허":[2000000,5000000]
+  "일반":[450,2700], "희귀":[1500,9000], "영웅":[7500,36000], "전설":[30000,240000],
+  "신화":[120000,540000], "초월":[360000,1500000], "영원":[1800000,4500000], "공허":[6000000,15000000]
 };
 
 const materialInfo = {

@@ -107,6 +107,7 @@ window.addEventListener("beforeunload", () => {
 });
 
 loadGame();
+migrateCombatStatsToCurrentVersion();
 
 if(!currentUser){
   clearUserSession();

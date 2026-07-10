@@ -29,9 +29,32 @@ let cloudSaveChain=Promise.resolve();
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
-const GAME_VERSION = "2026-07-10-fishinglife-pvp-live-history-v21";
+const GAME_VERSION = "2026-07-11-fishinglife-hp-pvp-turn-v23";
 const UPDATE_NOTICE_TITLE = "📢 업데이트 안내";
 const UPDATE_NOTICES = [
+  {
+    id:"2026-07-11-fishinglife-hp-pvp-turn-23",
+    title:"체력 3배·1대1 교대 전투 업데이트",
+    lines:[
+      "기존 양동이와 새로 획득하는 모든 물고기의 최대 체력이 3배로 증가합니다.",
+      "부상 물고기는 남은 체력 비율과 회복시간을 유지하고 기절 물고기는 HP 0 상태를 그대로 유지합니다.",
+      "합성 누적 체력 전이·본체 기준 체력·진화 체력도 모두 3배로 자동 변환됩니다.",
+      "보스의 공격력 기반 일반 공격·스킬·소환물 피해는 2.7배로 조정되고 최대 체력 비례 피해는 기존 비율을 유지합니다.",
+      "1대1은 한 파티가 몰아서 공격하지 않고 양쪽 물고기가 한 마리씩 번갈아 행동합니다.",
+      "1대1 시작 전 7초 동안 양쪽 출전 물고기와 공격력·체력·치명타·회피 및 파티 총합을 비교합니다."
+    ]
+  },
+  {
+    id:"2026-07-10-fishinglife-conquest-cosmetics-22",
+    title:"등급 정복 배경·공격 연출 강화 업데이트",
+    lines:[
+      "등급 정복 배경은 영웅부터 공허까지 빛 문양·광륜·입자 밀도가 단계적으로 강해집니다.",
+      "장착한 등급 공격 연출은 아군 물고기의 매 공격마다 재생되며 보스 공격에는 발동하지 않습니다.",
+      "후반 등급 공격 연출에 빛기둥·회전 광륜·화면 광폭발을 추가하고 공허 연출을 가장 웅장하게 강화했습니다.",
+      "후반 보스 오라는 프로필의 네모 프레임 형태와 이중 광륜까지 바꾸며 아자토스 오라는 전용 최종 단계로 표시됩니다.",
+      "꾸미기 기본 설정에서 기본 배경과 기본 공격 연출로 언제든 되돌릴 수 있습니다."
+    ]
+  },
   {
     id:"2026-07-10-fishinglife-pvp-live-history-21",
     title:"1대1 라이브 전투·최근 전투 기록 업데이트",

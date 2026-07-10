@@ -128,7 +128,7 @@ function rerollCritStats(f){
 
 function makeCombatStats(f, fixedStars=null){
   if(!f || f.grade === "쓰레기"){
-    return {attack:0, hp:0, maxHp:0, dodge:0, critRate:0, critDamage:0, status:"전투 불가", combatVersion:COMBAT_VERSION, stars:{attack:0,hp:0,dodge:0,critRate:0,critDamage:0}};
+    return {attack:0, hp:0, maxHp:0, dodge:0, critRate:0, critDamage:0, status:"전투 불가", combatVersion:COMBAT_VERSION, hpBalanceVersion:FISH_HP_BALANCE_VERSION, stars:{attack:0,hp:0,dodge:0,critRate:0,critDamage:0}};
   }
 
   const atkRange = combatAttackRanges[f.grade] || [10,50];
@@ -169,6 +169,7 @@ function makeCombatStats(f, fixedStars=null){
     _baseCritDamage:critDamage,
     status:"정상",
     combatVersion:COMBAT_VERSION,
+    hpBalanceVersion:FISH_HP_BALANCE_VERSION,
     stars:stars
   };
 }
@@ -348,6 +349,7 @@ function ensureCombatStats(f){
     f.combat.critRate = 0;
     f.combat.critDamage = 0;
     f.combat.combatVersion = COMBAT_VERSION;
+    f.combat.hpBalanceVersion = FISH_HP_BALANCE_VERSION;
     f.combat.stars = {attack:0,hp:0,dodge:0,critRate:0,critDamage:0};
     return f.combat;
   }
@@ -380,21 +382,63 @@ function resetAllCombatStats(){
   if(changed) saveGame();
 }
 
+function migrateFusionHpBalance(f){
+  if(!f?.fusion||typeof f.fusion!=="object"||Number(f.fusion.hpBalanceVersion||0)>=FISH_HP_BALANCE_VERSION)return false;
+  ["mainBaseMaxHp","permanentMaxHp","totalHpGain"].forEach(key=>{
+    if(Number(f.fusion[key])>0)f.fusion[key]=Math.max(1,Math.floor(Number(f.fusion[key])*FISH_HP_BALANCE_MULTIPLIER));
+  });
+  f.fusion.hpBalanceVersion=FISH_HP_BALANCE_VERSION;
+  return true;
+}
+
+function migrateStoredFishHpToTriple(c){
+  if(!c||Number(c.hpBalanceVersion||0)>=FISH_HP_BALANCE_VERSION)return false;
+  ["_baseMaxHp","maxHp","hp","recoveryStartHp","_preErosionMaxHp"].forEach(key=>{
+    if(c[key]!==undefined&&c[key]!==null)c[key]=Math.max(key==="hp"||key==="recoveryStartHp"?0:1,Math.floor(Number(c[key]||0)*FISH_HP_BALANCE_MULTIPLIER));
+  });
+  if(c.knockedOut||c.status==="기절"||Number(c.hp||0)<=0)c.hp=0;
+  c.hpBalanceVersion=FISH_HP_BALANCE_VERSION;
+  c.combatVersion=COMBAT_VERSION;
+  return true;
+}
+
 function migrateCombatStatsToCurrentVersion(){
   const targetVersion = COMBAT_VERSION;
   let changed = false;
 
   bucket.forEach(f => {
     if(!f) return;
-
+    const fusionChanged=migrateFusionHpBalance(f);
     const currentVersion = Number((f.combat && f.combat.combatVersion) || 0);
 
-    if(currentVersion < targetVersion){
-      const existingStars = f.combat && f.combat.stars ? {...f.combat.stars} : null;
-      f.combat = makeCombatStats(f, existingStars);
-      f.combat.combatVersion = targetVersion;
-      changed = true;
+    if(f.grade==="쓰레기"){
+      if(!f.combat)f.combat=makeCombatStats(f);
+      f.combat.attack=0;f.combat.hp=0;f.combat.maxHp=0;f.combat.status="전투 불가";f.combat.combatVersion=targetVersion;f.combat.hpBalanceVersion=FISH_HP_BALANCE_VERSION;
+      if(currentVersion<targetVersion||fusionChanged)changed=true;
+      return;
     }
+
+    if(currentVersion < targetVersion){
+      if(currentVersion===14&&f.combat){
+        migrateStoredFishHpToTriple(f.combat);
+      }else{
+        const existingStars = f.combat && f.combat.stars ? {...f.combat.stars} : null;
+        f.combat = makeCombatStats(f, existingStars);
+        f.combat.hpBalanceVersion=FISH_HP_BALANCE_VERSION;
+      }
+      if(f.fusion&&Number(f.fusion.permanentMaxHp)>0){
+        f.combat._baseMaxHp=Math.max(1,Math.floor(Number(f.fusion.permanentMaxHp)));
+        f.combat._baseAttack=Math.max(1,Math.floor(Number(f.fusion.permanentAttack||f.combat._baseAttack||f.combat.attack||1)));
+        applyTrainingBonusesToCombat(f.combat);
+      }
+      f.combat.combatVersion=targetVersion;
+      changed = true;
+    }else if(fusionChanged){
+      f.combat._baseMaxHp=Math.max(1,Math.floor(Number(f.fusion.permanentMaxHp||f.combat._baseMaxHp||f.combat.maxHp||1)));
+      if(typeof syncFishFusionCombat==="function")syncFishFusionCombat(f);
+      changed=true;
+    }
+    if(fusionChanged)changed=true;
   });
 
   if(changed) saveGame();
@@ -577,7 +621,7 @@ function getBossForDifficulty(baseBoss,difficultyId=getSelectedBossDifficulty(ba
   return {
     ...baseBoss,
     hp:Math.floor(baseBoss.hp*config.hpMultiplier),
-    attack:Math.floor(baseBoss.attack*config.attackMultiplier),
+    attack:Math.floor(baseBoss.attack*config.attackMultiplier*BOSS_ATTACK_BALANCE_MULTIPLIER),
     dodge:Number(baseBoss.dodge||0)+config.dodgeBonus,
     skillRate:Math.min(100,Number(baseBoss.skillRate||0)*config.skillMultiplier),
     difficulty:difficultyId,
@@ -1271,7 +1315,7 @@ function traitModifyIncoming(f,damage,battleLog,meta={}){
   if(f.name==="금빛 보름달 드래곤"&&st.moonPhase===0) final=Math.floor(final*0.8);
   if(f.name==="불타는 마음"&&getBurningHeartStageByCombat(c)>=3) final=Math.floor(final*1.2);
   if(!meta.forced&&f.name==="기묘한 기운 🌀"&&final>Number(c.attack||0)&&Math.random()<0.2){
-    st.numericStored=final; final=Math.max(0,Math.floor(c.attack));
+    st.numericStored=Math.max(1,Math.floor(final/FISH_HP_BALANCE_MULTIPLIER)); final=Math.max(0,Math.floor(c.attack));
     battleLog.push(traitUseByFish(f, "받을 피해와 공격 수치가 뒤바뀌었습니다. 다음 공격 : "+st.numericStored.toLocaleString()));
   }
   const lethal=final>=c.hp;
@@ -1301,7 +1345,7 @@ function traitAfterDamage(f,beforeHp,actualDamage,battleLog,meta={},afterHeal=0)
   if(c.hp<=0&&f.name==="무한한 시간"&&!ctx.timeRewindUsed&&!healingBlocked)ctx.timeRewindPending=true;
   if(meta.fromBoss&&actualDamage>0){
     if(ctx.lastBossTarget===f.id&&f.name==="흑룡"){
-      const reflected=Math.floor(actualDamage*0.3),beforeBossHp=Math.max(0,Number(ctx.boss._currentHp||0));
+      const reflected=Math.floor(actualDamage*0.3/FISH_HP_BALANCE_MULTIPLIER),beforeBossHp=Math.max(0,Number(ctx.boss._currentHp||0));
       ctx.boss._currentHp=Math.max(0,beforeBossHp-reflected);ctx.traitDamage+=Math.min(beforeBossHp,reflected);st.scaleEmpowered=true;
       battleLog.push(traitUseByFish(f, reflected.toLocaleString()+" 피해를 반사하고 다음 공격이 강화됩니다."));
     }
@@ -1316,8 +1360,8 @@ function traitAttackStats(f,boss,battleLog){
   if(isFishTraitSealed(f)) return {attack,critDamage,multiplier,extra,replaced};
   if(st.ashRemnant)multiplier*=0.5;
   if(f.name==="핏빛 초승달 드래곤"){
-    const cost=Math.min(Math.max(0,c.hp-1),Math.floor(c.hp*0.05));c.hp-=cost;extra+=Math.floor(cost*1.5);
-    if(cost>0)battleLog.push(traitUseByFish(f, "체력 "+cost.toLocaleString()+" 소모 · 추가 피해 "+Math.floor(cost*1.5).toLocaleString()));
+    const cost=Math.min(Math.max(0,c.hp-1),Math.floor(c.hp*0.05)),bonus=Math.floor(cost*1.5/FISH_HP_BALANCE_MULTIPLIER);c.hp-=cost;extra+=bonus;
+    if(cost>0)battleLog.push(traitUseByFish(f, "체력 "+cost.toLocaleString()+" 소모 · 추가 피해 "+bonus.toLocaleString()));
   }
   if(f.name==="금빛 보름달 드래곤"&&st.moonPhase===2)multiplier*=1.5;
   if(st.scaleEmpowered){multiplier*=1.5;delete st.scaleEmpowered;}

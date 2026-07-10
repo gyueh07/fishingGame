@@ -28,6 +28,9 @@
     "영원":{slug:"eternal",icon:"🟢",name:"영원의 성해",primary:"#45f1d0",secondary:"#00a98e"},
     "공허":{slug:"void",icon:"🟣",name:"공허의 우주",primary:"#d053ff",secondary:"#4b006e"}
   };
+  const profileAuraTierClasses=[1,2,3,4,5].map(tier=>`profile-aura-tier-${tier}`);
+  const gradeAttackClasses=Object.values(cosmeticGrades).map(config=>"grade-attack-"+config.slug);
+  const gradeAttackTriggerClasses=["grade-attack-trigger-a","grade-attack-trigger-b"];
   const feedbackSettings=(()=>{try{const saved=JSON.parse(localStorage.getItem("fishingLifeFeedbackSettings")||"{}");return {sound:saved.sound!==false,vibration:saved.vibration!==false};}catch{return {sound:true,vibration:true};}})();
   let gameAudioContext=null;
 
@@ -38,8 +41,26 @@
     battleReplayToken:0, battleReplaySpeed:2, battleReplaySkip:false, lastBattleReplay:null, bossPartySortOrder:"전투력", catchCelebrationTimer:0,
     pvpReplayToken:0,pvpReplaySpeed:2,pvpReplaySkip:false,lastPvpReplay:null,pvpReplayDom:null,pvpPartySortOrder:"전투력",pvpVisibleCount:30,pendingPvpRequest:null,
     fusionMaterialIds:[],fusionAnimationResolve:null,presetEditorType:"boss",presetEditorIds:[],
-    renderQueued:false,renderForce:false,bucketRenderToken:0,replayDom:null,replaySummonKey:"",lastActionHtml:"",bossPartyVisibleCount:30,soundAt:{}
+    renderQueued:false,renderForce:false,bucketRenderToken:0,replayDom:null,replaySummonKey:"",lastActionHtml:"",bossPartyVisibleCount:30,soundAt:{},gradeAttackPulse:0
   };
+
+  function getProfileAuraTier(auraId){
+    const boss=bossList.find(item=>item.id===auraId);if(!boss)return 0;
+    const gradeOrder=Object.keys(cosmeticGrades),gradeIndex=Math.max(0,gradeOrder.indexOf(boss.grade)),gradeBosses=bossList.filter(item=>item.grade===boss.grade),isGradeFinal=gradeBosses.at(-1)?.id===boss.id;
+    if(boss.id==="azathoth")return 5;
+    let tier=gradeIndex<=1?1:gradeIndex<=3?2:gradeIndex===4?3:4;
+    if(isGradeFinal)tier=Math.min(4,tier+1);
+    return tier;
+  }
+  function getProfileAuraClass(auraId){const tier=getProfileAuraTier(auraId);return tier?`profile-aura-tier-${tier}`:"";}
+  function applyProfileAuraTier(target,auraId){if(!target)return;target.classList.remove(...profileAuraTierClasses);const tierClass=getProfileAuraClass(auraId);if(tierClass)target.classList.add(tierClass);target.dataset.auraTier=String(getProfileAuraTier(auraId)||"");}
+  function clearGradeAttackEffect(arena){if(arena)arena.classList.remove(...gradeAttackClasses,...gradeAttackTriggerClasses);}
+  function triggerGradeAttackEffect(arena,grade){
+    const config=cosmeticGrades[grade];if(!arena||!config)return false;
+    clearGradeAttackEffect(arena);state.gradeAttackPulse=(state.gradeAttackPulse+1)%2;
+    arena.classList.add("grade-attack-"+config.slug,state.gradeAttackPulse?"grade-attack-trigger-a":"grade-attack-trigger-b");
+    return true;
+  }
 
   function saveFeedbackSettings(){
     localStorage.setItem("fishingLifeFeedbackSettings",JSON.stringify(feedbackSettings));
@@ -288,7 +309,7 @@
     const dom=state.replayDom||{},arena=dom.arena||$("#bossBattleArena"),action=dom.action||$("#battleActionCard");
     if(!arena||!action||!frame)return;
     const kind=replayEventKind(frame.entry),isSkillResult=!!frame.skillResult,text=plain(`${frame.entry||""} ${frame.skillDetail||""}`);
-    arena.classList.remove("hit-player","hit-boss","event-skill","event-crazy","event-passive","event-ally","event-result",...Object.values(cosmeticGrades).map(config=>"grade-attack-"+config.slug));
+    arena.classList.remove("hit-player","hit-boss","event-skill","event-crazy","event-passive","event-ally","event-result");clearGradeAttackEffect(arena);
     const bossName=arena.dataset.bossName||"";
     const bossAttack=!isSkillResult&&kind!=="ally"&&(/보스 턴/.test(text)||(bossName&&text.includes(bossName+"의")));
     const playerAttack=!isSkillResult&&!bossAttack&&(/ 공격|피해/.test(text));
@@ -307,7 +328,7 @@
     else if(playerAttack)arena.classList.add("hit-boss");
     const attackGrade=isProfileCosmeticUnlocked("attackEffect",profileCosmetics.attackEffect)?profileCosmetics.attackEffect:"";
     const attackConfig=cosmeticGrades[attackGrade];
-    if(playerAttack&&attackConfig&&(text.includes("치명타")||frame.turn%3===0))arena.classList.add("grade-attack-"+attackConfig.slug);
+    if(playerAttack&&attackConfig)triggerGradeAttackEffect(arena,attackGrade);
 
     if(kind==="crazy")playGameSound("crazy");
     else if(kind==="ally")playGameSound("timing","GREAT");
@@ -354,7 +375,7 @@
     const success=replay.result==="처치 성공",action=$("#battleActionCard"),arena=$("#bossBattleArena");
     const healthRows=(replay.healthReport||[]).map(item=>{const recoveryLeft=Number(item.recoveryUntil||0)>0?Math.max(0,Number(item.recoveryUntil)-Date.now()):Number(item.recoveryMs||0),knockedOut=item.status==="기절"||Number(item.endHp||0)<=0;return `<div class="battle-health-row ${gradeClass(item.grade)} ${knockedOut?"knocked-out":""}"><span>${fishIcon(item)}</span><div><b>${safe(item.name)}</b><small>${combatHpNumber(item.startHp)} → ${combatHpNumber(item.endHp)} / ${combatHpNumber(item.maxHp)}</small><i><em style="width:${Math.max(0,Math.min(100,Number(item.remainingRate||0)))}%"></em></i></div><strong>-${Number(item.lostRate||0).toFixed(1)}%</strong><small>${recoveryLeft>0?`${knockedOut?"기절":"회복"} ${safe(formatRemain(recoveryLeft))}`:"정상"}</small></div>`;}).join("");
     const healthSummary=healthRows?`<section class="battle-health-summary"><small>PARTY DAMAGE REPORT</small>${healthRows}</section>`:"";
-    if(arena){arena.classList.remove("event-skill","event-crazy","event-passive","event-ally","event-result","hit-player","hit-boss");arena.classList.add(success?"battle-win":"battle-lose");}
+    if(arena){arena.classList.remove("event-skill","event-crazy","event-passive","event-ally","event-result","hit-player","hit-boss");clearGradeAttackEffect(arena);arena.classList.add(success?"battle-win":"battle-lose");}
     if(action)action.innerHTML=`<div class="battle-finish-card ${success?"win":"lose"}"><small>${success?"RAID CLEAR":"RAID FAILED"}</small><strong>${success?"처치 성공":"처치 실패"}</strong><p>총 피해 ${Number(replay.totalDamage||0).toLocaleString()}</p>${success?`<p>${safe(replay.rewardDrop)} × ${Number(replay.rewardDropCount||0).toLocaleString()}${replay.rewardMoney>0?` · ${safe(formatMoney(replay.rewardMoney))}`:""}</p>`:""}${healthSummary}<div class="battle-finish-actions"><button data-battle-replay>다시 보기</button><button data-battle-close>닫기</button></div></div>`;
     const title=$("#modalTitle");if(title)title.textContent=success?"보스 레이드 승리":"보스 레이드 패배";
     const turnLabel=$("#battleTurnLabel");if(turnLabel)turnLabel.textContent="BATTLE END";
@@ -381,7 +402,7 @@
     const party=(first.fish||[]).map((fish,index)=>`<article class="replay-fish ${gradeClass(fish.grade)} ${fishEvolutionClass(fish)}" data-replay-fish-index="${index}"><span>${fishIcon(fish)}</span><div><b>${safe(fish.name)} ${fishEvolutionBadge(fish)}</b><div class="replay-hp"><i data-replay-fish-bar="${index}" style="width:${hpPercent(fish.hp,fish.maxHp)}%"></i></div><small data-replay-fish-hp="${index}">${combatHpNumber(fish.hp)} / ${combatHpNumber(fish.maxHp)}</small></div></article>`).join("");
     const borderId=isProfileCosmeticUnlocked("border",profileCosmetics.border)?profileCosmetics.border:"",auraId=isProfileCosmeticUnlocked("aura",profileCosmetics.aura)?profileCosmetics.aura:"";
     const borderBoss=bossList.find(boss=>boss.id===borderId),auraBoss=bossList.find(boss=>boss.id===auraId),captainName=currentUser||"게스트 선장",captainTitle=currentUser?getCurrentTitle():"";
-    const captainAvatar=borderBoss?bossSymbols[borderBoss.id]||"✦":"⚓",captainClasses=`profile-preview battle-player-avatar ${borderBoss?"has-profile-border":""} ${auraBoss?"has-profile-aura":""}`;
+    const captainAvatar=borderBoss?bossSymbols[borderBoss.id]||"✦":"⚓",captainClasses=`profile-preview battle-player-avatar ${borderBoss?"has-profile-border":""} ${auraBoss?"has-profile-aura":""} ${getProfileAuraClass(auraBoss?.id)}`;
     const captainStyle=`--profile-border-color:${borderBoss?.color||"#4ee4ce"};--profile-aura-color:${auraBoss?.color||"#4ee4ce"}`;
     openUiModal(`${replay.boss.name} · ${replay.boss.difficulty}`,`<div class="boss-battle-replay"><header class="battle-replay-head"><div><small>LIVE BOSS RAID</small><b id="battleTurnLabel">BATTLE START</b></div><div class="battle-speed"><button data-battle-speed="1">×1</button><button class="active" data-battle-speed="2">×2</button><button data-battle-speed="4">×4</button><button data-battle-skip>건너뛰기</button></div></header><section id="bossBattleArena" class="boss-battle-arena" data-boss-name="${safe(replay.boss.name)}" data-boss-symbol="${safe(bossSymbols[replay.boss.id]||"🐲")}"><div class="grade-attack-layer" aria-hidden="true"></div><div class="replay-boss-zone"><div class="replay-boss ${gradeClass(replay.boss.grade)}"><div class="replay-boss-symbol">${bossSymbols[replay.boss.id]||"🐲"}</div><div><small>${safe(replay.boss.grade)} · ${safe(replay.boss.difficulty)}</small><h2>${safe(replay.boss.name)}</h2><div class="replay-hp boss-hp"><i id="replayBossHpBar" style="width:${hpPercent(first.bossHp,first.bossMaxHp)}%"></i></div><b id="replayBossHpText">${combatHpNumber(first.bossHp)} / ${combatHpNumber(first.bossMaxHp)}</b></div></div><div id="replayBossSummons" class="replay-boss-summons"></div></div><div class="battle-versus">VS</div><div class="replay-player-zone"><div class="battle-player-card"><div class="${captainClasses}" style="${captainStyle}" data-aura-symbol="${safe(auraBoss?bossSymbols[auraBoss.id]||"✦":"")}"><span>${captainAvatar}</span></div><div><small>MY CAPTAIN · PARTY ${(first.fish||[]).length}</small><b>${safe(captainName)}</b><em>${safe(captainTitle?`[${captainTitle}]`:"칭호 없음")}</em></div></div><div class="replay-party">${party}</div></div><div id="battleActionCard" class="battle-action-card">전투가 시작됩니다.</div></section></div>`);
     state.replaySummonKey="";state.lastActionHtml="";
@@ -391,15 +412,19 @@
 
   function pvpProfileVisual(profile){
     const cosmetics=normalizeProfileCosmetics(profile),borderBoss=bossList.find(boss=>boss.id===cosmetics.border),auraBoss=bossList.find(boss=>boss.id===cosmetics.aura);
-    return {classes:`profile-preview pvp-player-avatar ${borderBoss?"has-profile-border":""} ${auraBoss?"has-profile-aura":""}`,style:`--profile-border-color:${borderBoss?.color||"#4ee4ce"};--profile-aura-color:${auraBoss?.color||"#4ee4ce"}`,aura:auraBoss?bossSymbols[auraBoss.id]||"✦":"",avatar:borderBoss?bossSymbols[borderBoss.id]||"✦":"⚓"};
+    return {classes:`profile-preview pvp-player-avatar ${borderBoss?"has-profile-border":""} ${auraBoss?"has-profile-aura":""} ${getProfileAuraClass(auraBoss?.id)}`,style:`--profile-border-color:${borderBoss?.color||"#4ee4ce"};--profile-aura-color:${auraBoss?.color||"#4ee4ce"}`,aura:auraBoss?bossSymbols[auraBoss.id]||"✦":"",avatar:borderBoss?bossSymbols[borderBoss.id]||"✦":"⚓",attackEffect:cosmetics.attackEffect};
   }
   function pvpReplayTeamHtml(team,side){
-    return (team||[]).map((fish,index)=>`<article class="pvp-replay-fish ${gradeClass(fish.grade)} ${fishEvolutionClass(fish)}" data-pvp-replay-fish="${side}-${index}"><span>${fishIcon(fish)}</span><div><b>${safe(fish.name)} ${fishEvolutionBadge(fish)}</b><div class="replay-hp"><i data-pvp-replay-bar="${side}-${index}" style="width:${hpPercent(fish.hp,fish.maxHp)}%"></i></div><small data-pvp-replay-hp="${side}-${index}">${combatHpNumber(fish.hp)} / ${combatHpNumber(fish.maxHp)}</small></div></article>`).join("");
+    return (team||[]).map((fish,index)=>`<article class="pvp-replay-fish ${gradeClass(fish.grade)} ${fishEvolutionClass(fish)}" data-pvp-replay-fish="${side}-${index}"><span>${fishIcon(fish)}</span><div><b>${safe(fish.name)} ${fishEvolutionBadge(fish)}</b><small>⚔ ${combatHpNumber(fish.attack)} · 💥 ${Number(fish.critRate||0).toFixed(1)}%</small><div class="replay-hp"><i data-pvp-replay-bar="${side}-${index}" style="width:${hpPercent(fish.hp,fish.maxHp)}%"></i></div><small data-pvp-replay-hp="${side}-${index}">${combatHpNumber(fish.hp)} / ${combatHpNumber(fish.maxHp)}</small></div></article>`).join("");
+  }
+  function pvpIntroTeamHtml(team,name,label){
+    const list=team||[],totalAttack=list.reduce((sum,fish)=>sum+Number(fish.attack||0),0),totalHp=list.reduce((sum,fish)=>sum+Number(fish.maxHp||0),0),averageCrit=list.length?list.reduce((sum,fish)=>sum+Number(fish.critRate||0),0)/list.length:0,averageDodge=list.length?list.reduce((sum,fish)=>sum+Number(fish.dodge||0),0)/list.length:0;
+    return `<article class="pvp-intro-side ${label==="MY TEAM"?"ally":"enemy"}"><small>${label}</small><h3>${safe(name||"상대")}</h3><div class="pvp-intro-total"><span>총 공격력 <b>${compactNumber(totalAttack)}</b></span><span>총 체력 <b>${compactNumber(totalHp)}</b></span><span>평균 치명타 <b>${averageCrit.toFixed(1)}%</b></span><span>평균 회피 <b>${averageDodge.toFixed(1)}%</b></span></div><div class="pvp-intro-fishes">${list.map(fish=>`<div class="${gradeClass(fish.grade)}"><span>${fishIcon(fish)}</span><p><b>${safe(fish.name)}</b><small>⚔ ${compactNumber(fish.attack)} · ❤️ ${compactNumber(fish.maxHp)}<br>💨 ${Number(fish.dodge||0).toFixed(1)}% · 💥 ${Number(fish.critRate||0).toFixed(1)}% / ${Number(fish.critDamage||0).toFixed(0)}%</small></p></div>`).join("")}</div></article>`;
   }
   function updatePvpReplayFrame(frame){
     const dom=state.pvpReplayDom;if(!dom||!frame)return;
     const mine=frame[dom.mineSide]||[],enemy=frame[dom.enemySide]||[],text=plain(frame.entry),actorIsMine=frame.actorSide===dom.mineSide;
-    dom.arena.classList.remove("hit-ally","hit-enemy","event-skill","event-crit");
+    dom.arena.classList.remove("hit-ally","hit-enemy","event-skill","event-crit");clearGradeAttackEffect(dom.arena);
     if(/특성|발동|부활|되감|봉인|관측|회복|각성|폭발|유언/.test(text))dom.arena.classList.add("event-skill");
     else if(frame.actorSide)dom.arena.classList.add(actorIsMine?"hit-enemy":"hit-ally");
     if(text.includes("치명타")){dom.arena.classList.add("event-crit");playGameSound("crit");gameVibrate("crit");}
@@ -407,6 +432,8 @@
     updateTeam(mine,dom.mineSide,dom.mineCards,dom.mineBars,dom.mineHp);updateTeam(enemy,dom.enemySide,dom.enemyCards,dom.enemyBars,dom.enemyHp);
     if(frame.turn)dom.turnLabel.textContent="TURN "+frame.turn;
     const actorTeam=frame.actorSide===dom.mineSide?mine:frame.actorSide===dom.enemySide?enemy:[],actor=actorTeam.find(f=>String(f.id||"")===String(frame.actorId||""));
+    const pvpAttackGrade=actorIsMine?(isProfileCosmeticUnlocked("attackEffect",profileCosmetics.attackEffect)?profileCosmetics.attackEffect:""):dom.enemyAttackEffect;
+    if(actor&&frame.actorSide&&/공격|치명타|피해/.test(text)&&cosmeticGrades[pvpAttackGrade])triggerGradeAttackEffect(dom.arena,pvpAttackGrade);
     const actorHtml=actor?`<div class="battle-attacker-banner ${actorIsMine?"ally":"boss"}"><span>${fishIcon(actor)}</span><div><small>${actorIsMine?"MY ATTACK":"RIVAL ATTACK"}</small><b>${safe(actor.name)}</b></div></div>`:"";
     const actionHtml=actorHtml+`<div class="battle-action-text">${legacyTextHtml(frame.entry)}</div>`;
     if(actionHtml!==state.lastActionHtml){dom.action.innerHTML=actionHtml;state.lastActionHtml=actionHtml;}
@@ -414,7 +441,7 @@
   function finishPvpBattleReplay(replay){
     const dom=state.pvpReplayDom;if(!dom)return;
     const won=replay.winnerName&&replay.winnerName===currentUser,draw=!replay.winnerName;
-    dom.arena.classList.remove("hit-ally","hit-enemy","event-skill","event-crit");
+    dom.arena.classList.remove("hit-ally","hit-enemy","event-skill","event-crit");clearGradeAttackEffect(dom.arena);
     dom.arena.classList.add(draw?"battle-draw":won?"battle-win":"battle-lose");
     dom.action.innerHTML=`<div class="battle-finish-card ${draw?"draw":won?"win":"lose"}"><small>PVP BATTLE END</small><strong>${draw?"무승부":won?"승리":"패배"}</strong><p>${legacyTextHtml(replay.summary||"")}</p><div class="battle-finish-actions"><button data-pvp-replay>다시 보기</button><button data-pvp-replay-close>닫기</button></div></div>`;
     dom.turnLabel.textContent="BATTLE END";
@@ -422,6 +449,18 @@
   }
   async function playPvpBattleReplay(replay){
     const token=++state.pvpReplayToken;state.pvpReplaySkip=false;state.lastActionHtml="";
+    const intro=$("#pvpBattleIntro"),countdown=$("#pvpIntroCountdown");
+    if(intro){
+      for(let remaining=7;remaining>=1;remaining--){
+        if(token!==state.pvpReplayToken||$("#modalOverlay")?.style.display==="none")return;
+        if(countdown)countdown.textContent=String(remaining);
+        if(state.pvpReplayDom?.turnLabel)state.pvpReplayDom.turnLabel.textContent=`MATCH PREVIEW · ${remaining}`;
+        await sleep(1000);
+        if(state.pvpReplaySkip)break;
+      }
+      intro.hidden=true;state.pvpReplayDom?.arena?.classList.remove("is-intro");
+      if(state.pvpReplayDom?.turnLabel)state.pvpReplayDom.turnLabel.textContent="BATTLE START";
+    }
     const frames=Array.isArray(replay.frames)?replay.frames:[];
     for(let index=0;index<frames.length;index++){
       if(token!==state.pvpReplayToken||$("#modalOverlay")?.style.display==="none")return;
@@ -436,9 +475,9 @@
     if(!replay||!Array.isArray(replay.frames)||!replay.frames.length)return showToast("재생할 1대1 전투 기록이 없습니다.");
     state.lastPvpReplay=replay;state.pvpReplaySpeed=2;
     const mineSide=currentUser===replay.right?.name?"right":"left",enemySide=mineSide==="left"?"right":"left",mine=replay[mineSide]||{},enemy=replay[enemySide]||{},first=replay.frames[0],mineTeam=first[mineSide]||[],enemyTeam=first[enemySide]||[],mineProfile=pvpProfileVisual(mine.profile),enemyProfile=pvpProfileVisual(enemy.profile);
-    openUiModal("1대1 라이브 전투",`<div class="pvp-battle-replay"><header class="battle-replay-head"><div><small>LIVE PVP BATTLE</small><b id="pvpBattleTurnLabel">BATTLE START</b></div><div class="battle-speed"><button data-pvp-battle-speed="1">×1</button><button class="active" data-pvp-battle-speed="2">×2</button><button data-pvp-battle-speed="4">×4</button><button data-pvp-battle-skip>건너뛰기</button></div></header><section id="pvpBattleArena" class="pvp-battle-arena"><section class="pvp-battle-side ally"><div class="battle-player-card"><div class="${mineProfile.classes}" style="${mineProfile.style}" data-aura-symbol="${safe(mineProfile.aura)}"><span>${mineProfile.avatar}</span></div><div><small>MY CAPTAIN</small><b>${safe(mine.name||"나")}</b><em>${safe(mine.title?`[${mine.title}]`:"칭호 없음")}</em></div></div><div class="pvp-live-team">${pvpReplayTeamHtml(mineTeam,mineSide)}</div></section><div class="battle-versus">VS</div><section class="pvp-battle-side enemy"><div class="battle-player-card rival"><div class="${enemyProfile.classes}" style="${enemyProfile.style}" data-aura-symbol="${safe(enemyProfile.aura)}"><span>${enemyProfile.avatar}</span></div><div><small>RIVAL CAPTAIN</small><b>${safe(enemy.name||"상대")}</b><em>${safe(enemy.title?`[${enemy.title}]`:"칭호 없음")}</em></div></div><div class="pvp-live-team">${pvpReplayTeamHtml(enemyTeam,enemySide)}</div></section><div id="pvpBattleAction" class="battle-action-card">대전이 시작됩니다.</div></section></div>`);
+    openUiModal("1대1 라이브 전투",`<div class="pvp-battle-replay"><header class="battle-replay-head"><div><small>LIVE PVP BATTLE</small><b id="pvpBattleTurnLabel">MATCH PREVIEW · 7</b></div><div class="battle-speed"><button data-pvp-battle-speed="1">×1</button><button class="active" data-pvp-battle-speed="2">×2</button><button data-pvp-battle-speed="4">×4</button><button data-pvp-battle-skip>건너뛰기</button></div></header><section id="pvpBattleArena" class="pvp-battle-arena is-intro"><div class="grade-attack-layer" aria-hidden="true"></div><div id="pvpBattleIntro" class="pvp-battle-intro"><header><small>PVP MATCH ANALYSIS</small><h2>출전 파티 비교</h2><p><strong id="pvpIntroCountdown">7</strong>초 후 교대 전투가 시작됩니다.</p></header><div class="pvp-intro-matchup">${pvpIntroTeamHtml(mineTeam,mine.name,"MY TEAM")}<strong>VS</strong>${pvpIntroTeamHtml(enemyTeam,enemy.name,"RIVAL TEAM")}</div><i class="pvp-intro-timer"></i></div><section class="pvp-battle-side ally"><div class="battle-player-card"><div class="${mineProfile.classes}" style="${mineProfile.style}" data-aura-symbol="${safe(mineProfile.aura)}"><span>${mineProfile.avatar}</span></div><div><small>MY CAPTAIN</small><b>${safe(mine.name||"나")}</b><em>${safe(mine.title?`[${mine.title}]`:"칭호 없음")}</em></div></div><div class="pvp-live-team">${pvpReplayTeamHtml(mineTeam,mineSide)}</div></section><div class="battle-versus">VS</div><section class="pvp-battle-side enemy"><div class="battle-player-card rival"><div class="${enemyProfile.classes}" style="${enemyProfile.style}" data-aura-symbol="${safe(enemyProfile.aura)}"><span>${enemyProfile.avatar}</span></div><div><small>RIVAL CAPTAIN</small><b>${safe(enemy.name||"상대")}</b><em>${safe(enemy.title?`[${enemy.title}]`:"칭호 없음")}</em></div></div><div class="pvp-live-team">${pvpReplayTeamHtml(enemyTeam,enemySide)}</div></section><div id="pvpBattleAction" class="battle-action-card">한 마리씩 번갈아 공격합니다.</div></section></div>`);
     const sideElements=side=>({cards:$$(`[data-pvp-replay-fish^="${side}-"]`),bars:$$(`[data-pvp-replay-bar^="${side}-"]`),hp:$$(`[data-pvp-replay-hp^="${side}-"]`)}),mineElements=sideElements(mineSide),enemyElements=sideElements(enemySide);
-    state.pvpReplayDom={arena:$("#pvpBattleArena"),action:$("#pvpBattleAction"),turnLabel:$("#pvpBattleTurnLabel"),mineSide,enemySide,mineCards:mineElements.cards,mineBars:mineElements.bars,mineHp:mineElements.hp,enemyCards:enemyElements.cards,enemyBars:enemyElements.bars,enemyHp:enemyElements.hp};
+    state.pvpReplayDom={arena:$("#pvpBattleArena"),action:$("#pvpBattleAction"),turnLabel:$("#pvpBattleTurnLabel"),mineSide,enemySide,enemyAttackEffect:cosmeticGrades[enemyProfile.attackEffect]?enemyProfile.attackEffect:"",mineCards:mineElements.cards,mineBars:mineElements.bars,mineHp:mineElements.hp,enemyCards:enemyElements.cards,enemyBars:enemyElements.bars,enemyHp:enemyElements.hp};
     playPvpBattleReplay(replay);
   }
   globalThis.openPvpBattleReplay=openPvpBattleReplay;
@@ -471,15 +510,16 @@
 
   function applyLocalCosmeticDemo(){
     if(location.hostname!=="127.0.0.1"||!new URLSearchParams(location.search).has("cosmeticDemo"))return;
-    ["kraken","hydra"].forEach(id=>{bossProgress.defeated[id]=true;bossProgress.difficultyClears[id]={normal:true,hard:true,crazy:true};});
-    profileCosmetics={border:"kraken",aura:"hydra",background:"영웅",attackEffect:"영웅"};
+    const apex=new URLSearchParams(location.search).get("cosmeticDemo")==="apex",targets=apex?bossList.map(boss=>boss.id):["kraken","hydra"];
+    targets.forEach(id=>{bossProgress.defeated[id]=true;bossProgress.difficultyClears[id]={normal:true,hard:true,crazy:true};});
+    profileCosmetics=apex?{border:"azathoth",aura:"azathoth",background:"공허",attackEffect:"공허"}:{border:"kraken",aura:"hydra",background:"영웅",attackEffect:"영웅"};
   }
 
   function applyLocalFusionDemo(){
     if(location.hostname!=="127.0.0.1")return;
     const params=new URLSearchParams(location.search);
     if(!params.has("fusionDemo")&&!params.has("presetDemo"))return;
-    const makeDemoFish=(id,name,grade,attack,hp,price,stage=0,count=0)=>({id,name,grade,size:null,price,locked:false,time:"로컬 UI 검사",combat:{attack,hp,maxHp:hp,dodge:18,critRate:32,critDamage:260,_baseAttack:attack,_baseMaxHp:hp,_baseCritDamage:260,status:"정상",combatVersion:14,stars:{attack:1,hp:1,dodge:0,critRate:1,critDamage:1}},fusion:count||stage?{count,evolutionStage:stage,permanentAttack:attack,permanentMaxHp:hp,totalAttackGain:0,totalHpGain:0,totalGoldSpent:0}:undefined});
+    const makeDemoFish=(id,name,grade,attack,hp,price,stage=0,count=0)=>({id,name,grade,size:null,price,locked:false,time:"로컬 UI 검사",combat:{attack,hp,maxHp:hp,dodge:18,critRate:32,critDamage:260,_baseAttack:attack,_baseMaxHp:hp,_baseCritDamage:260,status:"정상",combatVersion:15,hpBalanceVersion:1,stars:{attack:1,hp:1,dodge:0,critRate:1,critDamage:1}},fusion:count||stage?{count,evolutionStage:stage,hpBalanceVersion:1,permanentAttack:attack,permanentMaxHp:hp,totalAttackGain:0,totalHpGain:0,totalGoldSpent:0}:undefined});
     bucket=[makeDemoFish("demo-main","해신룡","영원",1000000,5000000,1000000000,0,2),makeDemoFish("demo-mat-1","해신룡","영원",600000,3000000,1000000000),makeDemoFish("demo-mat-2","해신룡","영원",750000,3600000,1000000000),makeDemoFish("demo-mat-3","해신룡","영원",920000,4100000,1000000000),makeDemoFish("demo-evo","바다를 삼킨 태양","공허",2400000,12000000,5000000000,3,18),makeDemoFish("demo-party","휘몰아치는 마음","초월",480000,2400000,500000000)];
     if(params.has("newCatchDemo"))bucket[bucket.length-1].isNewCatch=true;
     currentUser="로컬테스터";money=1000000000000;fusionMainFishId="demo-main";fusionMainFishIds={"해신룡":"demo-main","바다를 삼킨 태양":"demo-evo"};partyPresets={boss:["demo-evo"],pvp:["demo-party"]};
@@ -568,6 +608,7 @@
       target.style.setProperty("--profile-aura-color",auraBoss?.color||"#4ee4ce");
       target.dataset.auraSymbol=auraBoss?bossSymbols[auraBoss.id]||"✦":"";
       target.dataset.borderSymbol=borderBoss?bossSymbols[borderBoss.id]||"✦":"";
+      applyProfileAuraTier(target,auraBoss?.id);
       const avatar=target.querySelector("span");
       if(avatar)avatar.textContent=borderBoss?bossSymbols[borderBoss.id]||"✦":"⚓";
       else if(target.classList.contains("captain-avatar"))target.textContent=borderBoss?bossSymbols[borderBoss.id]||"✦":"⚓";
@@ -800,7 +841,7 @@
     $("#bossGrid").innerHTML = bossList.map((boss, index) => {
       const unlocked = isBossUnlocked(boss), cleared = isBossDifficultyCleared(boss,"normal"), owned = Number(bossProgress?.materials?.[boss.drop] || 0);
       const difficultyBadges=BOSS_DIFFICULTY_ORDER.map(id=>{const config=getBossDifficultyConfig(id),done=isBossDifficultyCleared(boss,id),open=isBossDifficultyUnlocked(boss,id);return `<span class="difficulty-badge ${done?"cleared":open?"open":"locked"}">${config.name}${done?" ✓":open?"":" 🔒"}</span>`;}).join("");
-      return `<article class="boss-card ${gradeClass(boss.grade)} ${unlocked ? "" : "locked"}" data-tooltip="${safe(boss.skillName)}"><div class="boss-card-head"><div><small>${safe(boss.grade)} · ${cleared ? "일반 처치 완료" : unlocked ? "도전 가능" : "잠김"}</small><h3>${safe(boss.name)}</h3><p>${safe(boss.skillName)}</p></div><span class="boss-card-symbol">${bossSymbols[boss.id] || "🐲"}</span></div><div class="boss-difficulty-status">${difficultyBadges}</div><div class="boss-stats"><span>❤️ ${compactNumber(boss.hp)}</span><span>⚔️ ${compactNumber(boss.attack)}</span><span>💨 ${boss.dodge}%</span></div><div class="boss-reward"><span>💎 ${safe(boss.drop)}</span><b>x${owned.toLocaleString()}</b></div><button data-boss-index="${index + 1}" ${unlocked ? "" : "disabled"}>${unlocked ? "난이도 선택 · 도전" : "이전 보스 일반 처치 필요"}</button></article>`;
+      return `<article class="boss-card ${gradeClass(boss.grade)} ${unlocked ? "" : "locked"}" data-tooltip="${safe(boss.skillName)}"><div class="boss-card-head"><div><small>${safe(boss.grade)} · ${cleared ? "일반 처치 완료" : unlocked ? "도전 가능" : "잠김"}</small><h3>${safe(boss.name)}</h3><p>${safe(boss.skillName)}</p></div><span class="boss-card-symbol">${bossSymbols[boss.id] || "🐲"}</span></div><div class="boss-difficulty-status">${difficultyBadges}</div><div class="boss-stats"><span>❤️ ${compactNumber(boss.hp)}</span><span>⚔️ ${compactNumber(Math.floor(boss.attack*BOSS_ATTACK_BALANCE_MULTIPLIER))}</span><span>💨 ${boss.dodge}%</span></div><div class="boss-reward"><span>💎 ${safe(boss.drop)}</span><b>x${owned.toLocaleString()}</b></div><button data-boss-index="${index + 1}" ${unlocked ? "" : "disabled"}>${unlocked ? "난이도 선택 · 도전" : "이전 보스 일반 처치 필요"}</button></article>`;
     }).join("");
   }
 
@@ -916,20 +957,22 @@
   function openCosmetics(){
     const defaultCards=[
       cosmeticChoiceCard({type:"border",id:"",name:"기본 테두리",desc:"프로필 테두리를 해제합니다.",icon:"⚓",unlocked:true,selected:!profileCosmetics.border}),
-      cosmeticChoiceCard({type:"aura",id:"",name:"오라 없음",desc:"프로필 오라를 해제합니다.",icon:"○",unlocked:true,selected:!profileCosmetics.aura})
+      cosmeticChoiceCard({type:"aura",id:"",name:"오라 없음",desc:"프로필 오라와 변형 프레임을 해제합니다.",icon:"○",unlocked:true,selected:!profileCosmetics.aura}),
+      cosmeticChoiceCard({type:"background",id:"",name:"기본 배경",desc:"FishingLife의 기본 심해 배경으로 돌아갑니다.",icon:"🌊",unlocked:true,selected:!profileCosmetics.background}),
+      cosmeticChoiceCard({type:"attackEffect",id:"",name:"기본 공격 연출",desc:"등급 정복 빛 공격 연출을 사용하지 않습니다.",icon:"⚔️",unlocked:true,selected:!profileCosmetics.attackEffect})
     ].join("");
     const borders=bossList.map(boss=>cosmeticChoiceCard({type:"border",id:boss.id,name:boss.name+" 테두리",desc:boss.name+" 어려움 최초 클리어",icon:bossSymbols[boss.id],color:boss.color,unlocked:isProfileCosmeticUnlocked("border",boss.id),selected:profileCosmetics.border===boss.id})).join("");
-    const auras=bossList.map(boss=>cosmeticChoiceCard({type:"aura",id:boss.id,name:boss.name+" 오라",desc:boss.name+" 크레이지 최초 클리어",icon:bossSymbols[boss.id],color:boss.color,unlocked:isProfileCosmeticUnlocked("aura",boss.id),selected:profileCosmetics.aura===boss.id})).join("");
-    const gradeRewards=Object.entries(cosmeticGrades).map(([grade,config])=>{
+    const auras=bossList.map(boss=>cosmeticChoiceCard({type:"aura",id:boss.id,name:boss.name+" 오라",desc:`${boss.name} 크레이지 최초 클리어 · 프레임 빛 단계 ${getProfileAuraTier(boss.id)}/5`,icon:bossSymbols[boss.id],color:boss.color,unlocked:isProfileCosmeticUnlocked("aura",boss.id),selected:profileCosmetics.aura===boss.id})).join("");
+    const gradeRewards=Object.entries(cosmeticGrades).map(([grade,config],gradeIndex)=>{
       const gradeBosses=bossList.filter(boss=>boss.grade===grade),cleared=gradeBosses.filter(boss=>isBossDifficultyCleared(boss,"crazy")).length,unlocked=isBossGradeCrazyCleared(grade);
-      return `<article class="grade-cosmetic-card ${unlocked?"unlocked":"locked"}" style="--cosmetic-color:${config.primary};--cosmetic-secondary:${config.secondary}"><span>${config.icon}</span><div><small>${unlocked?"등급 정복 완료":`${cleared} / ${gradeBosses.length} 크레이지`}</small><h3>${safe(config.name)}</h3><p>${safe(grade)} 보스 전원의 크레이지를 클리어하면 배경과 한정 공격 연출을 함께 획득합니다.</p><div class="cosmetic-actions"><button data-cosmetic-type="background" data-cosmetic-id="${grade}" ${unlocked&&profileCosmetics.background!==grade?"":"disabled"}>${profileCosmetics.background===grade?"배경 장착 중":"배경 장착"}</button><button data-cosmetic-type="attackEffect" data-cosmetic-id="${grade}" ${unlocked&&profileCosmetics.attackEffect!==grade?"":"disabled"}>${profileCosmetics.attackEffect===grade?"공격 연출 장착 중":"공격 연출 장착"}</button></div></div></article>`;
+      return `<article class="grade-cosmetic-card ${unlocked?"unlocked":"locked"}" style="--cosmetic-color:${config.primary};--cosmetic-secondary:${config.secondary}"><span>${config.icon}</span><div><small>${unlocked?`등급 정복 완료 · 빛 단계 ${gradeIndex+1}/6`:`${cleared} / ${gradeBosses.length} 크레이지`}</small><h3>${safe(config.name)}</h3><p>${safe(grade)} 보스 전원의 크레이지 정복 보상입니다. 배경 광륜과 공격 빛 효과는 후반 등급일수록 커지며, 공격 연출은 아군의 매 공격에 적용됩니다.</p><div class="cosmetic-actions"><button data-cosmetic-type="background" data-cosmetic-id="${grade}" ${unlocked&&profileCosmetics.background!==grade?"":"disabled"}>${profileCosmetics.background===grade?"배경 장착 중":"배경 장착"}</button><button data-cosmetic-type="attackEffect" data-cosmetic-id="${grade}" ${unlocked&&profileCosmetics.attackEffect!==grade?"":"disabled"}>${profileCosmetics.attackEffect===grade?"공격 연출 장착 중":"공격 연출 장착"}</button></div></div></article>`;
     }).join("");
     openUiModal("프로필 꾸미기",`<div class="game-dialog cosmetics-dialog"><div class="dialog-summary"><div><small>BOSS CLEAR COSMETICS</small><b>보스 정복 보상</b><p>어려움 테두리 · 크레이지 오라 · 등급 정복 배경과 공격 연출</p></div><div id="cosmeticProfilePreview" class="profile-preview"><i class="profile-aura-layer"></i><span>⚓</span></div></div><section class="cosmetic-section"><h3>기본 설정</h3><div class="cosmetic-grid">${defaultCards}</div></section><section class="cosmetic-section"><h3>프로필 테두리</h3><div class="cosmetic-grid">${borders}</div></section><section class="cosmetic-section"><h3>개별 보스 오라</h3><div class="cosmetic-grid">${auras}</div></section><section class="cosmetic-section"><h3>등급 정복 보상</h3><div class="grade-cosmetic-grid">${gradeRewards}</div></section></div>`);
     const preview=$("#cosmeticProfilePreview");
     if(preview){
       const borderBoss=bossList.find(boss=>boss.id===profileCosmetics.border),auraBoss=bossList.find(boss=>boss.id===profileCosmetics.aura);
       preview.classList.toggle("has-profile-border",!!borderBoss);preview.classList.toggle("has-profile-aura",!!auraBoss);
-      preview.style.setProperty("--profile-border-color",borderBoss?.color||"#4ee4ce");preview.style.setProperty("--profile-aura-color",auraBoss?.color||"#4ee4ce");preview.dataset.auraSymbol=auraBoss?bossSymbols[auraBoss.id]||"✦":"";preview.dataset.borderSymbol=borderBoss?bossSymbols[borderBoss.id]||"✦":"";
+      preview.style.setProperty("--profile-border-color",borderBoss?.color||"#4ee4ce");preview.style.setProperty("--profile-aura-color",auraBoss?.color||"#4ee4ce");preview.dataset.auraSymbol=auraBoss?bossSymbols[auraBoss.id]||"✦":"";preview.dataset.borderSymbol=borderBoss?bossSymbols[borderBoss.id]||"✦":"";applyProfileAuraTier(preview,auraBoss?.id);
       const previewAvatar=preview.querySelector("span");if(previewAvatar)previewAvatar.textContent=borderBoss?bossSymbols[borderBoss.id]||"✦":"⚓";
     }
   }
@@ -967,7 +1010,7 @@
       const section = (docs,type) => docs.map((doc,index) => {
         const u=doc.data(),cosmetics=normalizeProfileCosmetics(u.gameState?.profileCosmetics),borderBoss=bossList.find(boss=>boss.id===cosmetics.border),auraBoss=bossList.find(boss=>boss.id===cosmetics.aura),background=cosmeticGrades[cosmetics.background];
         const value=type==="money"?formatMoney(u.money||0):`Lv.${u.rodLevel||1}`,avatar=borderBoss?bossSymbols[borderBoss.id]||"✦":"⚓",medal=index===0?"🥇":index===1?"🥈":index===2?"🥉":"";
-        const avatarClass=`profile-preview ranking-avatar ${borderBoss?"has-profile-border":""} ${auraBoss?"has-profile-aura":""}`;
+        const avatarClass=`profile-preview ranking-avatar ${borderBoss?"has-profile-border":""} ${auraBoss?"has-profile-aura":""} ${getProfileAuraClass(auraBoss?.id)}`;
         const avatarStyle=`--profile-border-color:${borderBoss?.color||"#4ee4ce"};--profile-aura-color:${auraBoss?.color||"#4ee4ce"}`;
         const rowStyle=background?`--ranking-profile-color:${background.primary};--ranking-profile-secondary:${background.secondary}`:"";
         return `<article class="ranking-row ${background?"has-profile-background":""} ${u.nickname===currentUser?"is-me":""}" style="${rowStyle}"><strong class="ranking-position">${medal||`#${index+1}`}</strong><div class="${avatarClass}" style="${avatarStyle}" data-aura-symbol="${safe(auraBoss?bossSymbols[auraBoss.id]||"✦":"")}"><span>${avatar}</span></div><div class="ranking-user"><small>${safe(u.title?`[${u.title}]`:"칭호 없음")}</small><b>${safe(u.nickname||"낚시꾼")}${u.nickname===currentUser?" · 나":""}</b><em>${type==="money"?"누적 자산 순위":"낚싯대 성장 순위"}</em></div><strong class="ranking-value">${value}</strong></article>`;

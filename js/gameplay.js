@@ -509,10 +509,11 @@ function ensureFishFusionState(f){
   const c=ensureCombatStats(f),hadSavedState=!!(f.fusion&&typeof f.fusion==="object"),saved=hadSavedState?f.fusion:{};
   const evolutionStage=Math.max(0,Math.min(3,Math.floor(Number(saved.evolutionStage||0))));
   const savedVersion=Math.max(0,Math.floor(Number(saved.evolutionScaleVersion||0))),needsScaleMigration=hadSavedState&&savedVersion<EVOLUTION_SCALE_VERSION;
-  const count=Math.max(0,Math.floor(Number(saved.count||0))),totalAttackGain=Math.max(0,Math.floor(Number(saved.totalAttackGain||0))),totalHpGain=Math.max(0,Math.floor(Number(saved.totalHpGain||0)));
-  const savedPermanentAttack=Math.max(1,Math.floor(Number(saved.permanentAttack??c._baseAttack??c.attack??1))),savedPermanentMaxHp=Math.max(1,Math.floor(Number(saved.permanentMaxHp??c._baseMaxHp??c.maxHp??c.hp??1)));
+  const needsHpMigration=hadSavedState&&Number(saved.hpBalanceVersion||0)<FISH_HP_BALANCE_VERSION,hpScale=needsHpMigration?FISH_HP_BALANCE_MULTIPLIER:1;
+  const count=Math.max(0,Math.floor(Number(saved.count||0))),totalAttackGain=Math.max(0,Math.floor(Number(saved.totalAttackGain||0))),totalHpGain=Math.max(0,Math.floor(Number(saved.totalHpGain||0)*hpScale));
+  const savedPermanentAttack=Math.max(1,Math.floor(Number(saved.permanentAttack??c._baseAttack??c.attack??1))),savedPermanentMaxHp=saved.permanentMaxHp!==undefined?Math.max(1,Math.floor(Number(saved.permanentMaxHp)*hpScale)):Math.max(1,Math.floor(Number(c._baseMaxHp??c.maxHp??c.hp??1)));
   const resolvedMainBaseAttack=Number(saved.mainBaseAttack)>0?Math.max(1,Math.floor(Number(saved.mainBaseAttack))):estimateMainBaseStat(savedPermanentAttack,totalAttackGain,count,evolutionStage,savedVersion);
-  const resolvedMainBaseMaxHp=Number(saved.mainBaseMaxHp)>0?Math.max(1,Math.floor(Number(saved.mainBaseMaxHp))):estimateMainBaseStat(savedPermanentMaxHp,totalHpGain,count,evolutionStage,savedVersion);
+  const resolvedMainBaseMaxHp=Number(saved.mainBaseMaxHp)>0?Math.max(1,Math.floor(Number(saved.mainBaseMaxHp)*hpScale)):estimateMainBaseStat(savedPermanentMaxHp,totalHpGain,count,evolutionStage,savedVersion);
   const permanentAttack=Math.max(1,resolvedMainBaseAttack*EVOLUTION_MAIN_MULTIPLIERS[evolutionStage]+totalAttackGain);
   const permanentMaxHp=Math.max(1,resolvedMainBaseMaxHp*EVOLUTION_MAIN_MULTIPLIERS[evolutionStage]+totalHpGain);
   const needsCombatSync=savedPermanentAttack!==permanentAttack||savedPermanentMaxHp!==permanentMaxHp;
@@ -520,6 +521,7 @@ function ensureFishFusionState(f){
     count,
     evolutionStage,
     evolutionScaleVersion:EVOLUTION_SCALE_VERSION,
+    hpBalanceVersion:FISH_HP_BALANCE_VERSION,
     mainBaseAttack:resolvedMainBaseAttack,
     mainBaseMaxHp:resolvedMainBaseMaxHp,
     permanentAttack,
@@ -529,7 +531,7 @@ function ensureFishFusionState(f){
     totalGoldSpent:normalizeMoney(saved.totalGoldSpent||0)
   };
   if(needsCombatSync)syncFishFusionCombat(f);
-  if(needsScaleMigration)scheduleFusionEvolutionMigrationSave();
+  if(needsScaleMigration||needsHpMigration)scheduleFusionEvolutionMigrationSave();
   return f.fusion;
 }
 
@@ -1306,7 +1308,7 @@ function simulatePvpBattle({leftName,leftTitle,leftProfile,leftTeam,rightName,ri
   });
 
   const replayFrames=[];
-  const snapshotPvpFish=f=>({id:String(f.id||""),name:f.name,grade:f.grade,size:f.size??null,evolutionStage:Number(f.fusion?.evolutionStage||0),hp:Math.max(0,Number(f.combat?.hp||0)),maxHp:Math.max(1,Number(f.combat?.maxHp||1)),attack:Math.max(0,Number(f.combat?.attack||0)),status:f.combat?._pvp?.gone?"전투 불가":Number(f.combat?.hp||0)<=0?"쓰러짐":"정상"});
+  const snapshotPvpFish=f=>({id:String(f.id||""),name:f.name,grade:f.grade,size:f.size??null,evolutionStage:Number(f.fusion?.evolutionStage||0),hp:Math.max(0,Number(f.combat?.hp||0)),maxHp:Math.max(1,Number(f.combat?.maxHp||1)),attack:Math.max(0,Number(f.combat?.attack||0)),dodge:Math.max(0,Number(f.combat?.dodge||0)),critRate:Math.max(0,Number(f.combat?.critRate||0)),critDamage:Math.max(0,Number(f.combat?.critDamage||0)),status:f.combat?._pvp?.gone?"전투 불가":Number(f.combat?.hp||0)<=0?"쓰러짐":"정상"});
   function capturePvpFrame(entry,frameTurn=turn,actorSide="",actorId=""){
     const text=String(entry||"").trim();
     if(!text)return;
@@ -1455,7 +1457,7 @@ function simulatePvpBattle({leftName,leftTitle,leftProfile,leftTeam,rightName,ri
     let atk=Number(c.attack||1),critDmg=Number(c.critDamage||150),mult=1,extra=0,replaced=false,preLog="";
     if(st.ashRemnant)mult*=0.5;
     if(f.name==="핏빛 초승달 드래곤"){
-      const cost=Math.min(Math.max(0,c.hp-1),Math.floor(c.hp*0.05)); c.hp-=cost; extra+=Math.floor(cost*1.5);
+      const cost=Math.min(Math.max(0,c.hp-1),Math.floor(c.hp*0.05)); c.hp-=cost; extra+=Math.floor(cost*1.5/FISH_HP_BALANCE_MULTIPLIER);
       if(cost>0)preLog+=traitUseByFish(f, "체력 "+cost.toLocaleString()+" 소모")+"\n\n";
     }
     if(f.name==="금빛 보름달 드래곤"&&st.moonPhase===2)mult*=1.5;
@@ -1568,14 +1570,16 @@ function simulatePvpBattle({leftName,leftTitle,leftProfile,leftTeam,rightName,ri
     });
     return turnLogs.join("");
   }
-  function sideAttack(side){
+  function getPvpSideTurnBlock(side){
+    const enemySide=otherSide(side);
+    if(turn%4!==0||!hasFish(enemySide,"잃어버린 두 번째 편지 조각 ✉️"))return "";
+    return traitUseByFish(livingSide(enemySide).find(f=>f.name==="잃어버린 두 번째 편지 조각 ✉️"), sideTitle(side)+"의 이번 페이지에는 아무 내용도 적혀 있지 않습니다.\n이번 턴에 행동하지 못합니다.")+"\n\n";
+  }
+  function sideAttack(side,onlyAttacker=null){
     const enemySide=otherSide(side);
     const sideLog=[];
-    if(turn%4===0&&hasFish(enemySide,"잃어버린 두 번째 편지 조각 ✉️")){
-      return traitUseByFish(livingSide(enemySide).find(f=>f.name==="잃어버린 두 번째 편지 조각 ✉️"), sideTitle(side)+"의 이번 페이지에는 아무 내용도 적혀 있지 않습니다.\n이번 턴에 행동하지 못합니다.")+"\n\n";
-    }
-    sideLog.push('<span style="font-weight:700">' + sideTitle(side) + '의 턴</span>\n\n');
-    const attackers=livingSide(side).slice();
+    sideLog.push('<span style="font-weight:700">' + sideTitle(side) + (onlyAttacker?" · "+pvpFishLabel(onlyAttacker)+" 행동":"의 턴") + '</span>\n\n');
+    const attackers=onlyAttacker?[onlyAttacker]:livingSide(side).slice();
     for(const attacker of attackers){
       const frameLogStart=sideLog.length;
       try{
@@ -1630,6 +1634,10 @@ function simulatePvpBattle({leftName,leftTitle,leftProfile,leftTeam,rightName,ri
         if(frameEntry.trim())capturePvpFrame(frameEntry,turn,side,attacker.id);
       }
     }
+    return sideLog.join("");
+  }
+  function finishPvpSideActions(side){
+    const sideLog=[];
     if(hasFish(side,"황룡")){
       const al=livingSide(side).filter(f=>!pvpState(f).ashRemnant),total=al.reduce((s,f)=>s+f.combat.hp,0),maxTotal=al.reduce((s,f)=>s+f.combat.maxHp,0);
       if(al.length&&maxTotal>0){let leftHp=total;al.forEach((f,i)=>{const v=i===al.length-1?leftHp:Math.floor(total*f.combat.maxHp/maxTotal);f.combat.hp=Math.max(1,Math.min(f.combat.maxHp,v));leftHp-=f.combat.hp;});sideLog.push(traitUseByFish(livingSide(side).find(f=>f.name==="황룡"), "아군 체력을 재분배했습니다.")+"\n\n");}
@@ -1669,10 +1677,22 @@ function simulatePvpBattle({leftName,leftTitle,leftProfile,leftTeam,rightName,ri
     logText += leftStartLog;logText += rightStartLog;
     if(leftStartLog.trim())capturePvpFrame(leftStartLog,turn,"left","");
     if(rightStartLog.trim())capturePvpFrame(rightStartLog,turn,"right","");
-    const order = firstSide === "left" ? ["left","right"] : ["right","left"];
-    for(const side of order){
-      if(!pvpAlive(teamOf(side))||!pvpAlive(teamOf(otherSide(side))))break;
-      logText += sideAttack(side);
+    const roundFirst=turn===1?firstSide:(Math.random()<0.5?"left":"right"),order=[roundFirst,otherSide(roundFirst)],queues={left:livingSide("left").slice(),right:livingSide("right").slice()},blocked={left:getPvpSideTurnBlock("left"),right:getPvpSideTurnBlock("right")};
+    order.forEach(side=>{if(blocked[side]){logText+=blocked[side];capturePvpFrame(blocked[side],turn,side,"");queues[side]=[];}});
+    let battleEnded=false;
+    while((queues.left.length||queues.right.length)&&!battleEnded){
+      let acted=false;
+      for(const side of order){
+        let attacker=null;
+        while(queues[side].length&&!attacker){const candidate=queues[side].shift();if(candidate?.combat?.hp>0&&!pvpState(candidate).gone)attacker=candidate;}
+        if(!attacker)continue;
+        acted=true;logText+=sideAttack(side,attacker);
+        if(!pvpAlive(teamOf(side))||!pvpAlive(teamOf(otherSide(side)))){battleEnded=true;break;}
+      }
+      if(!acted)break;
+    }
+    if(!battleEnded){
+      order.forEach(side=>{const sideFinishLog=finishPvpSideActions(side);if(sideFinishLog){logText+=sideFinishLog;capturePvpFrame(sideFinishLog,turn,side,"");}});
     }
     const finishLogStart=logText.length;
     finishPvpTurn();
