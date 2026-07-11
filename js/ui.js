@@ -368,11 +368,30 @@
     host.innerHTML=list.map(status=>{const hasGauge=Number.isFinite(Number(status.current))&&Number.isFinite(Number(status.max)),percent=hasGauge?hpPercent(status.current,status.max):0;return `<article class="replay-boss-status"><span>${safe(status.icon||"✦")}</span><div><small>${safe(status.label||"보스 상태")} · ${safe(status.state||"")}</small><b>${safe(status.text||(hasGauge?`${combatHpNumber(status.current)} / ${combatHpNumber(status.max)}`:"활성"))}</b>${hasGauge?`<i><em style="width:${percent}%"></em></i>`:""}</div></article>`;}).join("");
   }
 
+  const bossSceneClasses=["boss-attack-scene","boss-scene-abyss","boss-scene-venom","boss-scene-flame","boss-scene-storm","boss-scene-shadow","boss-scene-void","boss-scene-crazy"];
+  function clearBossAttackScene(arena){if(arena)arena.classList.remove(...bossSceneClasses);}
+  function getBossAttackSceneTheme(bossId,text){
+    const id=String(bossId||""),value=String(text||"");
+    if(["erebos","chronos","nyarlathotep","yog_sothoth","azathoth"].includes(id)||/공허|차원|시간선|우주|종착점|말소/.test(value))return "void";
+    if(["phoenix","surtr","cerberus"].includes(id)||/불꽃|화염|불길|용암|폭염|검의 비/.test(value))return "flame";
+    if(["hydra","tiamat","azhi_dahaka"].includes(id)||/독|저주|오색|쇠약|부패/.test(value))return "venom";
+    if(["bahamut","jormungandr","typhon"].includes(id)||/번개|폭풍|벼락|천둥|회오리|해일/.test(value))return "storm";
+    if(["behemoth","fenrir","nidhogg","angra_mainyu"].includes(id)||/어둠|그림자|지진|포식|절망|종말/.test(value))return "shadow";
+    return "abyss";
+  }
+  function triggerBossAttackScene(arena,bossId,text,kind){
+    if(!arena)return;
+    clearBossAttackScene(arena);
+    void arena.offsetWidth;
+    arena.classList.add("boss-attack-scene","boss-scene-"+getBossAttackSceneTheme(bossId,text));
+    if(kind==="crazy")arena.classList.add("boss-scene-crazy");
+  }
+
   function updateReplayFrame(frame){
     const dom=state.replayDom||{},arena=dom.arena||$("#bossBattleArena"),action=dom.action||$("#battleActionCard");
     if(!arena||!action||!frame)return;
     const kind=replayEventKind(frame.entry),voidVariant=getVoidReplayVariant(frame.entry),isVoid=String(frame.entry||"").includes("battle-event--void"),isSkillResult=!!frame.skillResult,text=plain(`${frame.entry||""} ${frame.skillDetail||""}`);
-    arena.classList.remove("hit-player","hit-boss","event-skill","event-crazy","event-passive","event-phase","event-ally","event-void","event-result","event-dodge");clearGradeAttackEffect(arena);
+    arena.classList.remove("hit-player","hit-boss","event-skill","event-crazy","event-passive","event-phase","event-ally","event-void","event-result","event-dodge");clearGradeAttackEffect(arena);clearBossAttackScene(arena);
     clearVoidReplayClasses(arena);
     const bossName=arena.dataset.bossName||"";
     const bossAttack=!isSkillResult&&kind!=="ally"&&(/보스 턴/.test(text)||(bossName&&text.includes(bossName+"의")));
@@ -391,6 +410,7 @@
     if(isVoid){arena.classList.add("event-void");if(voidVariant)arena.classList.add("event-void-"+voidVariant.key);}
     else if(bossAttack)arena.classList.add("hit-player");
     else if(playerAttack)arena.classList.add("hit-boss");
+    if(bossAttack)triggerBossAttackScene(arena,arena.dataset.bossId,text,kind);
     const attackGrade=isProfileCosmeticUnlocked("attackEffect",profileCosmetics.attackEffect)?profileCosmetics.attackEffect:"";
     const attackConfig=cosmeticGrades[attackGrade];
     if(playerAttack&&attackConfig)triggerGradeAttackEffect(arena,attackGrade);
@@ -446,7 +466,7 @@
     const success=replay.result==="처치 성공",action=$("#battleActionCard"),arena=$("#bossBattleArena");
     const healthRows=(replay.healthReport||[]).map(item=>{const recoveryLeft=Number(item.recoveryUntil||0)>0?Math.max(0,Number(item.recoveryUntil)-Date.now()):Number(item.recoveryMs||0),knockedOut=item.status==="기절"||Number(item.endHp||0)<=0;return `<div class="battle-health-row ${gradeClass(item.grade)} ${knockedOut?"knocked-out":""}"><span>${fishIcon(item)}</span><div><b>${safe(item.name)}</b><small>${combatHpNumber(item.startHp)} → ${combatHpNumber(item.endHp)} / ${combatHpNumber(item.maxHp)}</small><i><em style="width:${Math.max(0,Math.min(100,Number(item.remainingRate||0)))}%"></em></i></div><strong>-${Number(item.lostRate||0).toFixed(1)}%</strong><small>${recoveryLeft>0?`${knockedOut?"기절":"회복"} ${safe(formatRemain(recoveryLeft))}`:"정상"}</small></div>`;}).join("");
     const healthSummary=healthRows?`<section class="battle-health-summary"><small>PARTY DAMAGE REPORT</small>${healthRows}</section>`:"";
-    if(arena){arena.classList.remove("event-skill","event-crazy","event-passive","event-phase","event-ally","event-void","event-result","event-dodge","hit-player","hit-boss");clearVoidReplayClasses(arena);clearGradeAttackEffect(arena);arena.classList.add(success?"battle-win":"battle-lose");}
+    if(arena){arena.classList.remove("event-skill","event-crazy","event-passive","event-phase","event-ally","event-void","event-result","event-dodge","hit-player","hit-boss");clearVoidReplayClasses(arena);clearGradeAttackEffect(arena);clearBossAttackScene(arena);arena.classList.add(success?"battle-win":"battle-lose");}
     if(action)action.innerHTML=`<div class="battle-finish-card ${success?"win":"lose"}"><small>${success?"RAID CLEAR":"RAID FAILED"}</small><strong>${success?"처치 성공":"처치 실패"}</strong><p>총 피해 ${Number(replay.totalDamage||0).toLocaleString()}</p>${success?`<p>${safe(replay.rewardDrop)} × ${Number(replay.rewardDropCount||0).toLocaleString()}${replay.rewardMoney>0?` · ${safe(formatMoney(replay.rewardMoney))}`:""}</p>`:""}${healthSummary}<div class="battle-finish-actions"><button data-battle-replay>다시 보기</button><button data-battle-close>닫기</button></div></div>`;
     const title=$("#modalTitle");if(title)title.textContent=success?"보스 레이드 승리":"보스 레이드 패배";
     const turnLabel=$("#battleTurnLabel");if(turnLabel)turnLabel.textContent="BATTLE END";
@@ -475,7 +495,7 @@
     const borderBoss=bossList.find(boss=>boss.id===borderId),auraBoss=bossList.find(boss=>boss.id===auraId),captainName=currentUser||"게스트 선장",captainTitle=currentUser?getCurrentTitle():"";
     const captainAvatar=borderBoss?bossSymbols[borderBoss.id]||"✦":"⚓",captainClasses=`profile-preview battle-player-avatar ${borderBoss?"has-profile-border":""} ${auraBoss?"has-profile-aura":""} ${getProfileAuraClass(auraBoss?.id)}`;
     const captainStyle=`--profile-border-color:${borderBoss?.color||"#4ee4ce"};--profile-aura-color:${auraBoss?.color||"#4ee4ce"}`;
-    openUiModal(`${replay.boss.name} · ${replay.boss.difficulty}`,`<div class="boss-battle-replay"><header class="battle-replay-head"><div><small>LIVE BOSS RAID</small><b id="battleTurnLabel">BATTLE START</b></div><div class="battle-speed"><button class="active" data-battle-speed="1">×1</button><button data-battle-speed="2">×2</button><button data-battle-speed="4">×4</button><button data-battle-skip>건너뛰기</button></div></header><section id="bossBattleArena" class="boss-battle-arena" data-boss-name="${safe(replay.boss.name)}" data-boss-symbol="${safe(bossSymbols[replay.boss.id]||"🐲")}"><div class="grade-attack-layer" aria-hidden="true"></div><div id="battleDimensionState" class="battle-dimension-state" hidden></div><div class="replay-boss-zone"><div class="replay-boss ${gradeClass(replay.boss.grade)}"><div class="replay-boss-symbol">${bossSymbols[replay.boss.id]||"🐲"}</div><div><small>${safe(replay.boss.grade)} · ${safe(replay.boss.difficulty)}</small><h2>${safe(replay.boss.name)}</h2><div class="replay-hp boss-hp"><i id="replayBossHpBar" style="width:${hpPercent(first.bossHp,first.bossMaxHp)}%"></i></div><b id="replayBossHpText">${combatHpNumber(first.bossHp)} / ${combatHpNumber(first.bossMaxHp)}</b></div></div><div id="replayBossStatuses" class="replay-boss-statuses" hidden></div><div id="replayBossSummons" class="replay-boss-summons"></div></div><div class="battle-versus">VS</div><div class="replay-player-zone"><div class="battle-player-card"><div class="${captainClasses}" style="${captainStyle}" data-aura-symbol="${safe(auraBoss?bossSymbols[auraBoss.id]||"✦":"")}"><span>${captainAvatar}</span></div><div><small>MY CAPTAIN · PARTY ${(first.fish||[]).length}</small><b>${safe(captainName)}</b><em>${safe(captainTitle?`[${captainTitle}]`:"칭호 없음")}</em></div></div><div class="replay-party">${party}</div></div><div id="battleActionCard" class="battle-action-card">전투가 시작됩니다.</div></section></div>`);
+    openUiModal(`${replay.boss.name} · ${replay.boss.difficulty}`,`<div class="boss-battle-replay"><header class="battle-replay-head"><div><small>LIVE BOSS RAID</small><b id="battleTurnLabel">BATTLE START</b></div><div class="battle-speed"><button class="active" data-battle-speed="1">×1</button><button data-battle-speed="2">×2</button><button data-battle-speed="4">×4</button><button data-battle-skip>건너뛰기</button></div></header><section id="bossBattleArena" class="boss-battle-arena" data-boss-id="${safe(replay.boss.id||"")}" data-boss-name="${safe(replay.boss.name)}" data-boss-symbol="${safe(bossSymbols[replay.boss.id]||"🐲")}" style="--boss-scene-color:${safe(replay.boss.color||"#ff647e")}"><div class="boss-attack-backdrop" aria-hidden="true"><i></i><i></i></div><div class="grade-attack-layer" aria-hidden="true"></div><div id="battleDimensionState" class="battle-dimension-state" hidden></div><div class="replay-boss-zone"><div class="replay-boss ${gradeClass(replay.boss.grade)}"><div class="replay-boss-symbol">${bossSymbols[replay.boss.id]||"🐲"}</div><div><small>${safe(replay.boss.grade)} · ${safe(replay.boss.difficulty)}</small><h2>${safe(replay.boss.name)}</h2><div class="replay-hp boss-hp"><i id="replayBossHpBar" style="width:${hpPercent(first.bossHp,first.bossMaxHp)}%"></i></div><b id="replayBossHpText">${combatHpNumber(first.bossHp)} / ${combatHpNumber(first.bossMaxHp)}</b></div></div><div id="replayBossStatuses" class="replay-boss-statuses" hidden></div><div id="replayBossSummons" class="replay-boss-summons"></div></div><div class="battle-versus">VS</div><div class="replay-player-zone"><div class="battle-player-card"><div class="${captainClasses}" style="${captainStyle}" data-aura-symbol="${safe(auraBoss?bossSymbols[auraBoss.id]||"✦":"")}"><span>${captainAvatar}</span></div><div><small>MY CAPTAIN · PARTY ${(first.fish||[]).length}</small><b>${safe(captainName)}</b><em>${safe(captainTitle?`[${captainTitle}]`:"칭호 없음")}</em></div></div><div class="replay-party">${party}</div></div><div id="battleActionCard" class="battle-action-card">전투가 시작됩니다.</div></section></div>`);
     state.replaySummonKey="";state.replaySummonIds=new Set();state.lastActionHtml="";
     state.replayDom={arena:$("#bossBattleArena"),action:$("#battleActionCard"),turnLabel:$("#battleTurnLabel"),bossBar:$("#replayBossHpBar"),bossHp:$("#replayBossHpText"),statuses:$("#replayBossStatuses"),dimension:$("#battleDimensionState"),summons:$("#replayBossSummons"),fishCards:$$('[data-replay-fish-index]'),fishBars:$$('[data-replay-fish-bar]'),fishHp:$$('[data-replay-fish-hp]')};
     playBossBattleReplay(replay);

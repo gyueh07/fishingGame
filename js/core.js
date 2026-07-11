@@ -29,9 +29,19 @@ let cloudSaveChain=Promise.resolve();
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
-const GAME_VERSION = "2026-07-11-fishinglife-combat-readability-ranking-v24-3";
+const GAME_VERSION = "2026-07-11-fishinglife-cloud-save-boss-scene-v24-4";
 const UPDATE_NOTICE_TITLE = "📢 업데이트 안내";
 const UPDATE_NOTICES = [
+  {
+    id:"2026-07-11-fishinglife-cloud-save-boss-scene-24-4",
+    title:"Firebase 안전 저장·보스 공격 배경 연출",
+    lines:[
+      "낚은 직후 Firebase 저장 상태를 표시하고, 네트워크 오류가 나면 데이터를 유지한 채 자동으로 다시 저장합니다.",
+      "서버 버전 충돌과 송금·물고기 전송 알림이 저장되지 않은 양동이를 덮어쓰지 않도록 로컬·서버 데이터를 병합합니다.",
+      "같은 계정은 기기별 로그인 세션을 유지하여 다른 기기 로그인 때문에 진행 중인 저장이 취소되지 않습니다.",
+      "보스가 공격하거나 스킬을 사용할 때 속성에 맞는 전투 배경이 잠시 펼쳐집니다."
+    ]
+  },
   {
     id:"2026-07-11-fishinglife-combat-readability-ranking-24-3",
     title:"전투 가독성·게임 알림·랭킹 UI 수정",
@@ -493,11 +503,19 @@ const firebaseConfig = {
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
+if(typeof db.enablePersistence === "function"){
+  db.enablePersistence({synchronizeTabs:true}).catch(e=>{
+    if(!["failed-precondition","unimplemented"].includes(e?.code)) console.warn("Firestore persistence unavailable",e);
+  });
+}
 
 let currentUser = localStorage.getItem("textFishingCurrentUser") || null;
 let cloudSaveTimer = null;
+let cloudSaveRetryTimer = null;
+let cloudSaveRetryAttempt = 0;
 let localSaveSeq = 0;
 let cloudSyncedSeq = 0;
+let lastCloudSyncedState = null;
 let serverAlertUnsubscribe = null;
 let serverAlertStartTime = Date.now();
 let isOnlineActionRunning = false;
@@ -517,6 +535,25 @@ function createSessionToken(){
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
   return Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+function getCloudDeviceId(){
+  let id=localStorage.getItem("textFishingCloudDeviceId");
+  if(!id){
+    id="device_"+(crypto.randomUUID?crypto.randomUUID().replace(/-/g,""):Date.now().toString(36)+Math.random().toString(36).slice(2));
+    localStorage.setItem("textFishingCloudDeviceId",id);
+  }
+  return id;
+}
+
+function getSessionTokenMap(userData){
+  return userData?.sessionTokens&&typeof userData.sessionTokens==="object"?{...userData.sessionTokens}:{};
+}
+
+function isSessionHashValid(userData,sessionHash){
+  if(!sessionHash||!userData)return false;
+  const deviceHash=getSessionTokenMap(userData)[getCloudDeviceId()];
+  return deviceHash===sessionHash||userData.sessionTokenHash===sessionHash;
 }
 
 async function startUserSession(nickname){
@@ -540,7 +577,7 @@ async function getCurrentSessionHash(){
 
 async function hasValidSession(userData){
   const sessionHash = await getCurrentSessionHash();
-  return !!sessionHash && !!userData && userData.sessionTokenHash === sessionHash;
+  return isSessionHashValid(userData,sessionHash);
 }
 
 function cancelActiveFishing(){
@@ -788,10 +825,112 @@ async function checkGameVersion(){
   return true;
 }
 
+function cloneCloudState(value){
+  if(value===undefined||value===null)return value;
+  return JSON.parse(JSON.stringify(value));
+}
+
+function sameCloudValue(a,b){
+  return JSON.stringify(a)===JSON.stringify(b);
+}
+
+function cloudItemKey(item,index=0){
+  if(item&&typeof item==="object")return String(item.id||item.messageId||item.createdAtMillis||JSON.stringify(item));
+  return String(item);
+}
+
+function mergeCloudArray(localList,serverList,baseList){
+  const local=Array.isArray(localList)?localList:[],server=Array.isArray(serverList)?serverList:[],base=Array.isArray(baseList)?baseList:[];
+  const localKeys=new Set(local.map(cloudItemKey));
+  const baseKeys=new Set(base.map(cloudItemKey));
+  const result=server.filter((item,index)=>!baseKeys.has(cloudItemKey(item,index))||localKeys.has(cloudItemKey(item,index)));
+  const resultKeys=new Set(result.map(cloudItemKey));
+  local.forEach((item,index)=>{const key=cloudItemKey(item,index);if(!resultKeys.has(key)){result.push(cloneCloudState(item));resultKeys.add(key);}});
+  return result;
+}
+
+function mergeCloudBucket(localBucket,serverBucket,baseBucket){
+  const local=Array.isArray(localBucket)?localBucket:[],server=Array.isArray(serverBucket)?serverBucket:[],base=Array.isArray(baseBucket)?baseBucket:[];
+  const result=new Map(server.filter(Boolean).map(f=>[String(f.id||makeFishId()),cloneCloudState(f)]));
+  const localIds=new Set(local.filter(Boolean).map(f=>String(f.id||"")));
+  base.filter(Boolean).forEach(f=>{const id=String(f.id||"");if(id&&!localIds.has(id))result.delete(id);});
+  local.filter(Boolean).forEach(f=>{const fish=cloneCloudState(f);if(!fish.id)fish.id=makeFishId();result.set(String(fish.id),fish);});
+  return [...result.values()];
+}
+
+function mergeNumericRecord(localValue,serverValue,baseValue){
+  const local=localValue&&typeof localValue==="object"?localValue:{},server=serverValue&&typeof serverValue==="object"?serverValue:{},base=baseValue&&typeof baseValue==="object"?baseValue:{};
+  const result={...server};
+  new Set([...Object.keys(local),...Object.keys(server),...Object.keys(base)]).forEach(key=>{
+    const delta=Number(local[key]||0)-Number(base[key]||0);
+    result[key]=Math.max(0,Number(server[key]||0)+delta);
+  });
+  return result;
+}
+
+function mergeCollectionState(localValue,serverValue,baseValue){
+  const local=localValue&&typeof localValue==="object"?localValue:{},server=serverValue&&typeof serverValue==="object"?serverValue:{},base=baseValue&&typeof baseValue==="object"?baseValue:{};
+  const result={};
+  new Set([...Object.keys(local),...Object.keys(server),...Object.keys(base)]).forEach(name=>{
+    const l=local[name]||{},s=server[name]||{},b=base[name]||{},count=Math.max(0,Number(s.count||0)+Number(l.count||0)-Number(b.count||0));
+    if(!count&&!local[name]&&!server[name])return;
+    const candidates=[s,l,b].filter(x=>x&&x.bestSize!==null&&Number.isFinite(Number(x.bestSize))).sort((a,c)=>Number(c.bestSize)-Number(a.bestSize));
+    result[name]={count,bestSize:candidates[0]?.bestSize??null,bestGrade:candidates[0]?.bestGrade||l.bestGrade||s.bestGrade||b.bestGrade||"일반"};
+  });
+  return result;
+}
+
+function mergeCloudGameStates(localState,serverState,baseState){
+  const local=cloneCloudState(localState)||{},server=cloneCloudState(serverState)||{},base=cloneCloudState(baseState)||cloneCloudState(server)||{};
+  const merged={...server};
+  new Set([...Object.keys(server),...Object.keys(local),...Object.keys(base)]).forEach(key=>{
+    if(key==="bucket")merged.bucket=mergeCloudBucket(local.bucket,server.bucket,base.bucket);
+    else if(key==="money"||key==="totalEarned"||key==="totalFishingCount")merged[key]=normalizeMoney(Number(server[key]||0)+Number(local[key]||0)-Number(base[key]||0));
+    else if(key==="gradeCounts")merged.gradeCounts=mergeNumericRecord(local.gradeCounts,server.gradeCounts,base.gradeCounts);
+    else if(key==="collection")merged.collection=mergeCollectionState(local.collection,server.collection,base.collection);
+    else if(key==="notifications"||key==="messages")merged[key]=mergeCloudArray(local[key],server[key],base[key]);
+    else merged[key]=sameCloudValue(local[key],base[key])?cloneCloudState(server[key]):cloneCloudState(local[key]);
+  });
+  return merged;
+}
+
+function setCloudSyncStatus(status,detail=""){
+  const chip=document.getElementById("cloudSyncChip"),icon=document.getElementById("cloudSyncIcon"),label=document.getElementById("cloudSyncText");
+  const config={offline:["☁️","로그인 필요"],saving:["↻","저장 중"],saved:["✓","저장 완료"],retry:["!","재시도 중"],error:["!","저장 지연"]}[status]||["☁️","클라우드"];
+  if(chip){chip.className="cloud-sync-chip "+status;chip.title=detail||config[1];}
+  if(icon)icon.textContent=config[0];
+  if(label)label.textContent=config[1];
+}
+
+function scheduleCloudSaveRetry(){
+  if(!currentUser||cloudSaveRetryTimer!==null)return;
+  const delays=[1000,3000,10000,30000],delay=delays[Math.min(cloudSaveRetryAttempt,delays.length-1)];
+  cloudSaveRetryAttempt++;
+  setCloudSyncStatus("retry",`${Math.ceil(delay/1000)}초 뒤 Firebase 저장을 다시 시도합니다.`);
+  cloudSaveRetryTimer=setTimeout(()=>{cloudSaveRetryTimer=null;saveCloudData();},delay);
+}
+
+function storeCloudRecovery(username,localState=getGameState(),baseState=lastCloudSyncedState){
+  if(!username)return;
+  try{
+    localStorage.setItem("textFishingCloudRecovery:"+username,JSON.stringify({localState:cloneCloudState(localState),baseState:cloneCloudState(baseState),savedAt:Date.now()}));
+  }catch(e){console.error(e);}
+}
+
+function takeCloudRecovery(username){
+  if(!username)return null;
+  const key="textFishingCloudRecovery:"+username,raw=localStorage.getItem(key);
+  if(!raw)return null;
+  try{const value=JSON.parse(raw);localStorage.removeItem(key);return value;}catch(e){console.error(e);return null;}
+}
+
 function resetGameData(){
   cancelActiveFishing();
   clearTimeout(cloudSaveTimer);
+  clearTimeout(cloudSaveRetryTimer);
   cloudSaveTimer = null;
+  cloudSaveRetryTimer = null;
+  cloudSaveRetryAttempt = 0;
   money = 0;
   totalEarned = 0;
   rodLevel = 1;
@@ -825,6 +964,8 @@ function resetGameData(){
   cloudRevision = 0;
   localSaveSeq = 0;
   cloudSyncedSeq = 0;
+  lastCloudSyncedState = null;
+  setCloudSyncStatus("offline");
   bucketSortOrder = "등급";
   localStorage.setItem("textFishingBucketSortOrder", bucketSortOrder);
   localStorage.setItem("textFishingSpeciesSizeSave", JSON.stringify(getGameState()));
@@ -833,6 +974,7 @@ function resetGameData(){
 function syncCloudSoon(){
   if(!currentUser) return;
   localSaveSeq++;
+  setCloudSyncStatus("saving","Firebase에 변경 내용을 저장하고 있습니다.");
   clearTimeout(cloudSaveTimer);
   cloudSaveTimer = setTimeout(saveCloudData, 700);
 }
@@ -850,53 +992,73 @@ async function saveCloudDataNow(){
   if(!currentUser) return;
   const userAtStart = currentUser;
   const saveSeq = localSaveSeq;
+  const localState = cloneCloudState(getGameState());
+  const baseState = cloneCloudState(lastCloudSyncedState);
   const sessionHash = await getCurrentSessionHash();
-  if(!sessionHash) return;
+  if(!sessionHash){scheduleCloudSaveRetry();return;}
 
   try{
     const ref = db.collection("users").doc(userAtStart);
     const expectedRevision = cloudRevision;
+    let committedRevision=expectedRevision;
+    let committedState=localState;
+    let mergedConflict=false;
 
     await db.runTransaction(async tx => {
       const snap = await tx.get(ref);
       if(!snap.exists) throw new Error("ACCOUNT_NOT_FOUND");
 
       const data = snap.data() || {};
-      if(data.sessionTokenHash !== sessionHash) throw new Error("SESSION_INVALID");
+      if(!isSessionHashValid(data,sessionHash)) throw new Error("SESSION_INVALID");
 
       const serverRevision = Number(data.cloudRevision || 0);
-      if(serverRevision !== expectedRevision) throw new Error("STALE_STATE");
+      mergedConflict=serverRevision!==expectedRevision;
+      committedState=mergedConflict?mergeCloudGameStates(localState,data.gameState,baseState):localState;
+      committedRevision=serverRevision+1;
 
       tx.set(ref, {
         nickname: userAtStart,
-        money: normalizeMoney(money),
-        rodLevel,
-        title: getCurrentTitle(),
-        cloudRevision: serverRevision + 1,
+        money: normalizeMoney(committedState.money),
+        rodLevel:Number(committedState.rodLevel||1),
+        title: normalizeLegacyTitleName(committedState.equippedTitle||""),
+        cloudRevision: committedRevision,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        gameState: getGameState()
+        gameState: committedState
       }, {merge:true});
     });
 
     if(currentUser === userAtStart){
-      cloudRevision = expectedRevision + 1;
+      cloudRevision = committedRevision;
       cloudSyncedSeq = Math.max(cloudSyncedSeq, saveSeq);
+      lastCloudSyncedState=cloneCloudState(committedState);
+      cloudSaveRetryAttempt=0;
+      clearTimeout(cloudSaveRetryTimer);cloudSaveRetryTimer=null;
+      if(localSaveSeq===saveSeq&&mergedConflict){
+        applyGameState(committedState);
+        migrateCombatStatsToCurrentVersion();
+        localStorage.setItem("textFishingSpeciesSizeSave",JSON.stringify(getGameState()));
+        updateWallet();
+      }
+      setCloudSyncStatus(hasPendingLocalCloudChanges()?"saving":"saved",hasPendingLocalCloudChanges()?"새 변경 내용을 계속 저장하고 있습니다.":"Firebase 저장이 완료되었습니다.");
     }
   }catch(e){
     console.error(e);
-    if(e.message === "STALE_STATE"){
-      await refreshMyCloudData(true);
-      print("다른 탭이나 기기에서 더 최신 데이터가 확인되어 현재 화면을 새로 불러왔습니다.");
-    }else if(e.message === "SESSION_INVALID"){
+    if(e.message === "SESSION_INVALID"){
+      storeCloudRecovery(userAtStart,localState,baseState);
       cancelActiveFishing();
       stopServerAlertListener();
       stopOnlinePresence();
       currentUser = null;
       localStorage.removeItem("textFishingCurrentUser");
       clearUserSession();
-      resetGameData();
       updateWallet();
-      print("다른 곳에서 다시 로그인하여 현재 세션이 종료되었습니다. 다시 로그인해주세요.");
+      setCloudSyncStatus("error","저장되지 않은 데이터는 이 기기에 복구용으로 보관했습니다.");
+      print("로그인 세션이 만료되었습니다. 저장되지 않은 데이터는 이 기기에 안전하게 보관했으니 같은 계정으로 다시 로그인해주세요.");
+    }else if(e.message === "ACCOUNT_NOT_FOUND"){
+      setCloudSyncStatus("error","Firebase 계정을 찾을 수 없습니다.");
+    }else{
+      scheduleCloudSaveRetry();
+      if(cloudSaveRetryAttempt===1&&typeof globalThis.showFishingLifeNotice==="function")globalThis.showFishingLifeNotice({title:"클라우드 저장 지연",detail:"데이터는 이 기기에 보관 중이며 자동으로 다시 저장합니다.",kind:"danger",icon:"☁️"});
     }
   }
 }
@@ -907,7 +1069,10 @@ function hasPendingLocalCloudChanges(){
 
 async function refreshMyCloudData(force=false){
   if(!currentUser) return false;
-  if(!force && hasPendingLocalCloudChanges()) return false;
+  if(hasPendingLocalCloudChanges()){
+    await saveCloudData();
+    if(hasPendingLocalCloudChanges())return false;
+  }
 
   try{
     const snap = await db.collection("users").doc(currentUser).get();
@@ -915,12 +1080,17 @@ async function refreshMyCloudData(force=false){
 
     const data = snap.data();
     if(!(await hasValidSession(data))) throw new Error("SESSION_INVALID");
-    applyGameState(data.gameState);
+    const hadPending=hasPendingLocalCloudChanges();
+    const nextState=hadPending?mergeCloudGameStates(getGameState(),data.gameState,lastCloudSyncedState):data.gameState;
+    applyGameState(nextState);
     cloudRevision = Number(data.cloudRevision || 0);
-    cloudSyncedSeq = localSaveSeq;
+    lastCloudSyncedState=cloneCloudState(data.gameState);
+    if(!hadPending)cloudSyncedSeq = localSaveSeq;
     migrateCombatStatsToCurrentVersion();
     localStorage.setItem("textFishingSpeciesSizeSave", JSON.stringify(getGameState()));
     updateWallet();
+    if(hadPending)saveCloudData();
+    else setCloudSyncStatus("saved","Firebase의 최신 데이터를 불러왔습니다.");
 
     return true;
   }catch(e){
@@ -942,10 +1112,20 @@ async function refreshMyCloudData(force=false){
 
 async function removeRealtimeNotification(matchText){
   if(!currentUser || !matchText) return;
+  if(hasPendingLocalCloudChanges()){
+    await saveCloudData();
+    if(hasPendingLocalCloudChanges()){
+      setTimeout(()=>removeRealtimeNotification(matchText),3000);
+      return;
+    }
+  }
 
   try{
     const ref = db.collection("users").doc(currentUser);
     const sessionHash = await getCurrentSessionHash();
+    const saveSeq=localSaveSeq;
+    const localState=cloneCloudState(getGameState());
+    const baseState=cloneCloudState(lastCloudSyncedState);
     let committedRevision = null;
     let committedState = null;
 
@@ -956,13 +1136,11 @@ async function removeRealtimeNotification(matchText){
       if(!snap.exists) return;
 
       const data = snap.data();
-      if(data.sessionTokenHash !== sessionHash) throw new Error("SESSION_INVALID");
-      const state = data.gameState || {};
+      if(!isSessionHashValid(data,sessionHash)) throw new Error("SESSION_INVALID");
+      const state = mergeCloudGameStates(localState,data.gameState,baseState);
       const list = Array.isArray(state.notifications) ? state.notifications : [];
 
       const filtered = list.filter(msg => !String(msg).includes(matchText));
-      if(filtered.length === list.length) return;
-
       committedState = {...state, notifications: filtered};
       tx.set(ref, {
         cloudRevision: Number(data.cloudRevision || 0) + 1,
@@ -973,15 +1151,18 @@ async function removeRealtimeNotification(matchText){
     });
 
     if(committedRevision !== null) cloudRevision = committedRevision;
-    if(committedRevision !== null) cloudSyncedSeq = localSaveSeq;
+    if(committedRevision !== null) cloudSyncedSeq = Math.max(cloudSyncedSeq,saveSeq);
+    if(committedState)lastCloudSyncedState=cloneCloudState(committedState);
     if(committedState){
-      applyGameState(committedState);
+      if(localSaveSeq===saveSeq)applyGameState(committedState);
       migrateCombatStatsToCurrentVersion();
       localStorage.setItem("textFishingSpeciesSizeSave", JSON.stringify(getGameState()));
       updateWallet();
+      setCloudSyncStatus(hasPendingLocalCloudChanges()?"saving":"saved");
     }
   }catch(e){
     console.error(e);
+    scheduleCloudSaveRetry();
   }
 }
 
@@ -1004,6 +1185,7 @@ async function registerUser(){
 
     const passwordHash = await hashPassword(password);
     const sessionTokenHash = await startUserSession(nickname);
+    const sessionTokens = {[getCloudDeviceId()]:sessionTokenHash};
 
     resetGameData();
 
@@ -1014,6 +1196,7 @@ async function registerUser(){
         nickname,
         passwordHash,
         sessionTokenHash,
+        sessionTokens,
         cloudRevision: 0,
         money: 0,
         rodLevel: 1,
@@ -1026,6 +1209,8 @@ async function registerUser(){
 
     currentUser = nickname;
     localStorage.setItem("textFishingCurrentUser", currentUser);
+    lastCloudSyncedState=cloneCloudState(getGameState());
+    setCloudSyncStatus("saved","새 계정이 Firebase에 저장되었습니다.");
 
     updateWallet();
     startServerAlertListener();
@@ -1064,21 +1249,30 @@ async function loginUser(){
     }
 
     const sessionTokenHash = await startUserSession(nickname);
-    const nextRevision = Number(data.cloudRevision || 0) + 1;
-    await ref.set({
-      sessionTokenHash,
-      cloudRevision: nextRevision,
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    }, {merge:true});
+    let loginData=data,nextRevision=Number(data.cloudRevision||0)+1;
+    await db.runTransaction(async tx=>{
+      const latestSnap=await tx.get(ref);
+      if(!latestSnap.exists)throw new Error("ACCOUNT_NOT_FOUND");
+      const latest=latestSnap.data()||{};
+      if(latest.passwordHash!==passwordHash)throw new Error("PASSWORD_CHANGED");
+      loginData=latest;
+      nextRevision=Number(latest.cloudRevision||0)+1;
+      const sessionTokens={...getSessionTokenMap(latest),[getCloudDeviceId()]:sessionTokenHash};
+      tx.set(ref,{sessionTokenHash,sessionTokens,cloudRevision:nextRevision,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+    });
 
     currentUser = nickname;
     localStorage.setItem("textFishingCurrentUser", currentUser);
 
-    applyGameState(data.gameState);
+    const recovery=takeCloudRecovery(nickname);
+    const loginState=recovery?.localState?mergeCloudGameStates(recovery.localState,loginData.gameState,recovery.baseState):loginData.gameState;
+    applyGameState(loginState);
     cloudRevision = nextRevision;
     cloudSyncedSeq = localSaveSeq;
+    lastCloudSyncedState=cloneCloudState(loginData.gameState);
     migrateCombatStatsToCurrentVersion();
     updateWallet();
+    setCloudSyncStatus(recovery?.localState?"saving":"saved",recovery?.localState?"이 기기의 미저장 데이터를 복구해 Firebase에 저장합니다.":"Firebase 데이터를 불러왔습니다.");
 
     try{
       checkSpecialTitles();
@@ -1121,9 +1315,14 @@ async function loginUser(){
   }
 }
 
-function logoutUser(){
+async function logoutUser(){
   if(!currentUser) return print("로그인 상태가 아닙니다.");
   const old = currentUser;
+  await saveCloudData();
+  if(hasPendingLocalCloudChanges()){
+    setCloudSyncStatus("retry","저장이 끝나면 다시 로그아웃해주세요.");
+    return print("Firebase 저장이 아직 끝나지 않았습니다. 데이터 보호를 위해 로그아웃을 잠시 멈췄습니다.");
+  }
   stopServerAlertListener();
   stopOnlinePresence();
   currentUser = null;
@@ -1374,7 +1573,6 @@ function startServerAlertListener(){
 
           print("📢 알림\n\n" + sender + " 님이 " + amountText);
           removeRealtimeNotification(amountText);
-          setTimeout(() => refreshMyCloudData(), 300);
           return;
         }
 
@@ -1391,7 +1589,6 @@ function startServerAlertListener(){
           const fishCount=Math.max(1,Number(data.fishCount||1));
           print("📢 알림\n\n" + sender + " 님이 " + (fishCount>1?`물고기 ${fishCount.toLocaleString()}마리를 전송했습니다.`:color(lineFish(fish), fish.grade) + objParticle(data.fishName) + " 전송했습니다."));
           removeRealtimeNotification(fishText);
-          setTimeout(() => refreshMyCloudData(), 300);
           return;
         }
 

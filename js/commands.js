@@ -102,8 +102,13 @@
 
 input.addEventListener("keydown", e=>{ if(e.key==="Enter") runCommand(); });
 window.addEventListener("beforeunload", () => {
+  if(currentUser&&hasPendingLocalCloudChanges()) saveCloudData();
   cancelActiveFishing();
   stopOnlinePresence();
+});
+window.addEventListener("pagehide",()=>{if(currentUser&&hasPendingLocalCloudChanges())saveCloudData();});
+document.addEventListener("visibilitychange",()=>{
+  if(document.visibilityState==="hidden"&&currentUser&&hasPendingLocalCloudChanges())saveCloudData();
 });
 
 loadGame();
@@ -115,6 +120,7 @@ if(!currentUser){
   refreshMarketIfNeeded();
   saveGame();
   updateWallet();
+  setCloudSyncStatus("offline");
   print("로그인이 필요합니다.\n\n처음이라면 회원가입 을 입력하세요.\n이미 계정이 있다면 로그인 을 입력하세요.");
   checkGameVersion();
 } else {
@@ -140,6 +146,7 @@ if(!currentUser){
 
       const data = snap.data();
       if(!(await hasValidSession(data))){
+        storeCloudRecovery(currentUser,getGameState(),data.gameState);
         currentUser = null;
         localStorage.removeItem("textFishingCurrentUser");
         clearUserSession();
@@ -151,12 +158,15 @@ if(!currentUser){
       applyGameState(data.gameState);
       cloudRevision = Number(data.cloudRevision || 0);
       cloudSyncedSeq = localSaveSeq;
+      lastCloudSyncedState=cloneCloudState(data.gameState);
       migrateCombatStatsToCurrentVersion();
       updateWallet();
+      setCloudSyncStatus("saved","Firebase 데이터를 불러왔습니다.");
 
       print(currentUser + " 님 데이터 불러오기 완료.");
     }catch(e){
       console.error(e);
+      setCloudSyncStatus("error","클라우드 데이터를 불러오지 못했습니다.");
       print("클라우드 데이터를 불러오지 못했습니다.\n네트워크 상태를 확인한 뒤 다시 로그인해주세요.");
       return;
     }

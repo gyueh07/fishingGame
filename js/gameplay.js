@@ -2347,9 +2347,11 @@ function finishOnlineTransferState(nextState,nextRevision){
   applyGameState(nextState);
   cloudRevision=Number(nextRevision||cloudRevision);
   cloudSyncedSeq=localSaveSeq;
+  lastCloudSyncedState=cloneCloudState(nextState);
   bossPrepIndexes=[];
   localStorage.setItem("textFishingSpeciesSizeSave",JSON.stringify(getGameState()));
   updateWallet();
+  setCloudSyncStatus("saved","전송 결과까지 Firebase에 저장되었습니다.");
 }
 
 function transferFailure(message){
@@ -2378,7 +2380,7 @@ async function sendMoney(targetNickname, amount){
       if(!mySnap.exists)throw new Error("MY_ACCOUNT_NOT_FOUND");
       if(!targetSnap.exists)throw new Error("TARGET_NOT_FOUND");
       const myData=mySnap.data()||{},targetData=targetSnap.data()||{};
-      if(myData.sessionTokenHash!==sessionHash)throw new Error("SESSION_INVALID");
+      if(!isSessionHashValid(myData,sessionHash))throw new Error("SESSION_INVALID");
       const myState={...(myData.gameState||{})},targetState={...(targetData.gameState||{})};
       const currentMoney=normalizeMoney(myData.money??myState.money??0);
       if(currentMoney<amount)throw new Error("NOT_ENOUGH_MONEY");
@@ -2430,7 +2432,7 @@ async function sendFish(targetNickname,displayNumber){
       if(!mySnap.exists)throw new Error("MY_ACCOUNT_NOT_FOUND");
       if(!targetSnap.exists)throw new Error("TARGET_NOT_FOUND");
       const myData=mySnap.data()||{},targetData=targetSnap.data()||{};
-      if(myData.sessionTokenHash!==sessionHash)throw new Error("SESSION_INVALID");
+      if(!isSessionHashValid(myData,sessionHash))throw new Error("SESSION_INVALID");
       const myState={...(myData.gameState||{})},targetState={...(targetData.gameState||{})};
       const myBucket=Array.isArray(myState.bucket)?[...myState.bucket]:[],targetBucket=Array.isArray(targetState.bucket)?[...targetState.bucket]:[];
       const currentList=sortBucketEntries(myBucket,bucketSortOrder),displayItem=currentList[displayNumber-1];
@@ -2490,7 +2492,7 @@ async function sendFishBatch(targetNickname,fishIds){
     const senderName=currentUser,senderTitle=getCurrentTitle(),myRef=db.collection("users").doc(senderName),targetRef=db.collection("users").doc(targetNickname);
     await db.runTransaction(async tx=>{
       const mySnap=await tx.get(myRef),targetSnap=await tx.get(targetRef);if(!mySnap.exists)throw new Error("MY_ACCOUNT_NOT_FOUND");if(!targetSnap.exists)throw new Error("TARGET_NOT_FOUND");
-      const myData=mySnap.data()||{},targetData=targetSnap.data()||{};if(myData.sessionTokenHash!==sessionHash)throw new Error("SESSION_INVALID");
+      const myData=mySnap.data()||{},targetData=targetSnap.data()||{};if(!isSessionHashValid(myData,sessionHash))throw new Error("SESSION_INVALID");
       const myState={...(myData.gameState||{})},targetState={...(targetData.gameState||{})},myBucket=Array.isArray(myState.bucket)?[...myState.bucket]:[],targetBucket=Array.isArray(targetState.bucket)?[...targetState.bucket]:[];
       const selected=myBucket.filter(f=>f&&fishIds.includes(String(f.id||"")));if(selected.length!==fishIds.length)throw new Error("FISH_NOT_FOUND");
       const mainIds=new Set([String(myState.fusionMainFishId||""),...Object.values(myState.fusionMainFishIds&&typeof myState.fusionMainFishIds==="object"?myState.fusionMainFishIds:{}).map(String)]);

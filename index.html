@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#071b2d">
   <meta name="description" content="낚시하고 성장하며 보스와 대전하는 온라인 낚시 RPG">
   <title>FishingLife</title>
-  <link rel="stylesheet" href="./css/legacy.css?v=4.3">
-  <link rel="stylesheet" href="./css/game-ui.css?v=4.3">
+  <link rel="stylesheet" href="./css/legacy.css?v=4.4">
+  <link rel="stylesheet" href="./css/game-ui.css?v=4.4">
 </head>
 <body>
   <div class="ambient-bg" aria-hidden="true">
@@ -54,6 +54,7 @@
         <div class="resource-bar" aria-label="보유 자원">
           <div class="resource-chip"><span>💰</span><div><small>보유 골드</small><b id="topMoney">0원</b></div></div>
           <div class="resource-chip compact"><span>🎣</span><div><small>낚싯대</small><b id="topRod">Lv.1</b></div></div>
+          <div id="cloudSyncChip" class="cloud-sync-chip offline" role="status" aria-live="polite" title="Firebase 저장 상태"><span id="cloudSyncIcon">☁️</span><div><small>클라우드</small><b id="cloudSyncText">로그인 필요</b></div></div>
         </div>
       </header>
 
@@ -254,12 +255,12 @@
 
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="./js/data/fish-data.js?v=4.3"></script>
-  <script src="./js/core.js?v=4.3"></script>
-  <script src="./js/data/combat-data.js?v=4.3"></script>
-  <script src="./js/combat.js?v=4.3"></script>
-  <script src="./js/gameplay.js?v=4.3"></script>
-  <script src="./js/commands.js?v=4.3"></script>
-  <script src="./js/ui.js?v=4.3"></script>
+  <script src="./js/data/fish-data.js?v=4.4"></script>
+  <script src="./js/core.js?v=4.4"></script>
+  <script src="./js/data/combat-data.js?v=4.4"></script>
+  <script src="./js/combat.js?v=4.4"></script>
+  <script src="./js/gameplay.js?v=4.4"></script>
+  <script src="./js/commands.js?v=4.4"></script>
+  <script src="./js/ui.js?v=4.4"></script>
 </body>
 </html>
