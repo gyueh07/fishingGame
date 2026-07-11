@@ -1178,7 +1178,16 @@ function traitUseByFish(f, body="", titleOverride=""){
   const title = titleOverride || (trait ? trait.name : "특성");
   if(f){
     const fishLabel = activePvpFishLabeler ? activePvpFishLabeler(f) : color(lineFish(f), f.grade);
-    return `<span class="battle-event battle-event--ally"><span class="battle-event__eyebrow">ALLY SKILL</span><b>${fishLabel} · ${escapeHtml(title)}</b>${body?`<span class="battle-event__body">${body}</span>`:""}</span>`;
+    const voidSkill=f.grade==="공허";
+    const voidPresentation={
+      "잃어버린 첫 번째 편지 조각 ✉️":{className:"letter-one",eyebrow:"VOID CHAPTER I"},
+      "잃어버린 두 번째 편지 조각 ✉️":{className:"letter-two",eyebrow:"VOID CHAPTER II"},
+      "잃어버린 세 번째 편지 조각 ✉️":{className:"letter-three",eyebrow:"VOID FINAL CHAPTER"},
+      "수상한 기운 👁️":{className:"observer",eyebrow:"VOID OBSERVATION"},
+      "기묘한 기운 🌀":{className:"anomaly",eyebrow:"SYSTEM ERROR"}
+    }[f.name];
+    const voidClass=voidSkill?` battle-event--void${voidPresentation?` battle-event--void-${voidPresentation.className}`:""}`:"";
+    return `<span class="battle-event battle-event--ally${voidClass}"><span class="battle-event__eyebrow">${voidPresentation?.eyebrow||(voidSkill?"VOID SIGNATURE":"ALLY SKILL")}</span><b>${fishLabel} · ${escapeHtml(title)}</b>${body?`<span class="battle-event__body">${body}</span>`:""}</span>`;
   }
   return traitUseText(title, body);
 }
@@ -1341,12 +1350,12 @@ function beginBossSpecial(boss,skillName,battleLog,eventKind="skill"){
   if(observedFish&&ctx.observedSkill===skillName&&ctx.turn<=ctx.observedUntil){
     const reversedLogs=[];
     getAliveTargets(ctx.participants).forEach(ally=>{
-      const c=ensureCombatStats(ally),heal=healFishForBattle(ally,Math.max(1,Math.floor(c.maxHp*0.15)),battleLog),removed=clearOneFishStatus(ally);
+      const c=ensureCombatStats(ally),heal=healFishForBattle(ally,Math.max(1,Math.floor(c.maxHp*0.18)),battleLog),removed=clearOneFishStatus(ally);
       reversedLogs.push(color(lineFish(ally),ally.grade)+(removed?" · "+removed+" 해제":"")+" · "+heal.toLocaleString()+" 회복");
     });
     boss._observedWeakUntil=ctx.turn+3;
     ctx.observedSkill="";ctx.observedUntil=0;
-    battleLog.push(traitUseByFish(observedFish, bossColor(boss.name,boss)+"의 "+objectText(skillName)+" 뒤집었습니다.\n"+reversedLogs.join("\n")+"\n보스의 공격력이 3턴 동안 20% 감소합니다."));
+    battleLog.push(traitUseByFish(observedFish, bossColor(boss.name,boss)+"의 "+objectText(skillName)+" 뒤집었습니다.\n"+reversedLogs.join("\n")+"\n보스의 공격력이 3턴 동안 25% 감소합니다."));
     return false;
   }
   if(!ctx.frozenSkills)ctx.frozenSkills={};
@@ -1354,7 +1363,8 @@ function beginBossSpecial(boss,skillName,battleLog,eventKind="skill"){
   if(!ctx.seenBossSpecials)ctx.seenBossSpecials=new Set();
   if(frozenFish&&ctx.seenBossSpecials.has(skillName)){ctx.frozenSkills[skillName]=ctx.turn+3;ctx.seenBossSpecials.delete(skillName);battleLog.push(traitUseByFish(frozenFish, "반복된 "+objectText(skillName)+" 취소하고 3턴 동안 봉인했습니다."));return false;}
   ctx.seenBossSpecials.add(skillName);
-  if(observedFish){ctx.observedSkill=skillName;ctx.observedUntil=ctx.turn+3;battleLog.push(traitUseByFish(observedFish, objectText(skillName)+" 3턴 동안 관측합니다."));}
+  const observationActive=observedFish&&ctx.observedSkill&&ctx.turn<=ctx.observedUntil;
+  if(observedFish&&!observationActive){ctx.observedSkill=skillName;ctx.observedUntil=ctx.turn+3;battleLog.push(traitUseByFish(observedFish, objectText(skillName)+" 3턴 동안 관측합니다."));}
   battleLog.push(bossBattleEvent(boss,skillName,eventKind==="crazy"?"전투당 한 번만 사용하는 궁극기가 발동했습니다.":"특수 기술이 발동했습니다.",eventKind));
   return true;
 }
@@ -1376,8 +1386,8 @@ function traitModifyIncoming(f,damage,battleLog,meta={}){
   if(lifeEndActive) meta.blockDeathPrevention=true;
   if(!meta.ignoreReduction&&f.name==="금빛 보름달 드래곤"&&st.moonPhase===0) final=Math.floor(final*0.8);
   if(f.name==="불타는 마음"&&getBurningHeartStageByCombat(c)>=3) final=Math.floor(final*1.2);
-  if(!meta.forced&&f.name==="기묘한 기운 🌀"&&final>Number(c.attack||0)&&Math.random()<0.2){
-    st.numericStored=Math.max(1,Math.floor(final/FISH_HP_BALANCE_MULTIPLIER)); final=Math.max(0,Math.floor(c.attack));
+  if(!meta.forced&&f.name==="기묘한 기운 🌀"&&final>Number(c.attack||0)&&Math.random()<0.25){
+    st.numericStored=Math.max(1,Math.floor(final*1.1/FISH_HP_BALANCE_MULTIPLIER)); final=Math.max(0,Math.floor(c.attack));
     battleLog.push(traitUseByFish(f, "받을 피해와 공격 수치가 뒤바뀌었습니다. 다음 공격 : "+st.numericStored.toLocaleString()));
   }
   const lethal=final>=c.hp;
@@ -1473,10 +1483,10 @@ function advanceWish(kind,battleLog){
 }
 
 function startPeriodTraitIfNeeded(boss,battleLog){
-  const ctx=activeTraitBattle;if(!ctx||ctx.periodStarted||Number(boss._currentHp)<=0||Number(boss._currentHp)>boss.hp*0.15)return false;
+  const ctx=activeTraitBattle;if(!ctx||ctx.periodStarted||Number(boss._currentHp)<=0||Number(boss._currentHp)>boss.hp*0.18)return false;
   const periodFish=traitFish(ctx.participants,"잃어버린 세 번째 편지 조각 ✉️");if(!periodFish)return false;
   ctx.periodStarted=true;ctx.periodSentences=0;boss._periodEnraged=true;boss._healingSealed=true;
-  battleLog.push(traitUseByFish(periodFish, "보스의 마지막 문장이 시작되었습니다.\n회복이 봉인됩니다.\n문장 0 / 5\n보스의 공격력이 30% 증가합니다."));
+  battleLog.push(traitUseByFish(periodFish, "보스의 마지막 문장이 시작되었습니다.\n회복이 봉인됩니다.\n문장 0 / 5\n보스의 공격력이 25% 증가합니다."));
   return true;
 }
 
@@ -1577,11 +1587,11 @@ function getBossAttackMultiplier(boss){
 
   if(boss._enraged) multiplier *= Number(boss._enrageMultiplier||1.3);
   if(boss._periodEnraged){
-    multiplier *= 1.3;
+    multiplier *= 1.25;
   }
   multiplier *= 1+Math.max(0,Number(boss._crazyAttackBoost||0));
   if(activeTraitBattle&&Number(boss._observedWeakUntil||0)>=activeTraitBattle.turn){
-    multiplier *= 0.8;
+    multiplier *= 0.75;
   }
 
   if(boss.id === "jormungandr"){
@@ -2883,7 +2893,12 @@ function getBossReplayStatuses(boss){
   if(Number(boss._voidShieldHp||0)>0)statuses.push({key:"shield",icon:"🛡️",label:boss.id==="typhon"?"폭풍 장벽":boss.id==="erebos"?"원초의 장막":"보호막",current:Number(boss._voidShieldHp),max:Math.max(1,boss.id==="typhon"?Math.floor(boss.hp*0.12):Math.floor(boss.hp*0.15)),state:"보호"});
   if(boss.id==="typhon"&&Array.isArray(boss._typhonWeathers)&&boss._typhonWeathers.length)statuses.push({key:"weather",icon:"🌪️",label:"폭풍",text:boss._typhonWeathers.map(x=>({headwind:"역풍",turbulence:"난기류",eye:"폭풍의 눈"}[x]||x)).join(" + "),state:"활성"});
   if(boss.id==="azathoth"&&Array.isArray(boss._chaosDreamRules)&&Number(boss._chaosDreamUntil||0)>=(activeTraitBattle?activeTraitBattle.turn:0)){const labels={healing:"회복 봉인",trait:"특성 봉인",causality:"피해 전이"};statuses.push({key:"chaos",icon:"🕳️",label:"혼돈의 꿈",text:boss._chaosDreamRules.map(rule=>labels[rule]||rule).join(" + "),state:"규칙 붕괴"});}
-  return statuses.slice(0,3);
+  const ctx=activeTraitBattle,participants=ctx?.participants||[];
+  if(ctx?.deletedSkill&&traitFish(participants,"잃어버린 첫 번째 편지 조각 ✉️",false))statuses.push({key:"void-deleted",icon:"✉️",label:"삭제된 서두",text:String(ctx.deletedSkill),state:"영구 삭제"});
+  const observationLeft=ctx?.observedSkill?Math.max(0,Number(ctx.observedUntil||0)-Number(ctx.turn||0)):0;
+  if(observationLeft>0&&traitFish(participants,"수상한 기운 👁️",false))statuses.push({key:"void-observation",icon:"👁️",label:"뒤틀린 관측",text:String(ctx.observedSkill),current:observationLeft,max:3,state:`관측 ${observationLeft}턴`});
+  if(ctx?.periodStarted&&traitFish(participants,"잃어버린 세 번째 편지 조각 ✉️",false))statuses.push({key:"void-period",icon:"💌",label:"완성되지 않은 마침표",current:Math.max(0,Number(ctx.periodSentences||0)),max:5,state:Number(ctx.periodSentences||0)>=5?"종결":"문장 작성"});
+  return statuses.slice(0,5);
 }
 
 function createBossBattleLog(boss,participants){
@@ -2962,14 +2977,9 @@ function runBossBattle(){
 
   const recoveryFishes = getPreparedRecoveryFishes();
   if(recoveryFishes.length > 0 && !pendingRecoveryBattleConfirm){
-    let msg = "회복 중인 물고기가 포함되어 있습니다.\n\n";
-    recoveryFishes.forEach(f => {
-      msg += color(lineFish(f), f.grade) + "\n";
-      msg += "상태 : " + getCombatStatusText(f) + "\n\n";
-    });
-    msg += "회복 중인 물고기도 전투에 참가합니다.\n\n계속하려면 전투 확인 을 입력하세요.";
     pendingRecoveryBattleConfirm = true;
-    return print(msg.trim());
+    if(typeof globalThis.openRecoveryBattleConfirm==="function")return globalThis.openRecoveryBattleConfirm(recoveryFishes);
+    return print("회복 중인 물고기가 포함되어 있습니다. 계속하려면 전투 확인을 입력하세요.");
   }
 
   pendingRecoveryBattleConfirm = false;

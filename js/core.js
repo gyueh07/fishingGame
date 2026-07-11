@@ -29,9 +29,31 @@ let cloudSaveChain=Promise.resolve();
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
-const GAME_VERSION = "2026-07-11-fishinglife-crazy-void-ui-v24";
+const GAME_VERSION = "2026-07-11-fishinglife-void-pvp-skill-ui-v24-2";
 const UPDATE_NOTICE_TITLE = "📢 업데이트 안내";
 const UPDATE_NOTICES = [
+  {
+    id:"2026-07-11-fishinglife-void-pvp-skill-ui-24-2",
+    title:"공허 전용 연출·1대1 스킬 결과 UI",
+    lines:[
+      "공허 물고기 5종의 전용 색상과 화면 연출이 각각 다른 모습으로 표시됩니다.",
+      "1대1에서 스킬이 발동하면 스킬명과 설명을 먼저 보여준 뒤 체력 변화를 별도 결과 화면으로 보여줍니다.",
+      "보스전에는 삭제된 스킬, 관측 남은 턴, 마침표 문장 수를 상태 게이지로 표시합니다.",
+      "아래 전투 로그는 공허 연출 색상에 덮이지 않고 기존 물고기 등급과 보스 색상을 유지합니다."
+    ]
+  },
+  {
+    id:"2026-07-11-fishinglife-observation-void-skill-24-1",
+    title:"관측 버그 수정·공허 고유 특성 상향",
+    lines:[
+      "뒤틀린 관측이 진행 중 다른 보스 스킬에 의해 3턴으로 다시 초기화되던 문제가 수정됩니다.",
+      "1대1에서도 관측 반전 직후 같은 턴에 다시 관측을 시작하지 않도록 수정됩니다.",
+      "공허 물고기 5종은 크레이지 궁극기급 VOID SIGNATURE 전용 연출을 사용하며, 처형·관측 반전·수치 오류 효과만 소폭 강화됩니다.",
+      "1대1 기본 속도가 기존의 35%로 조정되고, 아군·적군 표시는 리플레이를 보는 사람 기준으로 정확히 변환됩니다.",
+      "랭킹에 PVP 총합 전투력과 출전 물고기 3마리가 표시되며, 내정보는 확률·성장·전투력을 담은 카드형 화면으로 개편됩니다.",
+      "회복 중 출전 확인과 짧은 행동 결과는 콘솔 텍스트 대신 물고기 상태 카드와 게임 알림으로 표시됩니다."
+    ]
+  },
   {
     id:"2026-07-11-fishinglife-crazy-void-ui-24",
     title:"크레이지 보스·공허 밸런스·게임 UI 업데이트",
@@ -1562,6 +1584,8 @@ function sanitizeGameHtml(value){
   const allowedTags = new Set(["SPAN", "B", "BR"]);
   const battleClasses = new Set([
     "battle-event", "battle-event--skill", "battle-event--crazy", "battle-event--passive", "battle-event--ally",
+    "battle-event--void", "battle-event--void-letter-one", "battle-event--void-letter-two", "battle-event--void-letter-three",
+    "battle-event--void-observer", "battle-event--void-anomaly",
     "battle-event__eyebrow", "battle-event__body"
   ]);
 
@@ -1587,7 +1611,10 @@ function appendLogHtml(value){
   log.scrollTop=log.scrollHeight;
 }
 function print(t){
-  appendLogHtml(String(t ?? "")+"\n\n");
+  const value=String(t??""),plainValue=value.replace(/<[^>]*>/g,"").replace(/\n{3,}/g,"\n\n").trim();
+  const compactNotice=plainValue.length>0&&plainValue.length<=260&&plainValue.split("\n").length<=8&&!/battle-event|HP\s*[█▓▒░]|━━━━━━━━|────/.test(value);
+  if(compactNotice&&typeof globalThis.showFishingLifeNotice==="function")globalThis.showFishingLifeNotice(value);
+  else appendLogHtml(value+"\n\n");
   updateWallet();
 }
 
