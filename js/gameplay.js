@@ -1314,7 +1314,7 @@ function simulatePvpBattle({leftName,leftTitle,leftProfile,leftTeam,rightName,ri
   function capturePvpFrame(entry,frameTurn=turn,actorSide="",actorId=""){
     const text=String(entry||"").trim();
     if(!text)return;
-    replayFrames.push({entry:text,turn:Number(frameTurn||0),actorSide,actorId:String(actorId||""),left:left.map(snapshotPvpFish),right:right.map(snapshotPvpFish)});
+    replayFrames.push({entry:renderPvpPerspectiveLog(text,viewerSide),turn:Number(frameTurn||0),actorSide,actorId:String(actorId||""),left:left.map(snapshotPvpFish),right:right.map(snapshotPvpFish)});
   }
 
   let logText = "";
@@ -1741,9 +1741,8 @@ function swapPvpPerspectiveLog(fullLog){
 function renderPvpPerspectiveLog(fullLog,viewerSide){
   const mine=viewerSide==="right"?"right":"left",enemy=mine==="left"?"right":"left";
   return String(fullLog||"")
-    .replaceAll("[[PVP_SIDE:"+mine+"]]","(아군)")
-    .replaceAll("[[PVP_SIDE:"+enemy+"]]","(적)")
-    .replace(/\[\[PVP_SIDE:(?:left|right)\]\]/g,"");
+    .replace(/\[\[\s*PVP[\s_-]*SIDE\s*:\s*(left|right)\s*\]\]|\bPVP[\s_-]*SIDE\s*:?\s*(left|right)\b/gi,(_,wrappedSide,plainSide)=>String(wrappedSide||plainSide).toLowerCase()===mine?"(아군)":"(적)")
+    .replace(/\[?\[?\s*PVP[\s_-]*SIDE\s*:?\s*(?:left|right)\s*\]?\]?/gi,"");
 }
 
 async function requestPvp(nickname){

@@ -7,8 +7,8 @@ function bossColor(text,boss){
 }
 
 function bossBattleEvent(boss,title,body="",kind="skill"){
-  const safeKind=["skill","crazy","passive"].includes(kind)?kind:"skill";
-  const labels={skill:"BOSS SKILL",crazy:"CRAZY ULTIMATE",passive:"PASSIVE SHIFT"};
+  const safeKind=["skill","crazy","passive","phase"].includes(kind)?kind:"skill";
+  const labels={skill:"BOSS SKILL",crazy:"CRAZY ULTIMATE",passive:"PASSIVE SHIFT",phase:"BOSS PHASE"};
   return `<span class="battle-event battle-event--${safeKind}"><span class="battle-event__eyebrow">${labels[safeKind]}</span><b>${bossColor(escapeHtml(boss.name),boss)} · ${escapeHtml(title)}</b>${body?`<span class="battle-event__body">${escapeHtml(body)}</span>`:""}</span>`;
 }
 
@@ -689,7 +689,8 @@ function getBossForDifficulty(baseBoss,difficultyId=getSelectedBossDifficulty(ba
 }
 
 function getBossDifficultyReward(baseBoss,difficultyId){
-  return Math.floor(Number(baseBoss.reward||0)*getBossDifficultyConfig(difficultyId).rewardMultiplier);
+  const reward=Number(baseBoss.reward||0)*getBossDifficultyConfig(difficultyId).rewardMultiplier;
+  return Math.max(0,Math.round(reward/10)*10);
 }
 
 function getBossCoreRange(difficultyId){
@@ -1463,9 +1464,9 @@ function dealTraitDamage(boss,raw,label,battleLog){
     entry += "수르트 : " + damage.toLocaleString() + " 피해\n";
     entry += "불꽃의 검 : " + Number(boss._lastDamageToSword||0).toLocaleString() + " 피해\n";
     entry += "검 내구도 : " + Number(boss._flameSwordHp||0).toLocaleString() + " / 30,000,000";
-    if(boss._flameSwordJustBroken) entry += "\n\n불꽃의 검이 파괴되었습니다.\n이후 수르트가 받는 피해가 30% 증가합니다.";
     entry += "\n\n" + bossColor(boss.name,boss) + "\n" + hpBar(boss._currentHp,boss.hp);
     battleLog.push(entry);
+    if(boss._flameSwordJustBroken)battleLog.push(bossBattleEvent(boss,"불꽃의 검 파괴","검의 피해 분담이 끝나고 수르트가 받는 피해가 "+(boss.difficulty==="crazy"?20:boss.difficulty==="hard"?25:30)+"% 증가합니다.","phase"));
   } else {
     battleLog.push(label+"\n\n"+damage.toLocaleString()+" 피해\n\n"+bossColor(boss.name,boss)+"\n"+hpBar(boss._currentHp,boss.hp));
   }
@@ -1842,17 +1843,18 @@ function bossAllTargetAttack(boss, targets, battleLog, bossAttackMultiplier=1, s
   const isSpecial=!!options.isSpecial||boss._activeSpecialName===skillName;
   const appliesBurn=!!options.burn||(boss.id==="surtr"&&boss.difficulty==="crazy"&&boss._muspelAwakened);
   if(options.isSpecial && !boss._activeSpecialName && !beginBossSpecial(boss,skillName,battleLog)) return false;
-  const logs = [];
   const bossAttack = getBossAttackValue(boss, bossAttackMultiplier);
+  const activeTargets=targets.filter(f=>isBattleActionableFish(f));
 
-  targets.forEach(f => {
+  activeTargets.forEach((f,targetIndex) => {
+    const logs=[];
     const c = ensureCombatStats(f);
-    if(!isBattleActionableFish(f)) return;
 
     const dodgeRoll = Math.random() * 100 < getEffectiveFishDodge(f, boss);
     if(dodgeRoll && !options.ignoreDodge){
       logs.push(color(lineFish(f), f.grade) + "\n회피");
       advanceWish("dodge",battleLog);
+      battleLog.push(bossColor(boss.name,boss)+"의 "+skillName+"\n대상 "+(targetIndex+1)+" / "+activeTargets.length+"\n\n"+logs.join("\n\n"));
       return;
     }
 
@@ -1870,11 +1872,10 @@ function bossAllTargetAttack(boss, targets, battleLog, bossAttackMultiplier=1, s
     if(ensureCombatStats(f).hp>0&&appliesBurn){
       c.burnStacks=Math.min(3,Number(c.burnStacks||0)+1);
       logs.push(color(lineFish(f),f.grade)+"\n화상 "+c.burnStacks+"중첩");
-      registerTraitStatus(f,battleLog);
     }
+    if(logs.length)battleLog.push(bossColor(boss.name,boss)+"의 "+skillName+"\n대상 "+(targetIndex+1)+" / "+activeTargets.length+"\n\n"+logs.join("\n\n"));
+    if(ensureCombatStats(f).hp>0&&appliesBurn)registerTraitStatus(f,battleLog);
   });
-
-  if(logs.length > 0) battleLog.push(bossColor(boss.name, boss) + "의 " + skillName + "!\n\n" + logs.join("\n\n"));
   return true;
 }
 
@@ -1914,7 +1915,7 @@ function applyBossPassiveBeforeFishAttack(boss, damage, battleLog=null){
       if(battleLog)battleLog.push(bossColor(boss.name,boss)+"의 암석 갑옷\n"+absorbed.toLocaleString()+" 피해 흡수\n남은 갑옷 : "+Number(boss._stoneArmorHp).toLocaleString());
       if(boss._stoneArmorHp<=0){
         boss._stoneExposedUntil=(activeTraitBattle?activeTraitBattle.turn:0)+1;
-        if(battleLog)battleLog.push(bossBattleEvent(boss,"대륙의 균열","암석 갑옷이 무너져 다음 턴까지 받는 피해가 20% 증가합니다.","passive"));
+        if(battleLog)battleLog.push(bossBattleEvent(boss,"대륙의 균열","암석 갑옷이 무너져 다음 턴까지 받는 피해가 20% 증가합니다.","phase"));
       }
     }else if(activeTraitBattle&&Number(boss._stoneExposedUntil||0)>=activeTraitBattle.turn){
       damage=Math.floor(damage*1.2);
@@ -1954,7 +1955,7 @@ function applyBossPassiveBeforeFishAttack(boss, damage, battleLog=null){
         if(boss.difficulty==="crazy"&&!boss._muspelAwakened){
           boss._muspelAwakened=true;
           boss._crazyAttackBoost=Math.max(Number(boss._crazyAttackBoost||0),0.30);
-          if(battleLog)battleLog.push(bossBattleEvent(boss,"멸망의 불꽃","공격력이 30% 증가하고 모든 공격이 화상을 남깁니다.","passive"));
+          if(battleLog)battleLog.push(bossBattleEvent(boss,"멸망의 불꽃","공격력이 30% 증가하고 모든 공격이 화상을 남깁니다.","phase"));
         }
       }
       return bossDamage;
@@ -1981,7 +1982,7 @@ function handleFenrirCriticalHit(boss, hit, battleLog){
   battleLog.push(bossColor(boss.name, boss) + "의 글레이프니르\n매듭 해제 : " + boss._gleipnirKnots + " / "+maxKnots+" 남음");
 
   if(boss._gleipnirKnots <= 0){
-    battleLog.push(bossBattleEvent(boss,"글레이프니르 해방",boss.difficulty==="crazy"?"공격력이 50% 증가하고 신을 삼키는 자를 사용할 수 있습니다.":"공격력과 회피율이 돌아오고 신을 삼키는 자를 사용할 수 있습니다.","passive"));
+    battleLog.push(bossBattleEvent(boss,"글레이프니르 해방",boss.difficulty==="crazy"?"공격력이 50% 증가하고 신을 삼키는 자를 사용할 수 있습니다.":"공격력과 회피율이 돌아오고 신을 삼키는 자를 사용할 수 있습니다.","phase"));
   }
 }
 
@@ -2004,14 +2005,14 @@ function checkCrazyBossHpPassives(boss,bossHp,battleLog){
       boss._stoneArmorTriggers[threshold]=true;
       boss._stoneArmorMaxHp=Math.max(1,Math.floor(boss.hp*0.06));
       boss._stoneArmorHp=boss._stoneArmorMaxHp;
-      battleLog.push(bossBattleEvent(boss,"움직이는 대륙","체력 "+threshold+"% 구간 · 최대 체력 6%의 암석 갑옷 생성","passive"));
+      battleLog.push(bossBattleEvent(boss,"움직이는 대륙","체력 "+threshold+"% 구간 · 최대 체력 6%의 암석 갑옷 생성","phase"));
     }
   }
 
   if(boss.id==="bahamut"&&bossHp<=boss.hp*0.5&&!boss._absoluteOrderActive){
     boss._absoluteOrderActive=true;boss._crazyAttackBoost=Math.max(0.25,Number(boss._crazyAttackBoost||0));boss.critRate=Number(boss._baseCritRate||boss.critRate||0)+20;boss._megaFlareIgnoreDodge=true;
     delete boss._observedWeakUntil;
-    battleLog.push(bossBattleEvent(boss,"용왕의 절대명령","약화 효과를 지우고 공격력 25%·치명타율 20% 증가, 메가 플레어 회피 무시","passive"));
+    battleLog.push(bossBattleEvent(boss,"용왕의 절대명령","약화 효과를 지우고 공격력 25%·치명타율 20% 증가, 메가 플레어 회피 무시","phase"));
   }
 
   if(boss.id==="cerberus"){
@@ -2093,7 +2094,7 @@ function applyPhoenixImmortalityIfNeeded(boss, bossHp, battleLog){
   boss._revived=true;
   bossHp = Math.floor(boss.hp * reviveRates[used]);
   boss._currentHp=bossHp;
-  battleLog.push(bossBattleEvent(boss,"불사",(used+1)+"번째 부활 · 체력 "+Math.round(reviveRates[used]*100)+"%로 되살아났습니다.\n"+hpBar(bossHp,boss.hp),"passive"));
+  battleLog.push(bossBattleEvent(boss,"불사 부활",(used+1)+"번째 부활 · 체력 "+Math.round(reviveRates[used]*100)+"%로 되살아났습니다.\n"+hpBar(bossHp,boss.hp),"phase"));
   return bossHp;
 }
 
@@ -2128,7 +2129,7 @@ function applyBossEndTurnPassive(boss, bossHp, battleLog){
     bossHp=Math.min(boss.hp,bossHp+heal);
     boss._currentHp=bossHp;
     boss._crazyAttackBoost=Math.max(Number(boss._crazyAttackBoost||0),0.2);
-    battleLog.push(bossBattleEvent(boss,"아홉 머리 재생","체력 25% 회복 · 공격력 20% 증가\n"+hpBar(bossHp,boss.hp),"passive"));
+    battleLog.push(bossBattleEvent(boss,"아홉 머리 재생","체력 25% 회복 · 공격력 20% 증가\n"+hpBar(bossHp,boss.hp),"phase"));
   }
 
   if(boss.id === "leviathan" && bossHp > 0){
@@ -2136,11 +2137,11 @@ function applyBossEndTurnPassive(boss, bossHp, battleLog){
     if(bossHp<=boss.hp*threshold&&!boss._enraged){
       boss._enraged=true;
       boss._enrageMultiplier=boss.difficulty==="crazy"?1.3:boss.difficulty==="hard"?1.4:1.3;
-      battleLog.push(bossBattleEvent(boss,"심연의 분노","공격력이 "+Math.round((boss._enrageMultiplier-1)*100)+"% 증가했습니다.","passive"));
+      battleLog.push(bossBattleEvent(boss,"심연의 분노","공격력이 "+Math.round((boss._enrageMultiplier-1)*100)+"% 증가했습니다.","phase"));
     }
     if(boss.difficulty==="crazy"&&bossHp<=boss.hp*0.3&&!boss._deepEnraged){
       boss._deepEnraged=true;boss._enrageMultiplier=1.7;
-      battleLog.push(bossBattleEvent(boss,"심해 최하층","총 공격력이 70% 증가합니다.","passive"));
+      battleLog.push(bossBattleEvent(boss,"심해 최하층","총 공격력이 70% 증가합니다.","phase"));
     }
   }
 
@@ -2156,8 +2157,8 @@ function applyBossEndTurnPassive(boss, bossHp, battleLog){
         boss._crazyAttackBoost=Math.max(Number(boss._crazyAttackBoost||0),boss._erebosVeilStacks*0.10);
         boss._voidShieldHp=Math.min(Math.floor(boss.hp*0.15),Number(boss._voidShieldHp||0)+Math.floor(boss.hp*0.05));boss._voidShieldUntil=999;
       }
-      battleLog.push(bossBattleEvent(boss,"완전 암흑","물고기 치명타 봉인 · 에레보스 회피율 증가","passive"));
-      if(boss.difficulty==="crazy")battleLog.push(bossBattleEvent(boss,"원초의 장막","최대 체력 5% 보호막 · 공격력 "+(boss._erebosVeilStacks*10)+"% 증가","passive"));
+      battleLog.push(bossBattleEvent(boss,"완전 암흑","물고기 치명타 봉인 · 에레보스 회피율 증가","phase"));
+      if(boss.difficulty==="crazy")battleLog.push(bossBattleEvent(boss,"원초의 장막","최대 체력 5% 보호막 · 공격력 "+(boss._erebosVeilStacks*10)+"% 증가","phase"));
     }
   }
 
@@ -2664,7 +2665,7 @@ function processBossStartTurnDifficultyMechanics(boss,participants,battleLog){
 
   if(boss.id==="yog_sothoth"){
     if(boss.difficulty==="crazy"&&Number(boss._currentHp||boss.hp)<=boss.hp*0.5){
-      if(!boss._dimensionSplit){boss._dimensionSplit=true;battleLog.push(bossBattleEvent(boss,"무한 차원 분열","물고기들이 두 차원으로 갈라져 절반씩 번갈아 행동합니다.","passive"));}
+      if(!boss._dimensionSplit){boss._dimensionSplit=true;battleLog.push(bossBattleEvent(boss,"무한 차원 분열","물고기들이 두 차원으로 갈라져 절반씩 번갈아 행동합니다.","phase"));}
       participants.forEach((f,i)=>{if(i%2!==turn%2){const c=ensureCombatStats(f);c.bossDisabledUntil=Math.max(Number(c.bossDisabledUntil||0),turn);}});
     }else if(turn%(boss.difficulty==="hard"?3:4)===0){
       const targets=getAliveTargets(participants);if(targets.length){const f=targets[Math.floor(Math.random()*targets.length)];ensureCombatStats(f).bossDisabledUntil=turn;battleLog.push(bossColor(boss.name,boss)+"의 공간 고정\n"+color(lineFish(f),f.grade)+"가 이번 턴 행동할 수 없습니다.");}
@@ -2677,10 +2678,10 @@ function processBossStartTurnDifficultyMechanics(boss,participants,battleLog){
       boss._chaos75=true;
       const penalty=boss.difficulty==="crazy"?0.25:0.5;
       participants.forEach(f=>ensureCombatStats(f).healingPenalty=penalty);
-      battleLog.push(bossBattleEvent(boss,"첫 번째 각성",boss.difficulty==="crazy"?"모든 회복 효과가 75% 감소합니다.":"모든 회복 효과가 50% 감소합니다.","passive"));
+      battleLog.push(bossBattleEvent(boss,"첫 번째 각성",boss.difficulty==="crazy"?"모든 회복 효과가 75% 감소합니다.":"모든 회복 효과가 50% 감소합니다.","phase"));
     }
-    if(rate<=0.50&&!boss._chaos50){boss._chaos50=true;boss._ignoreDodge=true;battleLog.push(bossBattleEvent(boss,"두 번째 각성",boss.difficulty==="crazy"?"회피를 무시하고 물고기 치명타율을 15% 감소시킵니다.":"모든 공격이 회피를 무시합니다.","passive"));}
-    if(rate<=0.25&&!boss._chaos25){boss._chaos25=true;battleLog.push(bossBattleEvent(boss,"최종 각성",(boss.difficulty==="crazy"?"2":"3")+"턴마다 두 번 연속 행동합니다.","passive"));}
+    if(rate<=0.50&&!boss._chaos50){boss._chaos50=true;boss._ignoreDodge=true;battleLog.push(bossBattleEvent(boss,"두 번째 각성",boss.difficulty==="crazy"?"회피를 무시하고 물고기 치명타율을 15% 감소시킵니다.":"모든 공격이 회피를 무시합니다.","phase"));}
+    if(rate<=0.25&&!boss._chaos25){boss._chaos25=true;battleLog.push(bossBattleEvent(boss,"최종 각성",(boss.difficulty==="crazy"?"2":"3")+"턴마다 두 번 연속 행동합니다.","phase"));}
   }
 }
 
@@ -2806,11 +2807,11 @@ function runBossAction(boss, participants, battleLog){
         const completedBoost=boss.difficulty==="crazy"?1.0:boss.difficulty==="hard"?0.75:0.5;
         const completedCap=boss.difficulty==="crazy"?150:boss.difficulty==="hard"?125:100;
         boss._attackBoost = Math.max(Number(boss._attackBoost || 0), completedBoost);
-        battleLog.push(bossBattleEvent(boss,"세계의 고리 완성","공격력 증가 한도가 "+completedCap+"%로 확장됩니다.","passive"));
+        battleLog.push(bossBattleEvent(boss,"세계의 고리 완성","공격력 증가 한도가 "+completedCap+"%로 확장됩니다.","phase"));
         if(boss.difficulty==="crazy"){
           boss._ragnarokRingActive=true;
           getAliveTargets(participants).forEach(f=>{const c=ensureCombatStats(f);c.poisonStacks=Math.min(3,Number(c.poisonStacks||0)+1);});
-          battleLog.push(bossBattleEvent(boss,"라그나로크의 고리","모든 물고기에게 독 1중첩, 이후 2턴마다 고리가 조여옵니다.","passive"));
+          battleLog.push(bossBattleEvent(boss,"라그나로크의 고리","모든 물고기에게 독 1중첩, 이후 2턴마다 고리가 조여옵니다.","phase"));
         }
       } else {
         battleLog.push(bossColor(boss.name, boss) + "의 세계의 고리 " + boss._ring + " / "+needed);
@@ -3250,13 +3251,13 @@ function runBossBattle(){
           entry += "수르트 : " + damage.toLocaleString() + " 피해\n";
           entry += "불꽃의 검 : " + Number(boss._lastDamageToSword || 0).toLocaleString() + " 피해\n";
           entry += "검 내구도 : " + Number(boss._flameSwordHp || 0).toLocaleString() + " / " + Number(boss._flameSwordMaxHp || 0).toLocaleString() + "\n";
-          if(boss._flameSwordJustBroken) entry += "\n불꽃의 검이 파괴되었습니다.\n이후 수르트가 받는 피해가 30% 증가합니다.\n";
           entry += "\n";
         } else {
           entry += damage.toLocaleString() + " 피해\n\n";
         }
         entry += bossColor(boss.name, boss) + "\n" + hpBar(bossHp, boss.hp);
         battleLog.push(entry);
+        if(boss._flameSwordJustBroken)battleLog.push(bossBattleEvent(boss,"불꽃의 검 파괴","검의 피해 분담이 끝나고 수르트가 받는 피해가 "+(boss.difficulty==="crazy"?20:boss.difficulty==="hard"?25:30)+"% 증가합니다.","phase"));
 
         if(boss.id==="azathoth"&&boss.difficulty==="crazy"&&Array.isArray(boss._chaosDreamRules)&&boss._chaosDreamRules.includes("causality")&&Number(boss._chaosDreamUntil||0)>=turn){
           const allies=getAliveTargets(participants).filter(ally=>ally!==f),target=allies.length?allies[Math.floor(Math.random()*allies.length)]:f;

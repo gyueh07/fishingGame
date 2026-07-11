@@ -29,9 +29,22 @@ let cloudSaveChain=Promise.resolve();
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
-const GAME_VERSION = "2026-07-11-fishinglife-void-pvp-skill-ui-v24-2";
+const GAME_VERSION = "2026-07-11-fishinglife-combat-readability-ranking-v24-3";
 const UPDATE_NOTICE_TITLE = "📢 업데이트 안내";
 const UPDATE_NOTICES = [
+  {
+    id:"2026-07-11-fishinglife-combat-readability-ranking-24-3",
+    title:"전투 가독성·게임 알림·랭킹 UI 수정",
+    lines:[
+      "1대1 전투에서 PVP_SIDE:left/right 내부 표식이 보이던 문제를 현재 기록과 이전 기록 모두 수정합니다.",
+      "새 전투 기록에는 내부 표식을 저장하지 않고 보는 사람 기준의 아군·적으로 저장합니다.",
+      "받은 소식, 메시지·송금·선물, 프리셋·잠금·강화 등 짧은 행동 결과를 아이콘이 포함된 게임 알림 카드로 통일합니다.",
+      "보스 다중 공격은 대상 한 마리씩 재생하고 피해 전후 체력·감소율을 별도 결과 카드로 표시합니다.",
+      "치명타와 회피에 전용 배지·화면 효과를 추가하고 수르트 검 파괴·피닉스 부활 등은 BOSS PHASE 카드로 표시합니다.",
+      "랭킹은 보유 골드·낚싯대 레벨·PVP 전투력 3개 선택 화면으로 나누고 선택한 목록만 보여줍니다.",
+      "보스 최초 상금은 실제 지급값까지 10원 단위로 반올림합니다."
+    ]
+  },
   {
     id:"2026-07-11-fishinglife-void-pvp-skill-ui-24-2",
     title:"공허 전용 연출·1대1 스킬 결과 UI",
@@ -1583,7 +1596,7 @@ function sanitizeGameHtml(value){
   template.innerHTML = String(value ?? "");
   const allowedTags = new Set(["SPAN", "B", "BR"]);
   const battleClasses = new Set([
-    "battle-event", "battle-event--skill", "battle-event--crazy", "battle-event--passive", "battle-event--ally",
+    "battle-event", "battle-event--skill", "battle-event--crazy", "battle-event--passive", "battle-event--phase", "battle-event--ally",
     "battle-event--void", "battle-event--void-letter-one", "battle-event--void-letter-two", "battle-event--void-letter-three",
     "battle-event--void-observer", "battle-event--void-anomaly",
     "battle-event__eyebrow", "battle-event__body"
