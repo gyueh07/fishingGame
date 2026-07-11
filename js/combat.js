@@ -456,50 +456,69 @@ function migrateVoidFishStats(f){
   return true;
 }
 
+function migrateFishCombatToCurrentVersion(f,targetVersion=COMBAT_VERSION){
+  if(!f)return false;
+  let changed=false;
+  const fusionChanged=migrateFusionHpBalance(f);
+  const currentVersion=Number((f.combat&&f.combat.combatVersion)||0);
+
+  if(f.grade==="쓰레기"){
+    if(!f.combat)f.combat=makeCombatStats(f);
+    f.combat.attack=0;f.combat.hp=0;f.combat.maxHp=0;f.combat.status="전투 불가";f.combat.combatVersion=targetVersion;f.combat.hpBalanceVersion=FISH_HP_BALANCE_VERSION;f.combat.voidStatBalanceVersion=VOID_STAT_BALANCE_VERSION;
+    return currentVersion<targetVersion||fusionChanged;
+  }
+
+  if(currentVersion<targetVersion){
+    if(currentVersion===15&&f.combat){
+      migrateVoidFishStats(f);
+    }else if(currentVersion===14&&f.combat){
+      migrateStoredFishHpToTriple(f.combat);
+      migrateVoidFishStats(f);
+    }else{
+      const existingStars=f.combat&&f.combat.stars?{...f.combat.stars}:null;
+      f.combat=makeCombatStats(f,existingStars);
+      f.combat.hpBalanceVersion=FISH_HP_BALANCE_VERSION;
+    }
+    if(f.fusion&&Number(f.fusion.permanentMaxHp)>0){
+      f.combat._baseMaxHp=Math.max(1,Math.floor(Number(f.fusion.permanentMaxHp)));
+      f.combat._baseAttack=Math.max(1,Math.floor(Number(f.fusion.permanentAttack||f.combat._baseAttack||f.combat.attack||1)));
+      applyTrainingBonusesToCombat(f.combat);
+    }
+    f.combat.combatVersion=targetVersion;
+    changed=true;
+  }else if(fusionChanged){
+    f.combat._baseMaxHp=Math.max(1,Math.floor(Number(f.fusion.permanentMaxHp||f.combat._baseMaxHp||f.combat.maxHp||1)));
+    if(typeof syncFishFusionCombat==="function")syncFishFusionCombat(f);
+    changed=true;
+  }
+  if(migrateVoidFishStats(f))changed=true;
+  if(fusionChanged)changed=true;
+  return changed;
+}
+
 function migrateCombatStatsToCurrentVersion(){
-  const targetVersion = COMBAT_VERSION;
-  let changed = false;
+  let changed=false;
+  bucket.forEach(f=>{if(migrateFishCombatToCurrentVersion(f))changed=true;});
+  if(changed)saveGame();
+  return changed;
+}
 
-  bucket.forEach(f => {
-    if(!f) return;
-    const fusionChanged=migrateFusionHpBalance(f);
-    const currentVersion = Number((f.combat && f.combat.combatVersion) || 0);
-
-    if(f.grade==="쓰레기"){
-      if(!f.combat)f.combat=makeCombatStats(f);
-      f.combat.attack=0;f.combat.hp=0;f.combat.maxHp=0;f.combat.status="전투 불가";f.combat.combatVersion=targetVersion;f.combat.hpBalanceVersion=FISH_HP_BALANCE_VERSION;f.combat.voidStatBalanceVersion=VOID_STAT_BALANCE_VERSION;
-      if(currentVersion<targetVersion||fusionChanged)changed=true;
-      return;
-    }
-
-    if(currentVersion < targetVersion){
-      if(currentVersion===15&&f.combat){
-        migrateVoidFishStats(f);
-      }else if(currentVersion===14&&f.combat){
-        migrateStoredFishHpToTriple(f.combat);
-        migrateVoidFishStats(f);
-      }else{
-        const existingStars = f.combat && f.combat.stars ? {...f.combat.stars} : null;
-        f.combat = makeCombatStats(f, existingStars);
-        f.combat.hpBalanceVersion=FISH_HP_BALANCE_VERSION;
-      }
-      if(f.fusion&&Number(f.fusion.permanentMaxHp)>0){
-        f.combat._baseMaxHp=Math.max(1,Math.floor(Number(f.fusion.permanentMaxHp)));
-        f.combat._baseAttack=Math.max(1,Math.floor(Number(f.fusion.permanentAttack||f.combat._baseAttack||f.combat.attack||1)));
-        applyTrainingBonusesToCombat(f.combat);
-      }
-      f.combat.combatVersion=targetVersion;
-      changed = true;
-    }else if(fusionChanged){
-      f.combat._baseMaxHp=Math.max(1,Math.floor(Number(f.fusion.permanentMaxHp||f.combat._baseMaxHp||f.combat.maxHp||1)));
-      if(typeof syncFishFusionCombat==="function")syncFishFusionCombat(f);
-      changed=true;
-    }
-    if(migrateVoidFishStats(f))changed=true;
-    if(fusionChanged)changed=true;
+function yieldLoginWork(){
+  return new Promise(resolve=>{
+    if(typeof requestAnimationFrame==="function"&&!document.hidden)requestAnimationFrame(()=>setTimeout(resolve,0));
+    else setTimeout(resolve,0);
   });
+}
 
-  if(changed) saveGame();
+async function migrateCombatStatsToCurrentVersionAsync(batchSize=60,saveAtEnd=true){
+  let changed=false;
+  const size=Math.max(20,Number(batchSize)||60);
+  for(let i=0;i<bucket.length;i++){
+    if(migrateFishCombatToCurrentVersion(bucket[i]))changed=true;
+    if((i+1)%size===0)await yieldLoginWork();
+  }
+  if(changed&&saveAtEnd)saveGame();
+  return changed;
 }
 
 

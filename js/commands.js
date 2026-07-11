@@ -76,9 +76,9 @@
   else if(cmd==="칭호") showTitles();
   else if(cmd.startsWith("칭호 장착 ")) equipTitle(cmd.split(" ")[2]);
   else if(cmd==="칭호 장착해제") unequipTitle();
-  else if(cmd==="회원가입") registerUser();
-  else if(cmd==="로그인") loginUser();
-  else if(cmd==="로그아웃") logoutUser();
+  else if(cmd==="회원가입") return registerUser();
+  else if(cmd==="로그인") return loginUser();
+  else if(cmd==="로그아웃") return logoutUser();
   else if(cmd==="탈퇴") deleteAccount();
   else if(cmd.startsWith("송금 ")){ const p=cmd.split(" "); sendMoney(p[1], p[2]); }
   else if(cmd.startsWith("전송 ")){ const p=cmd.split(" "); sendFish(p[1], p[2]); }
@@ -112,7 +112,7 @@ document.addEventListener("visibilitychange",()=>{
 });
 
 loadGame();
-migrateCombatStatsToCurrentVersion();
+if(currentUser)isLoginPostProcessing=true;
 
 if(!currentUser){
   clearUserSession();
@@ -141,6 +141,8 @@ if(!currentUser){
         resetGameData();
         updateWallet();
         print("저장된 계정을 찾을 수 없습니다.\n다시 로그인해주세요.");
+        isLoginPostProcessing=false;
+        if(typeof globalThis.openFishingLifeLogin==="function")setTimeout(()=>globalThis.openFishingLifeLogin(),50);
         return;
       }
 
@@ -153,19 +155,26 @@ if(!currentUser){
         resetGameData();
         updateWallet();
         print("로그인 세션이 없거나 만료되었습니다. 다시 로그인해주세요.");
+        isLoginPostProcessing=false;
+        if(typeof globalThis.openFishingLifeLogin==="function")setTimeout(()=>globalThis.openFishingLifeLogin(),50);
         return;
       }
       applyGameState(data.gameState);
       cloudRevision = Number(data.cloudRevision || 0);
       cloudSyncedSeq = localSaveSeq;
       lastCloudSyncedState=cloneCloudState(data.gameState);
-      migrateCombatStatsToCurrentVersion();
       updateWallet();
       setCloudSyncStatus("saved","Firebase 데이터를 불러왔습니다.");
 
       print(currentUser + " 님 데이터 불러오기 완료.");
+      await yieldLoginWork();
+      const mobile=typeof matchMedia==="function"&&matchMedia("(max-width: 850px)").matches;
+      await migrateCombatStatsToCurrentVersionAsync(mobile?35:100,false);
+      isLoginPostProcessing=false;
+      if(typeof globalThis.requestFishingLifeRender==="function")globalThis.requestFishingLifeRender(true);
     }catch(e){
       console.error(e);
+      isLoginPostProcessing=false;
       setCloudSyncStatus("error","클라우드 데이터를 불러오지 못했습니다.");
       print("클라우드 데이터를 불러오지 못했습니다.\n네트워크 상태를 확인한 뒤 다시 로그인해주세요.");
       return;

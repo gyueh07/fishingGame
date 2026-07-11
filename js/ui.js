@@ -211,6 +211,30 @@
     $("#modalBody").innerHTML = html;
     $("#modalOverlay").style.display = "block";
   }
+  function openLoginGate(message="",checking=false){
+    if(currentUser&&!checking)return;
+    const disabled=checking?"disabled":"",statusKind=checking?"loading":message?"error":"";
+    openUiModal("FishingLife 로그인",`<div class="game-dialog login-gate"><section class="login-gate-hero"><span>🎣</span><div><small>WELCOME TO</small><h2>FishingLife</h2><p>계정에 저장된 낚시 여정을 불러옵니다.</p></div></section><form id="loginGateForm" class="login-gate-form"><label><span>선장 닉네임</span><input id="loginGateNickname" name="nickname" type="text" maxlength="16" autocomplete="username" autocapitalize="none" placeholder="닉네임 입력" ${disabled}></label><label><span>비밀번호</span><input id="loginGatePassword" name="password" type="password" autocomplete="current-password" placeholder="비밀번호 입력" ${disabled}></label><div id="loginGateStatus" class="login-gate-status ${statusKind}" role="status" aria-live="polite">${safe(message||"닉네임과 비밀번호를 입력해주세요.")}</div><button id="loginGateSubmit" class="login-gate-submit ${checking?"loading":""}" type="submit" ${disabled}><span>⚓</span><b>${checking?"확인 중...":"로그인"}</b></button></form><div class="login-gate-footer"><span>처음 시작하시나요?</span><button type="button" data-game-command="회원가입" ${disabled}>새 계정 만들기</button></div></div>`);
+  }
+  function updateLoginGateStatus(message,kind="loading"){
+    const status=$("#loginGateStatus"),button=$("#loginGateSubmit");
+    if(status){status.className="login-gate-status "+kind;status.textContent=message||"";}
+    const loading=kind==="loading";
+    if(button){button.disabled=loading;button.classList.toggle("loading",loading);const label=button.querySelector("b");if(label)label.textContent=loading?"로그인 중...":"로그인";}
+    $$("#loginGateForm input,.login-gate-footer button").forEach(control=>control.disabled=loading);
+  }
+  async function submitLoginGate(){
+    const nickname=$("#loginGateNickname")?.value||"",password=$("#loginGatePassword")?.value||"";
+    updateLoginGateStatus("로그인을 요청하고 있습니다.","loading");
+    const result=await loginUser(nickname,password);
+    if(!result?.ok&&$("#loginGateSubmit"))$("#loginGateSubmit").disabled=false;
+  }
+  globalThis.openFishingLifeLogin=openLoginGate;
+  globalThis.updateFishingLifeLoginStatus=updateLoginGateStatus;
+  globalThis.completeFishingLifeLogin=nickname=>{
+    if($("#modalTitle")?.textContent==="FishingLife 로그인")closeModal(true);
+    showGameNotice({icon:"⚓",eyebrow:"CAPTAIN ONLINE",title:`${nickname} 선장 로그인 완료`,detail:"낚시터를 먼저 열고 나머지 데이터를 준비하고 있습니다.",kind:"success",duration:3000});
+  };
   function legacyTextHtml(value) {
     return sanitizeGameHtml(stripPvpUiTokens(value)).replace(/\n/g, "<br>");
   }
@@ -1419,6 +1443,7 @@
     $("#trainingCritLevel").textContent = `Lv.${Number(trainingLevels?.critDamage || 0)} · +${getTrainingCritDamageBonus()}%`;
   }
   function syncOwnedFishTrainingBonuses() {
+    if(isLoginPostProcessing)return;
     const key = `${currentUser || "local"}|${bucket.length}|${trainingLevels?.attack || 0}|${trainingLevels?.hp || 0}|${trainingLevels?.critDamage || 0}`;
     if (key === state.trainingSyncKey && state.trainingBucketRef === bucket) return;
     state.trainingSyncKey = key;
@@ -1446,6 +1471,7 @@
     const run=()=>{const nextForce=state.renderForce;state.renderQueued=false;state.renderForce=false;renderAll(nextForce);};
     if(typeof requestAnimationFrame==="function"&&!document.hidden)requestAnimationFrame(run);else setTimeout(run,16);
   }
+  globalThis.requestFishingLifeRender=force=>queueUiRender(!!force);
 
   function handleUiAction(action) {
     const map = {market:openMarket,fishCollection:openFishCollection,coreCollection:openCoreCollection,bossParty:()=>openBossParty(),ranking:openRanking,myInfo:openMyInfo,battleHistory:()=>openBattleHistory(),wallet:openWallet,achievements:openAchievements,titles:openTitles,cosmetics:openCosmetics,settings:openSettings,pvp:openPvpPanel,presets:openPresets,fusion:openFusionLab,transfer:()=>openTransferHub(),inbox:openInbox,message:openMessageForm};
@@ -1502,7 +1528,7 @@
     if(event.target.closest("[data-pvp-alert-reject]")){hidePvpRequestAlert();await rejectLatestPvpRequest();return showToast("대전 신청을 거절했습니다.");}
     const viewButton = event.target.closest("[data-view-target]"); if (viewButton) return switchView(viewButton.dataset.viewTarget);
     const uiButton = event.target.closest("[data-ui-action]"); if (uiButton) return handleUiAction(uiButton.dataset.uiAction);
-    const commandButton = event.target.closest("[data-game-command]"); if (commandButton) { await runGameCommand(commandButton.dataset.gameCommand); if ($("#modalOverlay").style.display === "block" && commandButton.closest(".modalBody")) closeModal(); return; }
+    const commandButton = event.target.closest("[data-game-command]"); if (commandButton) { if(commandButton.dataset.gameCommand==="로그인"&&!currentUser)return openLoginGate();await runGameCommand(commandButton.dataset.gameCommand); if ($("#modalOverlay").style.display === "block" && commandButton.closest(".modalBody") && ($("#modalTitle")?.textContent!=="FishingLife 로그인"||currentUser)) closeModal(); return; }
     const sortButton = event.target.closest("[data-sort]"); if (sortButton) return runGameCommand(`정렬 ${sortButton.dataset.sort}`);
     const recentFishButton = event.target.closest("[data-recent-bucket-index]"); if (recentFishButton) return openFishDetailByBucketIndex(Number(recentFishButton.dataset.recentBucketIndex));
     if(event.target.closest("[data-recent-catches-all]"))return openRecentCatches();
@@ -1543,6 +1569,12 @@
     if(event.target.closest("[data-pvp-ready]")){const before=state.lastPvpReplay?.id;await finishPvpReady();if(state.lastPvpReplay?.id!==before)return;return openPvpPanel();}
   });
 
+  document.addEventListener("submit",event=>{
+    if(event.target?.id!=="loginGateForm")return;
+    event.preventDefault();
+    submitLoginGate();
+  });
+
   $("#castButton")?.addEventListener("click", startTimingGame);
   $("#hookButton")?.addEventListener("click", () => resolveTimingGame());
   document.addEventListener("keydown", event => { if(state.timingActive && (event.code === "Space" || event.key === "Enter")){ event.preventDefault(); resolveTimingGame(); } });
@@ -1561,6 +1593,9 @@
   state.previousBucketCount = bucket.length;
   renderAll(true);
   installTooltips();
+  const missingStartupSession=!!currentUser&&(!sessionStorage.getItem("textFishingSessionToken")||sessionStorage.getItem("textFishingSessionUser")!==currentUser);
+  if(!currentUser)setTimeout(()=>openLoginGate(),50);
+  else if(missingStartupSession)setTimeout(()=>openLoginGate("이전 로그인 상태를 확인하고 있습니다.",true),50);
   maybeOpenLocalBattleReplayDemo();
   maybeOpenLocalPvpReplayDemo();
   maybeOpenLocalNoticeDemo();

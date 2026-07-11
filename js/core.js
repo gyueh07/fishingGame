@@ -24,14 +24,25 @@ let pendingPresetSellAll=false;
 let onlinePresenceTimer=null;
 let fishingTimer=null;
 let fishingSessionId=0;
+let isLoginPostProcessing=false;
 let cloudRevision=0;
 let cloudSaveChain=Promise.resolve();
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
-const GAME_VERSION = "2026-07-11-fishinglife-cloud-save-boss-scene-v24-4";
+const GAME_VERSION = "2026-07-11-fishinglife-mobile-login-v24-5";
 const UPDATE_NOTICE_TITLE = "📢 업데이트 안내";
 const UPDATE_NOTICES = [
+  {
+    id:"2026-07-11-fishinglife-mobile-login-24-5",
+    title:"모바일 빠른 로그인·자동 로그인창",
+    lines:[
+      "로그아웃 상태로 접속하면 게임형 로그인창이 즉시 열립니다.",
+      "로그인 시 Firebase 계정 조회를 한 번으로 줄이고 진행 상태를 바로 표시합니다.",
+      "물고기 전투 데이터 보정은 작은 묶음으로 나누어 처리하여 모바일 화면이 멈추지 않습니다.",
+      "로그인 화면을 먼저 연 뒤 받은 소식과 후속 동기화를 백그라운드에서 처리합니다."
+    ]
+  },
   {
     id:"2026-07-11-fishinglife-cloud-save-boss-scene-24-4",
     title:"Firebase 안전 저장·보스 공격 배경 연출",
@@ -1224,95 +1235,90 @@ async function registerUser(){
   }
 }
 
-async function loginUser(){
-  if(currentUser) return print("다른 계정으로 로그인하려면 먼저 로그아웃해주세요.");
-  if(!(await checkGameVersion())) return;
-  const nickname = cleanNickname(prompt("닉네임을 입력하세요."));
-  if(!nickname) return print("로그인이 취소되었습니다.");
+async function loginUser(providedNickname,providedPassword){
+  if(currentUser)return print("다른 계정으로 로그인하려면 먼저 로그아웃해주세요.");
+  if(!(await checkGameVersion()))return {ok:false};
+  const formLogin=typeof providedNickname==="string"||typeof providedPassword==="string";
+  const nickname=cleanNickname(formLogin?providedNickname:prompt("닉네임을 입력하세요."));
+  const password=String(formLogin?providedPassword:(nickname?prompt("비밀번호를 입력하세요."):"")||"");
+  const setLoginProgress=(message,kind="loading")=>{if(typeof globalThis.updateFishingLifeLoginStatus==="function")globalThis.updateFishingLifeLoginStatus(message,kind);};
+  if(!nickname){setLoginProgress("닉네임을 입력해주세요.","error");if(!formLogin)print("로그인이 취소되었습니다.");return {ok:false};}
+  if(!password){setLoginProgress("비밀번호를 입력해주세요.","error");if(!formLogin)print("비밀번호를 입력해야 합니다.");return {ok:false};}
 
-  const password = prompt("비밀번호를 입력하세요.");
-  if(!password) return print("비밀번호를 입력해야 합니다.");
+  setLoginProgress("Firebase에서 계정을 확인하고 있습니다.");
+  const ref=db.collection("users").doc(nickname);
+  const passwordHash=await hashPassword(password);
+  const sessionTokenHash=await startUserSession(nickname);
+  let loginData=null,nextRevision=0;
+  let recoveredLocalState=false;
 
   try{
-    const ref = db.collection("users").doc(nickname);
-    const snap = await ref.get();
-
-    if(!snap.exists){
-      return print("존재하지 않는 닉네임입니다.");
-    }
-
-    const data = snap.data();
-    const passwordHash = await hashPassword(password);
-
-    if(data.passwordHash !== passwordHash){
-      return print("비밀번호가 틀렸습니다.");
-    }
-
-    const sessionTokenHash = await startUserSession(nickname);
-    let loginData=data,nextRevision=Number(data.cloudRevision||0)+1;
     await db.runTransaction(async tx=>{
       const latestSnap=await tx.get(ref);
       if(!latestSnap.exists)throw new Error("ACCOUNT_NOT_FOUND");
       const latest=latestSnap.data()||{};
-      if(latest.passwordHash!==passwordHash)throw new Error("PASSWORD_CHANGED");
+      if(latest.passwordHash!==passwordHash)throw new Error("WRONG_PASSWORD");
       loginData=latest;
       nextRevision=Number(latest.cloudRevision||0)+1;
       const sessionTokens={...getSessionTokenMap(latest),[getCloudDeviceId()]:sessionTokenHash};
       tx.set(ref,{sessionTokenHash,sessionTokens,cloudRevision:nextRevision,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
     });
-
-    currentUser = nickname;
-    localStorage.setItem("textFishingCurrentUser", currentUser);
-
-    const recovery=takeCloudRecovery(nickname);
-    const loginState=recovery?.localState?mergeCloudGameStates(recovery.localState,loginData.gameState,recovery.baseState):loginData.gameState;
-    applyGameState(loginState);
-    cloudRevision = nextRevision;
-    cloudSyncedSeq = localSaveSeq;
-    lastCloudSyncedState=cloneCloudState(loginData.gameState);
-    migrateCombatStatsToCurrentVersion();
-    updateWallet();
-    setCloudSyncStatus(recovery?.localState?"saving":"saved",recovery?.localState?"이 기기의 미저장 데이터를 복구해 Firebase에 저장합니다.":"Firebase 데이터를 불러왔습니다.");
-
-    try{
-      checkSpecialTitles();
-      saveGame();
-      updateWallet();
-    }catch(e){
-      console.error(e);
-    }
-
-    try{
-      startServerAlertListener();
-      startOnlinePresence();
-    }catch(e){
-      console.error(e);
-    }
-
-    print(nickname + " 님 로그인 완료.\n게임을 시작할 수 있습니다.");
-
-    try{
-      await showUpdateNoticeIfNeeded();
-    }catch(e){
-      console.error(e);
-    }
-
-    try{
-      await showNewNotifications();
-    }catch(e){
-      console.error(e);
-    }
-
-    try{
-      await showNewMessages();
-    }catch(e){
-      console.error(e);
-    }
   }catch(e){
     console.error(e);
     clearUserSession();
-    print("로그인 중 오류가 발생했습니다.");
+    const message=e.message==="ACCOUNT_NOT_FOUND"?"존재하지 않는 닉네임입니다.":e.message==="WRONG_PASSWORD"?"비밀번호가 틀렸습니다.":"네트워크가 불안정합니다. 잠시 후 다시 시도해주세요.";
+    setLoginProgress(message,"error");
+    if(!formLogin)print(message);
+    return {ok:false,error:e.message};
   }
+
+  try{
+    isLoginPostProcessing=true;
+    currentUser=nickname;
+    localStorage.setItem("textFishingCurrentUser",currentUser);
+    const recovery=takeCloudRecovery(nickname);
+    recoveredLocalState=!!recovery?.localState;
+    const loginState=recovery?.localState?mergeCloudGameStates(recovery.localState,loginData.gameState,recovery.baseState):loginData.gameState;
+    applyGameState(loginState);
+    cloudRevision=nextRevision;
+    cloudSyncedSeq=localSaveSeq;
+    lastCloudSyncedState=cloneCloudState(loginData.gameState);
+    updateWallet();
+    setCloudSyncStatus(recovery?.localState?"saving":"saved",recovery?.localState?"이 기기의 미저장 데이터를 복구해 Firebase에 저장합니다.":"Firebase 데이터를 불러왔습니다.");
+    setLoginProgress("로그인 완료! 게임 화면을 여는 중입니다.","success");
+    if(typeof globalThis.completeFishingLifeLogin==="function")globalThis.completeFishingLifeLogin(nickname);
+    print(nickname+" 님 로그인 완료.\n게임을 시작할 수 있습니다.");
+  }catch(e){
+    console.error(e);
+    currentUser=null;
+    localStorage.removeItem("textFishingCurrentUser");
+    clearUserSession();
+    isLoginPostProcessing=false;
+    setLoginProgress("게임 데이터를 불러오지 못했습니다.","error");
+    return {ok:false,error:"APPLY_FAILED"};
+  }
+
+  try{
+    await yieldLoginWork();
+    startServerAlertListener();
+    startOnlinePresence();
+    const mobile=typeof matchMedia==="function"&&matchMedia("(max-width: 850px)").matches;
+    const combatChanged=await migrateCombatStatsToCurrentVersionAsync(mobile?35:100,false);
+    const titlesChanged=checkSpecialTitles();
+    if(combatChanged||titlesChanged.length||recoveredLocalState)saveGame();
+    updateWallet();
+  }catch(e){
+    console.error(e);
+  }finally{
+    isLoginPostProcessing=false;
+    if(typeof globalThis.requestFishingLifeRender==="function")globalThis.requestFishingLifeRender(true);
+  }
+
+  setTimeout(async()=>{
+    try{await showUpdateNoticeIfNeeded();await showNewNotifications();await showNewMessages();}
+    catch(e){console.error(e);}
+  },50);
+  return {ok:true};
 }
 
 async function logoutUser(){
@@ -1331,6 +1337,7 @@ async function logoutUser(){
   resetGameData();
   updateWallet();
   print(old + " 님 로그아웃 완료.\n\n다른 계정을 사용하려면 로그인 또는 회원가입을 해주세요.");
+  if(typeof globalThis.openFishingLifeLogin==="function")setTimeout(()=>globalThis.openFishingLifeLogin(),50);
 }
 
 async function deleteAccount(){
@@ -1374,6 +1381,7 @@ async function deleteAccount(){
     updateWallet();
 
     print(nickname + " 계정이 탈퇴되었습니다.\n랭킹에서도 삭제됩니다.\n\n현재 기기의 게임 데이터도 초기화되었습니다.");
+    if(typeof globalThis.openFishingLifeLogin==="function")setTimeout(()=>globalThis.openFishingLifeLogin(),50);
   }catch(e){
     console.error(e);
     print("탈퇴 중 오류가 발생했습니다.");
