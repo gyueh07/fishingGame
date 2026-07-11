@@ -128,7 +128,7 @@ function rerollCritStats(f){
 
 function makeCombatStats(f, fixedStars=null){
   if(!f || f.grade === "쓰레기"){
-    return {attack:0, hp:0, maxHp:0, dodge:0, critRate:0, critDamage:0, status:"전투 불가", combatVersion:COMBAT_VERSION, hpBalanceVersion:FISH_HP_BALANCE_VERSION, stars:{attack:0,hp:0,dodge:0,critRate:0,critDamage:0}};
+    return {attack:0, hp:0, maxHp:0, dodge:0, critRate:0, critDamage:0, status:"전투 불가", combatVersion:COMBAT_VERSION, hpBalanceVersion:FISH_HP_BALANCE_VERSION, voidStatBalanceVersion:VOID_STAT_BALANCE_VERSION, stars:{attack:0,hp:0,dodge:0,critRate:0,critDamage:0}};
   }
 
   const atkRange = combatAttackRanges[f.grade] || [10,50];
@@ -170,6 +170,7 @@ function makeCombatStats(f, fixedStars=null){
     status:"정상",
     combatVersion:COMBAT_VERSION,
     hpBalanceVersion:FISH_HP_BALANCE_VERSION,
+    voidStatBalanceVersion:VOID_STAT_BALANCE_VERSION,
     stars:stars
   };
 }
@@ -350,6 +351,7 @@ function ensureCombatStats(f){
     f.combat.critDamage = 0;
     f.combat.combatVersion = COMBAT_VERSION;
     f.combat.hpBalanceVersion = FISH_HP_BALANCE_VERSION;
+    f.combat.voidStatBalanceVersion = VOID_STAT_BALANCE_VERSION;
     f.combat.stars = {attack:0,hp:0,dodge:0,critRate:0,critDamage:0};
     return f.combat;
   }
@@ -402,6 +404,58 @@ function migrateStoredFishHpToTriple(c){
   return true;
 }
 
+function getStarStatBand(range,tier){
+  const min=Math.max(1,Number(range?.[0]||1)),max=Math.max(min,Number(range?.[1]||min));
+  tier=clamp(Math.floor(Number(tier||0)),0,3);
+  if(tier===0)return [min,max];
+  const previous=tier===3?7:tier===2?3:1,current=tier===3?20:tier===2?7:3;
+  return [Math.floor(max*previous)+1,Math.floor(max*current)];
+}
+
+function remapStarStatValue(value,oldRange,newRange,tier){
+  const oldBand=getStarStatBand(oldRange,tier),newBand=getStarStatBand(newRange,tier);
+  const ratio=oldBand[1]===oldBand[0]?0.5:clamp((Number(value||oldBand[0])-oldBand[0])/(oldBand[1]-oldBand[0]),0,1);
+  return Math.max(1,Math.round(newBand[0]+(newBand[1]-newBand[0])*ratio));
+}
+
+function migrateVoidFishStats(f){
+  if(!f||f.grade!=="공허"||!f.combat||Number(f.combat.voidStatBalanceVersion||0)>=VOID_STAT_BALANCE_VERSION)return false;
+  const c=f.combat,stars=c.stars||{},oldMax=Math.max(1,Number(c.maxHp||c.hp||1)),oldHp=Math.max(0,Number(c.hp||0));
+  const hpRatio=clamp(oldHp/oldMax,0,1),recoveryRatio=c.recoveryStartHp===undefined?null:clamp(Number(c.recoveryStartHp||0)/oldMax,0,1);
+  const wasDown=!!c.knockedOut||c.status==="기절"||oldHp<=0,wasHealthy=c.status==="정상"&&oldHp>=oldMax;
+  let baseAttack=Math.max(1,Number(c._baseAttack||c.attack||1)),baseMaxHp=Math.max(1,Number(c._baseMaxHp||c.maxHp||1));
+
+  if(f.fusion&&typeof f.fusion==="object"){
+    const fusion=f.fusion,stage=clamp(Math.floor(Number(fusion.evolutionStage||0)),0,3),evolutionMultiplier=[1,2,3,5][stage];
+    const oldMainAttack=Math.max(1,Number(fusion.mainBaseAttack||baseAttack)),oldMainMaxHp=Math.max(1,Number(fusion.mainBaseMaxHp||baseMaxHp));
+    const newMainAttack=remapStarStatValue(oldMainAttack,LEGACY_VOID_ATTACK_RANGE,combatAttackRanges["공허"],stars.attack);
+    const newMainMaxHp=remapStarStatValue(oldMainMaxHp,LEGACY_VOID_HP_RANGE,combatHpRanges["공허"],stars.hp);
+    const attackScale=newMainAttack/oldMainAttack,hpScale=newMainMaxHp/oldMainMaxHp;
+    fusion.mainBaseAttack=newMainAttack;
+    fusion.mainBaseMaxHp=newMainMaxHp;
+    fusion.totalAttackGain=Math.max(0,Math.round(Number(fusion.totalAttackGain||0)*attackScale));
+    fusion.totalHpGain=Math.max(0,Math.round(Number(fusion.totalHpGain||0)*hpScale));
+    fusion.permanentAttack=Math.max(1,newMainAttack*evolutionMultiplier+fusion.totalAttackGain);
+    fusion.permanentMaxHp=Math.max(1,newMainMaxHp*evolutionMultiplier+fusion.totalHpGain);
+    fusion.voidStatBalanceVersion=VOID_STAT_BALANCE_VERSION;
+    baseAttack=fusion.permanentAttack;baseMaxHp=fusion.permanentMaxHp;
+  }else{
+    baseAttack=remapStarStatValue(baseAttack,LEGACY_VOID_ATTACK_RANGE,combatAttackRanges["공허"],stars.attack);
+    baseMaxHp=remapStarStatValue(baseMaxHp,LEGACY_VOID_HP_RANGE,combatHpRanges["공허"],stars.hp);
+  }
+
+  c._baseAttack=baseAttack;c._baseMaxHp=baseMaxHp;
+  delete c._trainingAttackLevel;delete c._trainingHpLevel;
+  applyTrainingBonusesToCombat(c);
+  if(wasDown)c.hp=0;
+  else if(wasHealthy)c.hp=c.maxHp;
+  else c.hp=Math.max(1,Math.min(c.maxHp,Math.floor(c.maxHp*hpRatio)));
+  if(recoveryRatio!==null)c.recoveryStartHp=Math.max(wasDown?0:1,Math.floor(c.maxHp*recoveryRatio));
+  c.voidStatBalanceVersion=VOID_STAT_BALANCE_VERSION;
+  c.combatVersion=COMBAT_VERSION;
+  return true;
+}
+
 function migrateCombatStatsToCurrentVersion(){
   const targetVersion = COMBAT_VERSION;
   let changed = false;
@@ -413,14 +467,17 @@ function migrateCombatStatsToCurrentVersion(){
 
     if(f.grade==="쓰레기"){
       if(!f.combat)f.combat=makeCombatStats(f);
-      f.combat.attack=0;f.combat.hp=0;f.combat.maxHp=0;f.combat.status="전투 불가";f.combat.combatVersion=targetVersion;f.combat.hpBalanceVersion=FISH_HP_BALANCE_VERSION;
+      f.combat.attack=0;f.combat.hp=0;f.combat.maxHp=0;f.combat.status="전투 불가";f.combat.combatVersion=targetVersion;f.combat.hpBalanceVersion=FISH_HP_BALANCE_VERSION;f.combat.voidStatBalanceVersion=VOID_STAT_BALANCE_VERSION;
       if(currentVersion<targetVersion||fusionChanged)changed=true;
       return;
     }
 
     if(currentVersion < targetVersion){
-      if(currentVersion===14&&f.combat){
+      if(currentVersion===15&&f.combat){
+        migrateVoidFishStats(f);
+      }else if(currentVersion===14&&f.combat){
         migrateStoredFishHpToTriple(f.combat);
+        migrateVoidFishStats(f);
       }else{
         const existingStars = f.combat && f.combat.stars ? {...f.combat.stars} : null;
         f.combat = makeCombatStats(f, existingStars);
@@ -438,6 +495,7 @@ function migrateCombatStatsToCurrentVersion(){
       if(typeof syncFishFusionCombat==="function")syncFishFusionCombat(f);
       changed=true;
     }
+    if(migrateVoidFishStats(f))changed=true;
     if(fusionChanged)changed=true;
   });
 
@@ -780,17 +838,20 @@ function buildBossInfoText(baseBoss = getCurrentBoss()){
     } else if(boss.id === "bahamut"){
     const scaleReduction=difficultyId==="crazy"?70:difficultyId==="hard"?60:50;
     s += "패시브 - 드래곤 스케일\n전투 중 가장 큰 피해 기록 저장\n기록보다 크거나 같은 피해를 받으면 "+scaleReduction+"% 감소\n감소 적용 후 새 기록으로 갱신\n\n";
+    if(difficultyId==="crazy")s += "크레이지 전용 - 용왕의 절대명령\n체력 50%에서 약화 효과 제거\n공격력 25%·치명타율 20% 증가\n메가 플레어가 회피를 무시함\n\n";
     s += "메가 플레어 (15%)\n공격력 3배\n다음 턴 참가 물고기 전체 행동 불가\n\n";
     s += "용왕의 포효 (25%)\n공격력 1.5배\n사용할 때마다 공격력 30,000 누적 증가\n\n";
     } else if(boss.id === "tiamat"){
     const tiamatHeal=difficultyId==="crazy"?5:difficultyId==="hard"?3:2;
     s += "패시브 - 태초의 바다\n매 턴 최대 체력의 "+tiamatHeal+"% 회복\n\n";
+    if(difficultyId==="crazy")s += "크레이지 전용 - 혼돈의 모태\n새끼 용이 누적 3마리 쓰러지면 태초의 용 소환\n태초의 용은 티아마트 체력 5%·공격력 100%\n쓰러질 때 전체 공격 발동\n\n";
     s += "창세의 바다 (25%)\n공격력 2배\n\n";
     s += "괴수 탄생 (15%)\n새끼 용 3마리 소환\n\n";
     s += "새끼 용\nHP 100,000~300,000 랜덤\n공격력 10,000~30,000 랜덤\n\n";
     } else if(boss.id === "jormungandr"){
     const ringGrowth=difficultyId==="crazy"?10:difficultyId==="hard"?7:5,ringNeed=difficultyId==="crazy"?2:3,ringCap=difficultyId==="crazy"?150:difficultyId==="hard"?125:100;
     s += "패시브 - 세계를 감은 자\n매 턴 공격력 "+ringGrowth+"% 증가\n세계의 고리 "+ringNeed+"단계 완성 시 최대 "+ringCap+"% 증가\n\n";
+    if(difficultyId==="crazy")s += "크레이지 전용 - 라그나로크의 고리\n고리 완성 시 모든 물고기에게 독 1중첩\n이후 2턴마다 독 중첩당 최대 체력 5% 피해\n\n";
     s += "미드가르드 감기 (25%)\n공격력 2배\n세계의 고리 1단계 진행\n\n";
     s += "세계의 고리\n3단계 완성 시 공격력 증가 한도가 100%로 확장\n완성 즉시 공격력이 더 강해짐\n\n";
     s += "종말의 독 (15%)\n공격력 1.2배\n독 1중첩 부여\n\n";
@@ -824,8 +885,9 @@ function buildBossInfoText(baseBoss = getCurrentBoss()){
     s += "패시브 - 폭풍의 지배자\n매 턴 역풍·난기류·폭풍의 눈 중 "+(difficultyId==="crazy"?"두 가지":"한 가지")+"가 발생\n역풍: 물고기 공격력 20% 감소, 타이폰 공격력 10% 증가\n난기류: 물고기 회피율 10% 감소, 타이폰 회피율 10% 증가\n폭풍의 눈: 물고기 회피 불가, 타이폰 치명타율 15%·치명타 피해 50% 증가\n\n";
     s += "폭풍의 반향 (20%)\n지난 턴 가장 큰 피해를 준 물고기에게 그 피해의 30%를 회피 불가로 반환\n대상 최대 체력의 25%가 상한\n기록이 없으면 공격력 1.3배\n\n";
     s += "대지와 하늘의 추락 (15%)\n공격력이 가장 높은 물고기와 최대 체력이 가장 높은 물고기의 체력 비율을 더 낮은 쪽으로 통일\n회복은 발생하지 않음\n두 조건의 대상이 같으면 공격력 1.7배\n\n";
-    } else if(boss.id === "angra_mainyu"){
+  } else if(boss.id === "angra_mainyu"){
     s += "패시브 - 절대악\n모든 물고기는 체력과 별개인 존재 3으로 시작\n존재가 0이 되면 체력과 관계없이 즉시 회복 중 상태\n체력 75%·50%·25% 진입 시 무작위 물고기의 존재 1 감소\n\n";
+    if(difficultyId==="crazy")s += "크레이지 전용 - 선의 부정\n물고기가 처음으로 최대 체력 15% 이상 회복하거나 부활하면 존재 1 감소\n해당 회복량 절반을 보호막으로 흡수\n\n";
     s += "존재 말살 (20%)\n공격력이 가장 높은 물고기에게 공격력 1.8배와 존재 1 감소\n공격을 회피해도 존재는 감소\n공격 피해로 쓰러지면 존재 감소는 다른 무작위 물고기에게 이동\n\n";
     s += "창조의 붕괴 (15%)\n모든 물고기에게 최대 체력 15%의 회피 불가 피해\n체력이 40% 이하가 된 물고기는 존재 1 감소\n이 체력 피해만으로는 쓰러지지 않음\n\n";
     s += "패시브 - 영겁의 밤\n체력 25% 이하에서 공격력 30% 증가, 회피율 0%\n존재 말살 공격력 2.2배, 창조의 붕괴 피해 20%로 강화\n\n";
@@ -837,14 +899,14 @@ function buildBossInfoText(baseBoss = getCurrentBoss()){
     else if(boss.id === "hydra") s += "재생\n매 턴 최대 체력의 "+(difficultyId==="crazy"?10:difficultyId==="hard"?7:5)+"% 회복\n"+(difficultyId==="crazy"?"체력 50%에서 아홉 머리 재생 발동\n":"")+"\n";
     else if(boss.id === "leviathan") s += "심연의 분노\n난이도가 높을수록 더 이른 체력 구간에서 강하게 분노\n\n";
     else if(boss.id === "behemoth") s += "고대의 육체\n받는 피해 "+(difficultyId==="crazy"?40:difficultyId==="hard"?30:20)+"% 감소\n"+(difficultyId==="crazy"?"움직이는 대륙\n체력 70%·40%에서 최대 체력 6% 암석 갑옷 생성\n갑옷 파괴 후 다음 턴까지 받는 피해 20% 증가\n":"")+"\n";
-    else if(boss.id === "erebos") s += "빛 소멸\n빛 게이지가 0이 되면 완전 암흑 발동\n\n";
+    else if(boss.id === "erebos") s += "빛 소멸\n빛 게이지가 0이 되면 완전 암흑 발동\n"+(difficultyId==="crazy"?"크레이지 전용 - 원초의 장막\n완전 암흑마다 최대 체력 5% 보호막·공격력 10% 증가\n공격력 증가는 최대 3중첩\n":"")+"\n";
     else if(boss.id === "chronos"){
       const echo=getVoidSummonStats("chronos_echo",difficultyId);
       s += "시간의 잔향\n"+(difficultyId==="crazy"?4:5)+"턴마다 시간의 잔상 소환 (다음 2턴 행동)\n잔상 체력 "+Math.round(echo.hpRate*10000)/100+"% · 공격력 "+Math.round(echo.attackRate*100)+"%\n"+(difficultyId==="crazy"?"겹쳐진 시간선\n체력 50% 이하부터 이전 공격이 다음 턴 35% 위력으로 재현\n":"")+"\n";
     }
     else if(boss.id === "nyarlathotep") s += "천 개의 얼굴\n주기적으로 가장 강한 물고기의 힘을 복제\n"+(difficultyId==="crazy"?"가면의 행렬\n3턴마다 폭군·거울·예언자 가면 변경\n체력 40% 이하에서 가면 2개 동시 활성화\n":"")+"\n";
     else if(boss.id === "yog_sothoth") s += "무한 차원\n공간 고정, 크레이지 체력 50%에서 차원 분리\n\n";
-    else if(boss.id === "azathoth") s += "혼돈의 각성\n체력 75%·50%·25%마다 전투 규칙 강화\n"+(difficultyId==="crazy"?"회복량 75% 감소 → 회피 무시·치명타율 15% 감소 → 2턴마다 추가 행동\n":"")+"\n";
+    else if(boss.id === "azathoth") s += "혼돈의 각성\n체력 75%·50%·25%마다 전투 규칙 강화\n"+(difficultyId==="crazy"?"회복량 75% 감소 → 회피 무시·치명타율 15% 감소 → 2턴마다 추가 행동\n크레이지 전용 - 혼돈의 꿈\n4턴마다 2턴간 회복·특성·인과 중 규칙 봉인\n체력 25% 이하에서는 규칙 2개 동시 적용\n":"")+"\n";
     else s += "없음\n\n";
   }
 
@@ -1180,7 +1242,7 @@ function startTraitTurn(turn,boss,battleLog){
     const c=ensureCombatStats(f), st=traitState(f);
     if(turn>=7&&!st.ascended&&c.hp>0){
       st.ascended=true;
-      const old=c.maxHp; c.maxHp=Math.floor(c.maxHp*1.2); healFishForBattle(f,Math.floor(old*0.3));
+      const old=c.maxHp; c.maxHp=Math.floor(c.maxHp*1.2); healFishForBattle(f,Math.floor(old*0.3),battleLog);
       battleLog.push(traitUseByFish(f, color(lineFish(f),f.grade)+"\n최대 체력 20% 증가, 체력 30% 회복, 공격력과 회피율이 상승했습니다."));
     }
   });
@@ -1189,7 +1251,7 @@ function startTraitTurn(turn,boss,battleLog){
     const st=traitState(f); st.moonPhase=(turn-1)%3;
     if(st.moonPhase===1){
       const target=getAliveTargets(ctx.participants).sort((a,b)=>ensureCombatStats(a).hp/ensureCombatStats(a).maxHp-ensureCombatStats(b).hp/ensureCombatStats(b).maxHp)[0];
-      if(target){ const c=ensureCombatStats(target),heal=healFishForBattle(target,Math.floor(c.maxHp*0.1)); battleLog.push(traitUseByFish(f, "반달\n"+color(lineFish(target),target.grade)+" "+heal.toLocaleString()+" 회복")); }
+      if(target){ const c=ensureCombatStats(target),heal=healFishForBattle(target,Math.floor(c.maxHp*0.1),battleLog); battleLog.push(traitUseByFish(f, "반달\n"+color(lineFish(target),target.grade)+" "+heal.toLocaleString()+" 회복")); }
     }else if(st.moonPhase===2){
       const target=getAliveTargets(ctx.participants).find(x=>clearOneFishStatus(x));
       if(target) battleLog.push(traitUseByFish(f, "보름달\n"+color(lineFish(target),target.grade)+"의 상태이상을 해제했습니다."));
@@ -1279,7 +1341,7 @@ function beginBossSpecial(boss,skillName,battleLog,eventKind="skill"){
   if(observedFish&&ctx.observedSkill===skillName&&ctx.turn<=ctx.observedUntil){
     const reversedLogs=[];
     getAliveTargets(ctx.participants).forEach(ally=>{
-      const c=ensureCombatStats(ally),heal=healFishForBattle(ally,Math.max(1,Math.floor(c.maxHp*0.15))),removed=clearOneFishStatus(ally);
+      const c=ensureCombatStats(ally),heal=healFishForBattle(ally,Math.max(1,Math.floor(c.maxHp*0.15)),battleLog),removed=clearOneFishStatus(ally);
       reversedLogs.push(color(lineFish(ally),ally.grade)+(removed?" · "+removed+" 해제":"")+" · "+heal.toLocaleString()+" 회복");
     });
     boss._observedWeakUntil=ctx.turn+3;
@@ -1312,7 +1374,7 @@ function traitModifyIncoming(f,damage,battleLog,meta={}){
   if(!ctx) return {damage:final,afterHeal};
   const lifeEndActive=Number(ctx.lifeEndUntil||0)>=Number(ctx.turn||0);
   if(lifeEndActive) meta.blockDeathPrevention=true;
-  if(f.name==="금빛 보름달 드래곤"&&st.moonPhase===0) final=Math.floor(final*0.8);
+  if(!meta.ignoreReduction&&f.name==="금빛 보름달 드래곤"&&st.moonPhase===0) final=Math.floor(final*0.8);
   if(f.name==="불타는 마음"&&getBurningHeartStageByCombat(c)>=3) final=Math.floor(final*1.2);
   if(!meta.forced&&f.name==="기묘한 기운 🌀"&&final>Number(c.attack||0)&&Math.random()<0.2){
     st.numericStored=Math.max(1,Math.floor(final/FISH_HP_BALANCE_MULTIPLIER)); final=Math.max(0,Math.floor(c.attack));
@@ -1340,7 +1402,7 @@ function traitAfterDamage(f,beforeHp,actualDamage,battleLog,meta={},afterHeal=0)
   const ctx=activeTraitBattle;if(!ctx)return;
   const c=ensureCombatStats(f),st=traitState(f);
   const healingBlocked=Number(c.healingBlockedUntil||0)>=Number(ctx.turn||0)||Number(ctx.lifeEndUntil||0)>=Number(ctx.turn||0);
-  if(afterHeal>0&&!healingBlocked)afterHeal=healFishForBattle(f,afterHeal);
+  if(afterHeal>0&&!healingBlocked)afterHeal=healFishForBattle(f,afterHeal,battleLog);
   if(actualDamage>0&&!meta.skipLightGain&&traitFish(ctx.participants,"빛나는 마음"))ctx.lightPool+=Math.floor(actualDamage*0.25);
   if(c.hp<=0&&f.name==="무한한 시간"&&!ctx.timeRewindUsed&&!healingBlocked)ctx.timeRewindPending=true;
   if(meta.fromBoss&&actualDamage>0){
@@ -1492,7 +1554,9 @@ function tryTimeRewindAfterWipe(battleLog){
   const target=ctx.history.find(x=>x.turn===ctx.turn-5)||ctx.history[0];
   if(!target)return false;
   ctx.timeRewindUsed=true;ctx.timeRewindPending=false;
+  const downBefore=new Map(ctx.participants.map(f=>[f.id,Number(ensureCombatStats(f).hp||0)<=0]));
   ctx.participants.forEach(f=>restoreFishTraitState(f,target.states.get(f.id)));
+  if(ctx.boss?.id==="angra_mainyu"&&ctx.boss.difficulty==="crazy")ctx.participants.forEach(f=>{const c=ensureCombatStats(f);if(downBefore.get(f.id)&&c.hp>0&&!c.goodDeniedByAngra){c.goodDeniedByAngra=true;reduceExistence(ctx.boss,f,1,battleLog,"선의 부정");ctx.boss._voidShieldHp=Math.min(Math.floor(ctx.boss.hp*0.10),Number(ctx.boss._voidShieldHp||0)+Math.floor(c.hp*0.5));ctx.boss._voidShieldUntil=999;}});
   const rewound=Math.max(0,ctx.turn-target.turn);
   battleLog.push(traitUseByFish(timeFish, "무한한 시간의 죽음과 함께 시간이 되감겼습니다.\n파티가 "+rewound+"턴 전 상태로 돌아왔습니다.\n보스의 상태와 체력은 유지됩니다."));return true;
 }
@@ -1543,7 +1607,7 @@ function getBossAttackMultiplier(boss){
 
   if(boss.id === "typhon" && hasTyphonWeather(boss,"headwind")) multiplier *= 1.1;
   if(boss.id === "angra_mainyu" && boss._eternalNight) multiplier *= 1.3;
-  if(boss.id === "azathoth" && activeTraitBattle && Number(boss._awakenedUntil||0)>=activeTraitBattle.turn) multiplier *= 1.5;
+  if(boss.id === "azathoth" && activeTraitBattle && Number(boss._awakenedUntil||0)>=activeTraitBattle.turn) multiplier *= boss.difficulty==="crazy"&&boss._crazyUltimateUsed?1.75:1.5;
 
   return multiplier;
 }
@@ -1577,20 +1641,27 @@ function getEffectiveBossDodge(boss){
 }
 
 function getBattleHealingMultiplier(f){
-  const c=ensureCombatStats(f),ctx=activeTraitBattle,turn=ctx?Number(ctx.turn||0):0;
+  const c=ensureCombatStats(f),ctx=activeTraitBattle,turn=ctx?Number(ctx.turn||0):0,boss=ctx&&ctx.boss;
   if(ctx&&Number(ctx.lifeEndUntil||0)>=turn)return 0;
   let multiplier=Number(c.healingPenalty===undefined?1:c.healingPenalty);
-  const boss=ctx&&ctx.boss;
+  if(Number(c.leviathanHealingUntil||0)>=turn)multiplier*=0.5;
+  if(boss&&boss.id==="azathoth"&&boss.difficulty==="crazy"&&Array.isArray(boss._chaosDreamRules)&&boss._chaosDreamRules.includes("healing")&&Number(boss._chaosDreamUntil||0)>=turn)multiplier=0;
   if(boss&&boss.id==="cerberus"&&boss.difficulty==="crazy"&&getCerberusHeadCount(boss)<=2)multiplier*=0.7;
   if(boss&&boss.id==="nyarlathotep"&&Array.isArray(boss._nyarlMasks)&&boss._nyarlMasks.includes("prophet"))multiplier*=0.5;
   return Math.max(0,multiplier);
 }
 
-function healFishForBattle(f,amount){
+function healFishForBattle(f,amount,battleLog=null){
   const c=ensureCombatStats(f),before=Number(c.hp||0);
   const applied=Math.max(0,Math.floor(Number(amount||0)*getBattleHealingMultiplier(f)));
   c.hp=Math.min(c.maxHp,before+applied);
-  return Math.max(0,c.hp-before);
+  const healed=Math.max(0,c.hp-before),boss=activeTraitBattle&&activeTraitBattle.boss;
+  if(healed>=c.maxHp*0.15&&boss&&boss.id==="angra_mainyu"&&boss.difficulty==="crazy"&&!c.goodDeniedByAngra){
+    c.goodDeniedByAngra=true;
+    if(battleLog)reduceExistence(boss,f,1,battleLog,"선의 부정");
+    boss._voidShieldHp=Math.min(Math.floor(boss.hp*0.10),Number(boss._voidShieldHp||0)+Math.floor(healed*0.5));boss._voidShieldUntil=999;
+  }
+  return healed;
 }
 
 function getEffectiveFishAttack(f, boss){
@@ -1601,7 +1672,7 @@ function getEffectiveFishAttack(f, boss){
   if(traitState(f).ascended) value *= 1.3;
   const turn=activeTraitBattle?Number(activeTraitBattle.turn||0):0;
   if(Number(c.bossAttackDebuffUntil||0)>0&&Number(c.bossAttackDebuffUntil)>=turn) value*=1-Math.max(0,Number(c.bossAttackDebuffRate||0));
-  if(Number(c.roarDebuffUntil||0)>0&&Number(c.roarDebuffUntil)>=turn) value*=0.8;
+  if(Number(c.roarDebuffUntil||0)>0&&Number(c.roarDebuffUntil)>=turn) value*=1-Math.max(0,Number(c.roarAttackDebuffRate??0.20));
   if(Number(c.darknessDebuffUntil||0)>0&&Number(c.darknessDebuffUntil)>=turn) value*=0.7;
   if(Number(c.abyssPressureUntil||0)>0&&Number(c.abyssPressureUntil)>=turn)value*=0.75;
   return Math.max(0, Math.floor(value));
@@ -1613,7 +1684,7 @@ function getEffectiveFishDodge(f, boss){
   if(c.azhiCurses && c.azhiCurses.fear) value *= 0.5;
   if(boss.id === "typhon" && hasTyphonWeather(boss,"turbulence")) value -= 10;
   if(boss.id === "typhon" && hasTyphonWeather(boss,"eye")) value = 0;
-  if(boss._ignoreDodge) value=0;
+  if(boss._ignoreDodge||(activeTraitBattle&&Number(boss._ignoreDodgeUntil||0)>=activeTraitBattle.turn)) value=0;
   if(traitState(f).ascended) value += 10;
   if(f.name === "해신룡" && !traitState(f).tideHigh) value += 15;
   const turn=activeTraitBattle?Number(activeTraitBattle.turn||0):0;
@@ -1626,7 +1697,7 @@ function getEffectiveFishCritRate(f){
   const c = ensureCombatStats(f);
   let value=Number(c.critRate||0)-(c.azhiCurses&&c.azhiCurses.distrust?15:0);
   const turn=activeTraitBattle?Number(activeTraitBattle.turn||0):0;
-  if(Number(c.roarDebuffUntil||0)>0&&Number(c.roarDebuffUntil)>=turn) value-=20;
+  if(Number(c.roarDebuffUntil||0)>0&&Number(c.roarDebuffUntil)>=turn) value-=Math.max(0,Number(c.roarCritDebuff??20));
   if((Number(c.critSuppressedUntil||0)>0&&Number(c.critSuppressedUntil)>=turn)||(Number(c.gazeDebuffUntil||0)>0&&Number(c.gazeDebuffUntil)>=turn)) value=0;
   const boss=activeTraitBattle&&activeTraitBattle.boss;
   if(boss&&boss.id==="erebos"&&Number(boss._darknessUntil||0)>0&&Number(boss._darknessUntil)>=turn)value=0;
@@ -1699,8 +1770,8 @@ function bossSingleTargetAttack(boss, targets, battleLog, bossAttackMultiplier=1
     ctx.diamondTurn=ctx.turn;
     const splitTargets=getAliveTargets(targets),split=Math.max(1,Math.floor(bossHit.damage*0.7/splitTargets.length));
     battleLog.push(traitUseByFish(diamondFish, "단일 공격의 총피해를 30% 줄여 아군에게 분산합니다."));
-    splitTargets.forEach(x=>applyDamageToFish(x,split,battleLog,bossColor(boss.name,boss)+"의 "+skillName+" · 굴절\n",{fromBoss:true,isSpecial,skillName}));
-  }else applyDamageToFish(f, bossHit.damage, battleLog, prefix,{fromBoss:true,isSpecial,skillName});
+    splitTargets.forEach(x=>applyDamageToFish(x,split,battleLog,bossColor(boss.name,boss)+"의 "+skillName+" · 굴절\n",{fromBoss:true,isSpecial,skillName,ignoreReduction:!!options.ignoreReduction}));
+  }else applyDamageToFish(f, bossHit.damage, battleLog, prefix,{fromBoss:true,isSpecial,skillName,ignoreReduction:!!options.ignoreReduction});
 
   if(ensureCombatStats(f).hp > 0 && appliesBurn){
     c.burnStacks = Math.min(3, Number(c.burnStacks || 0) + 1);
@@ -1746,13 +1817,14 @@ function bossAttackSpecificTarget(boss, f, battleLog, bossAttackMultiplier=1, sk
     ctx.diamondTurn=ctx.turn;
     const splitTargets=getAliveTargets(ctx.participants),split=Math.max(1,Math.floor(hit.damage*0.7/splitTargets.length));
     battleLog.push(traitUseByFish(diamondFish, "단일 공격의 총피해를 30% 줄여 아군에게 분산합니다."));
-    splitTargets.forEach(x=>applyDamageToFish(x,split,battleLog,bossColor(boss.name,boss)+"의 "+skillName+" · 굴절\n",{fromBoss:true,isSpecial,skillName}));
-  }else applyDamageToFish(f, hit.damage, battleLog, prefix,{fromBoss:true,isSpecial,skillName});
+    splitTargets.forEach(x=>applyDamageToFish(x,split,battleLog,bossColor(boss.name,boss)+"의 "+skillName+" · 굴절\n",{fromBoss:true,isSpecial,skillName,ignoreReduction:!!options.ignoreReduction}));
+  }else applyDamageToFish(f, hit.damage, battleLog, prefix,{fromBoss:true,isSpecial,skillName,ignoreReduction:!!options.ignoreReduction});
   if(ensureCombatStats(f).hp>0&&appliesBurn){
     c.burnStacks=Math.min(3,Number(c.burnStacks||0)+1);
     battleLog.push(color(lineFish(f),f.grade)+"\n화상 "+c.burnStacks+"중첩");
     registerTraitStatus(f,battleLog);
   }
+  if(ensureCombatStats(f).hp>0&&options.poison){c.poisonStacks=Math.min(3,Number(c.poisonStacks||0)+1);battleLog.push(color(lineFish(f),f.grade)+"\n독 "+c.poisonStacks+"중첩");registerTraitStatus(f,battleLog);}
   return true;
 }
 
@@ -1784,7 +1856,7 @@ function bossAllTargetAttack(boss, targets, battleLog, bossAttackMultiplier=1, s
     }
 
     let prefix=color(lineFish(f),f.grade)+"\n"+(hit.crit?"치명타!\n":"")+(options.burnBonus&&(c.burnStacks||0)>0?"화상 추가 피해!\n":"");
-    applyDamageToFish(f,damage,logs,prefix,{fromBoss:true,isSpecial,skillName});
+    applyDamageToFish(f,damage,logs,prefix,{fromBoss:true,isSpecial,skillName,ignoreReduction:!!options.ignoreReduction});
     if(ensureCombatStats(f).hp>0&&appliesBurn){
       c.burnStacks=Math.min(3,Number(c.burnStacks||0)+1);
       logs.push(color(lineFish(f),f.grade)+"\n화상 "+c.burnStacks+"중첩");
@@ -1810,9 +1882,11 @@ function applyBossPassiveBeforeFishAttack(boss, damage, battleLog=null){
 
   if(Number(boss._wrathCharges||0)>0){
     boss._wrathCharges--;
-    boss._lastReflectedDamage=Math.floor(damage*0.3);
-    damage=Math.floor(damage*0.5);
-    if(battleLog) battleLog.push(bossColor(boss.name,boss)+"의 용왕의 역린\n받는 피해 50% 감소, 공격자에게 30% 반사\n남은 역린 : "+boss._wrathCharges);
+    const reduction=clamp(Number(boss._wrathReduction??0.5),0,0.9),reflection=clamp(Number(boss._wrathReflect??0.3),0,1);
+    boss._lastReflectedDamage=Math.floor(damage*reflection);
+    damage=Math.floor(damage*(1-reduction));
+    if(boss._wrathCharges<=0&&boss._wrathFinalePending)boss._wrathFinaleReady=true;
+    if(battleLog) battleLog.push(bossColor(boss.name,boss)+"의 용왕의 역린\n받는 피해 "+Math.round(reduction*100)+"% 감소, 공격자에게 "+Math.round(reflection*100)+"% 반사\n남은 역린 : "+boss._wrathCharges);
   }
 
   if(boss.id==="nyarlathotep"&&Array.isArray(boss._nyarlMasks)&&boss._nyarlMasks.includes("mirror")){
@@ -1922,6 +1996,12 @@ function checkCrazyBossHpPassives(boss,bossHp,battleLog){
       boss._stoneArmorHp=boss._stoneArmorMaxHp;
       battleLog.push(bossBattleEvent(boss,"움직이는 대륙","체력 "+threshold+"% 구간 · 최대 체력 6%의 암석 갑옷 생성","passive"));
     }
+  }
+
+  if(boss.id==="bahamut"&&bossHp<=boss.hp*0.5&&!boss._absoluteOrderActive){
+    boss._absoluteOrderActive=true;boss._crazyAttackBoost=Math.max(0.25,Number(boss._crazyAttackBoost||0));boss.critRate=Number(boss._baseCritRate||boss.critRate||0)+20;boss._megaFlareIgnoreDodge=true;
+    delete boss._observedWeakUntil;
+    battleLog.push(bossBattleEvent(boss,"용왕의 절대명령","약화 효과를 지우고 공격력 25%·치명타율 20% 증가, 메가 플레어 회피 무시","passive"));
   }
 
   if(boss.id==="cerberus"){
@@ -2061,7 +2141,13 @@ function applyBossEndTurnPassive(boss, bossHp, battleLog){
       const turn=activeTraitBattle?activeTraitBattle.turn:0;
       boss._darknessUntil=turn+(boss.difficulty==="crazy"?2:1);
       boss._lightGauge=boss.difficulty==="crazy"?40:60;
+      if(boss.difficulty==="crazy"){
+        boss._erebosVeilStacks=Math.min(3,Number(boss._erebosVeilStacks||0)+1);
+        boss._crazyAttackBoost=Math.max(Number(boss._crazyAttackBoost||0),boss._erebosVeilStacks*0.10);
+        boss._voidShieldHp=Math.min(Math.floor(boss.hp*0.15),Number(boss._voidShieldHp||0)+Math.floor(boss.hp*0.05));boss._voidShieldUntil=999;
+      }
       battleLog.push(bossBattleEvent(boss,"완전 암흑","물고기 치명타 봉인 · 에레보스 회피율 증가","passive"));
+      if(boss.difficulty==="crazy")battleLog.push(bossBattleEvent(boss,"원초의 장막","최대 체력 5% 보호막 · 공격력 "+(boss._erebosVeilStacks*10)+"% 증가","passive"));
     }
   }
 
@@ -2081,6 +2167,30 @@ function spawnBabyDragons(boss, battleLog){
   }
 
   battleLog.push(bossColor(boss.name, boss) + "의 괴수 탄생 (15%)\n새끼 용 3마리를 소환했습니다.");
+}
+
+function spawnPrimordialDragon(boss,battleLog){
+  if(!boss||boss._primordialDragonSummoned)return null;
+  boss._primordialDragonSummoned=true;boss._summonSeq=Number(boss._summonSeq||0)+1;
+  const summon={id:"primordial_dragon_"+boss._summonSeq,summonType:"primordial_dragon",name:"태초의 용",order:1,hp:Math.max(1,Math.floor(boss.hp*0.05)),maxHp:Math.max(1,Math.floor(boss.hp*0.05)),attack:Math.max(1,Math.floor(boss.attack))};
+  boss._summons.push(summon);
+  battleLog.push(bossBattleEvent(boss,"혼돈의 모태","쓰러진 새끼 용의 생명이 합쳐져 태초의 용이 태어났습니다.","passive"));
+  return summon;
+}
+
+function handleDefeatedBossSummon(boss,summon,participants,battleLog){
+  if(!boss||!summon)return;
+  if(boss.id==="tiamat"&&boss.difficulty==="crazy"&&summon.summonType==="baby_dragon"){
+    boss._babyDragonDeaths=Number(boss._babyDragonDeaths||0)+1;
+    if(boss._babyDragonDeaths>=3)spawnPrimordialDragon(boss,battleLog);
+  }
+  if(summon.summonType==="primordial_dragon"&&!summon.deathBurstUsed){
+    summon.deathBurstUsed=true;bossAllTargetAttack(boss,participants,battleLog,1.5,"태초의 붕괴",{ignoreDodge:true});
+  }
+  if(summon.summonType==="void_clone"&&summon.ownerFishId){
+    const owner=(participants||[]).find(f=>String(f.id||"")===String(summon.ownerFishId));
+    if(owner){const c=ensureCombatStats(owner);delete c.traitSealedUntil;delete c.bossAttackDebuffUntil;delete c.bossAttackDebuffRate;battleLog.push(color(lineFish(owner),owner.grade)+"가 빼앗겼던 힘을 되찾았습니다.");}
+  }
 }
 
 function getAliveSummons(boss){
@@ -2368,26 +2478,26 @@ const CRAZY_BOSS_SKILL_NAMES={
 };
 
 const CRAZY_BOSS_SKILL_DESCRIPTIONS={
-  kraken:"전투력이 높은 물고기 2마리를 다음 턴까지 행동 불가로 만듭니다.",
-  hydra:"전체 공격력 1.2배 피해를 주고 살아남은 모든 물고기에게 독 2중첩을 부여합니다.",
-  leviathan:"살아 있는 모든 물고기의 최대 체력을 전투 중 12% 감소시킵니다.",
-  behemoth:"전체 공격력 1.2배 피해를 주고 가장 강한 물고기의 공격력을 3턴 동안 25% 감소시킵니다.",
-  phoenix:"모든 화상을 흡수해 체력을 15~50% 회복하고 화상 수에 따라 공격력을 강화합니다.",
-  bahamut:"다음 3회 받는 피해를 50% 줄이고 공격자에게 받은 피해의 30%를 반사합니다.",
-  tiamat:"무작위 대상을 향해 공격력 0.6배의 숨결을 5번 연속 사용합니다.",
-  jormungandr:"모든 독을 폭발시켜 중첩당 최대 체력 6%, 최대 18% 피해를 주고 독을 제거합니다.",
-  fenrir:"모든 물고기의 공격력과 치명타율을 2턴 동안 20% 감소시킵니다.",
-  surtr:"불꽃검 내구도를 20~35% 복구한 뒤 모든 물고기에게 전체 공격을 사용합니다.",
-  cerberus:"가장 강한 물고기를 2턴 동안 명계로 추방해 행동할 수 없게 만듭니다.",
-  nidhogg:"쓰러진 물고기가 있으면 체력 20%를 회복하고, 없으면 전체 공격과 최대 체력 감소를 사용합니다.",
-  azhi_dahaka:"가장 강한 물고기의 고유 특성·회피·치명타를 3턴 동안 봉인합니다.",
-  typhon:"최대 체력 4%의 폭풍 장벽을 생성하며 보호막은 2턴 동안 유지됩니다.",
-  angra_mainyu:"모든 물고기에게 최대 체력 5% 피해를 주고 3턴 동안 회복을 봉인합니다.",
-  erebos:"모든 물고기에게 최대 체력 20% 피해를 주고 2턴 동안 암흑과 치명타 봉인을 부여합니다.",
-  chronos:"최근 받은 피해를 이용해 체력을 5~15% 되찾고 공격력 1.4배 공격을 2번 사용합니다.",
-  nyarlathotep:"가장 강한 물고기의 공격력 150%·체력 50%를 가진 공허 복제체를 소환하고 특성을 봉인합니다.",
-  yog_sothoth:"전투력이 높은 절반을 2턴 추방하고 회피 불가 전체 공격력 2.5배 피해를 줍니다.",
-  azathoth:"전체 최대 체력 15% 피해 후 3턴 동안 공격력 증가·2회 행동·전체 공격·회피 무시 상태가 됩니다."
+  kraken:"강한 물고기 2마리에게 최대 체력 15% 피해를 주고 2턴 동안 행동·회피·고유 특성을 봉인합니다.",
+  hydra:"전체 공격력 2배 피해를 주고 독을 3중첩으로 만듭니다. 이미 3중첩이면 최대 체력 15% 추가 피해를 줍니다.",
+  leviathan:"모든 물고기의 최대 체력을 25% 감소시키고 같은 양의 현재 체력 피해와 3턴 회복량 50% 감소를 부여합니다.",
+  behemoth:"회피 불가 전체 공격력 2.5배 피해, 최강 물고기 공격력 50% 감소·1턴 기절, 최대 체력 8% 갑옷을 적용합니다.",
+  phoenix:"모든 화상을 흡수해 체력을 30~60% 회복하고 공격력 50% 증가 후 윤회의 불꽃을 2회 사용합니다.",
+  bahamut:"전체 공격력 2배 피해 후 다음 3회 피해 70% 감소·50% 반사. 종료 시 전체 2.5배 메가 플레어를 사용합니다.",
+  tiamat:"서로 다른 상태이상을 가진 오색 숨결을 공격력 1배로 5회 사용하고 새끼 용 3마리를 소환합니다.",
+  jormungandr:"모든 물고기를 독 3중첩으로 만든 뒤 최대 체력 30% 피해를 주고 독 1중첩을 남깁니다.",
+  fenrir:"회피 불가 전체 공격력 2.5배 피해 후 공격력·치명타율을 3턴 동안 35% 감소시킵니다.",
+  surtr:"불꽃검을 완전히 재련하고 전체 공격력 2.5배 피해·화상 2중첩을 주며 검 파괴 전까지 공격력 40% 증가합니다.",
+  cerberus:"강한 물고기 2마리를 2턴 추방하고 남은 파티에 전체 2배 피해를 줍니다. 귀환 시 현재 체력 25%를 잃습니다.",
+  nidhogg:"쓰러진 물고기당 체력 15% 회복·공격력 10% 증가 후 전체 2배 피해와 최대 체력 10% 감소를 적용합니다.",
+  azhi_dahaka:"강한 물고기 3마리를 공격하고 특성 봉인·공격력 50% 감소·회피와 치명타 봉인을 각각 부여합니다.",
+  typhon:"최대 체력 12% 폭풍 장벽과 3턴 폭풍을 생성합니다. 매 턴 전체 1.2배 피해, 장벽 생존 시 2.5배 폭발합니다.",
+  angra_mainyu:"전체 최대 체력 20% 피해 후 3턴 동안 회복·부활·사망 방지 특성을 봉인합니다.",
+  erebos:"전체 최대 체력 35% 피해 후 3턴 동안 암흑·치명타·회피를 봉인하고 에레보스의 공격이 회피를 무시합니다.",
+  chronos:"최근 2턴 피해를 되돌려 최대 30% 회복하고 강한 물고기 2마리의 다음 행동을 삭제한 뒤 각각 2배 공격합니다.",
+  nyarlathotep:"가장 강한 물고기의 공격력 200%·체력 100%를 가진 복제체를 소환하고 복제체 생존 중 원본을 약화합니다.",
+  yog_sothoth:"전투력이 높은 절반을 3턴 추방하고 회피 불가 전체 공격력 3배 피해를 줍니다. 귀환 시 체력 20%를 잃습니다.",
+  azathoth:"전체 최대 체력 25% 피해 후 3턴간 공격력 75% 증가·2회 전체 행동·회피와 피해 감소 무시, 마지막에 우주 붕괴를 사용합니다."
 };
 
 function damageFishByMaxHp(f,rate,battleLog,skillName){
@@ -2411,53 +2521,57 @@ function runCrazyBossUltimateEffect(boss,participants,battleLog){
   const turn=activeTraitBattle?activeTraitBattle.turn:0;
   const alive=getAliveTargets(participants);
   if(boss.id==="kraken"){
-    [...alive].sort((a,b)=>ensureCombatStats(b).attack-ensureCombatStats(a).attack).slice(0,2).forEach(f=>ensureCombatStats(f).bossDisabledUntil=turn+1);
-    battleLog.push("전투력이 높은 물고기 2마리가 다음 턴 행동할 수 없습니다.");
+    [...alive].sort((a,b)=>ensureCombatStats(b).attack-ensureCombatStats(a).attack).slice(0,2).forEach(f=>{const c=ensureCombatStats(f);damageFishByMaxHp(f,0.15,battleLog,"심해의 포박");c.bossDisabledUntil=turn+2;c.traitSealedUntil=turn+2;c.gazeDebuffUntil=turn+2;});
+    battleLog.push("강한 물고기 2마리가 2턴 동안 심해에 포박되었습니다.");
   }else if(boss.id==="hydra"){
-    bossAllTargetAttack(boss,participants,battleLog,1.2,"아홉 머리의 맹독");
-    getAliveTargets(participants).forEach(f=>{const c=ensureCombatStats(f);c.poisonStacks=Math.min(3,Number(c.poisonStacks||0)+2);});
-    battleLog.push("살아 있는 모든 물고기에게 독 2중첩을 부여했습니다.");
+    bossAllTargetAttack(boss,participants,battleLog,2,"아홉 머리의 맹독");
+    getAliveTargets(participants).forEach(f=>{const c=ensureCombatStats(f),already=Number(c.poisonStacks||0)>=3;c.poisonStacks=3;if(already)damageFishByMaxHp(f,0.15,battleLog,"맹독 과포화");});
+    battleLog.push("모든 생존 물고기의 독이 3중첩까지 차올랐습니다.");
   }else if(boss.id==="leviathan"){
-    alive.forEach(f=>reduceFishMaxHpForBattle(f,0.12,battleLog,"심해 압궤"));
+    alive.forEach(f=>{const c=ensureCombatStats(f),beforeMax=c.maxHp,beforeHp=c.hp;if(!c._preErosionMaxHp)c._preErosionMaxHp=beforeMax;c.maxHp=Math.max(1,Math.floor(beforeMax*0.75));c.hp=Math.max(1,Math.min(c.maxHp,beforeHp-Math.floor(beforeMax*0.25)));c.leviathanHealingUntil=turn+3;battleLog.push("심해 압궤\n"+color(lineFish(f),f.grade)+"\n최대 체력과 현재 체력이 25% 감소했습니다.");});
   }else if(boss.id==="behemoth"){
-    bossAllTargetAttack(boss,participants,battleLog,1.2,"거신의 압살");
-    const target=getStrongestAliveFish(participants);if(target){const c=ensureCombatStats(target);c.bossAttackDebuffUntil=turn+3;c.bossAttackDebuffRate=0.25;}
+    bossAllTargetAttack(boss,participants,battleLog,2.5,"거신의 압살",{ignoreDodge:true});
+    const target=getStrongestAliveFish(participants);if(target){const c=ensureCombatStats(target);c.bossAttackDebuffUntil=turn+3;c.bossAttackDebuffRate=0.5;c.bossDisabledUntil=turn+1;}
+    boss._stoneArmorMaxHp=Math.max(1,Math.floor(boss.hp*0.08));boss._stoneArmorHp=boss._stoneArmorMaxHp;
   }else if(boss.id==="phoenix"){
     let stacks=0;participants.forEach(f=>{const c=ensureCombatStats(f);stacks+=Number(c.burnStacks||0);delete c.burnStacks;});
-    const rate=Math.min(0.5,0.15+stacks*0.02);boss._currentHp=Math.min(boss.hp,Number(boss._currentHp)+Math.floor(boss.hp*rate));boss._crazyAttackBoost=Math.min(0.5,Number(boss._crazyAttackBoost||0)+stacks*0.05);
-    battleLog.push("모든 화상을 흡수해 체력 "+Math.round(rate*100)+"%를 회복하고 공격력이 강화되었습니다.");
+    const rate=Math.min(0.6,0.3+stacks*0.025);boss._currentHp=Math.min(boss.hp,Number(boss._currentHp)+Math.floor(boss.hp*rate));boss._crazyAttackBoost=Math.max(0.5,Number(boss._crazyAttackBoost||0));
+    battleLog.push("모든 화상을 흡수해 체력 "+Math.round(rate*100)+"%를 회복하고 공격력이 50% 증가했습니다.");
+    bossAllTargetAttack(boss,participants,battleLog,1.5,"윤회의 불꽃",{burnBonus:true});bossAllTargetAttack(boss,participants,battleLog,1.5,"윤회의 불꽃",{burnBonus:true});
   }else if(boss.id==="bahamut"){
-    boss._wrathCharges=3;battleLog.push("다음 3회 받는 피해를 50% 줄이고 공격자에게 30% 반사합니다.");
+    bossAllTargetAttack(boss,participants,battleLog,2,"용왕의 역린");boss._wrathCharges=3;boss._wrathReduction=0.7;boss._wrathReflect=0.5;boss._wrathFinalePending=true;battleLog.push("다음 3회 받는 피해를 70% 줄이고 공격자에게 50% 반사합니다.");
   }else if(boss.id==="tiamat"){
-    for(let i=0;i<5;i++)bossSingleTargetAttack(boss,participants,battleLog,0.6,"오색 용의 숨결",false);
+    const effects=["burn","poison","healing","attack","stun"];
+    effects.forEach((effect,index)=>{const targets=getAliveTargets(participants);if(!targets.length)return;const target=targets[Math.floor(Math.random()*targets.length)],c=ensureCombatStats(target);bossAttackSpecificTarget(boss,target,battleLog,1,"오색 용의 숨결 "+(index+1),false,{burn:effect==="burn",poison:effect==="poison"});if(effect==="healing")c.healingBlockedUntil=turn+2;if(effect==="attack"){c.bossAttackDebuffUntil=turn+2;c.bossAttackDebuffRate=0.35;}if(effect==="stun")c.bossDisabledUntil=turn+1;});
+    spawnBabyDragons(boss,battleLog);
   }else if(boss.id==="jormungandr"){
-    alive.forEach(f=>{const c=ensureCombatStats(f),stacks=Math.min(3,Number(c.poisonStacks||0));if(stacks>0){damageFishByMaxHp(f,stacks*0.06,battleLog,"독 폭발");delete c.poisonStacks;}});
+    alive.forEach(f=>{const c=ensureCombatStats(f);c.poisonStacks=3;damageFishByMaxHp(f,0.30,battleLog,"독 폭발");c.poisonStacks=1;});
   }else if(boss.id==="fenrir"){
-    alive.forEach(f=>{const c=ensureCombatStats(f);c.roarDebuffUntil=turn+2;});battleLog.push("모든 물고기의 공격력과 치명타 확률이 2턴 동안 20% 감소합니다.");
+    bossAllTargetAttack(boss,participants,battleLog,2.5,"라그나로크의 포효",{ignoreDodge:true});alive.forEach(f=>{const c=ensureCombatStats(f);c.roarDebuffUntil=turn+3;c.roarAttackDebuffRate=0.35;c.roarCritDebuff=35;});battleLog.push("모든 물고기의 공격력과 치명타 확률이 3턴 동안 35% 감소합니다.");
   }else if(boss.id==="surtr"){
-    const restoreRate=boss._flameSwordBroken?0.20:0.35;boss._flameSwordHp=Math.max(Number(boss._flameSwordHp||0),Math.floor(boss._flameSwordMaxHp*restoreRate));boss._flameSwordBroken=false;bossAllTargetAttack(boss,participants,battleLog,1,"불꽃검 재련");
+    boss._flameSwordHp=boss._flameSwordMaxHp;boss._flameSwordBroken=false;boss._crazyAttackBoost=Math.max(0.4,Number(boss._crazyAttackBoost||0));bossAllTargetAttack(boss,participants,battleLog,2.5,"불꽃검 재련",{burn:true});getAliveTargets(participants).forEach(f=>ensureCombatStats(f).burnStacks=Math.min(3,Number(ensureCombatStats(f).burnStacks||0)+1));
   }else if(boss.id==="cerberus"){
-    const target=getStrongestAliveFish(participants);if(target){ensureCombatStats(target).voidBanishedUntil=turn+2;battleLog.push(color(lineFish(target),target.grade)+"가 2턴 동안 명계에 갇혔습니다.");}
+    const targets=[...alive].sort((a,b)=>(ensureCombatStats(b).attack+ensureCombatStats(b).maxHp)-(ensureCombatStats(a).attack+ensureCombatStats(a).maxHp)).slice(0,2);targets.forEach(target=>{const c=ensureCombatStats(target);c.voidBanishedUntil=turn+2;c.underworldReturnDamage=0.25;});bossAllTargetAttack(boss,participants,battleLog,2,"명계의 문");battleLog.push(targets.length+"마리가 2턴 동안 명계로 추방되었습니다.");
   }else if(boss.id==="nidhogg"){
     const fallen=participants.filter(f=>ensureCombatStats(f).hp<=0||ensureCombatStats(f).battleDown);
-    if(fallen.length){boss._currentHp=Math.min(boss.hp,Number(boss._currentHp)+Math.floor(boss.hp*0.2));battleLog.push("쓰러진 생명을 포식해 체력 20%를 회복했습니다.");}
-    else{bossAllTargetAttack(boss,participants,battleLog,1.2,"시체 포식");alive.forEach(f=>reduceFishMaxHpForBattle(f,0.05,battleLog,"세계수 침식"));}
+    const souls=Math.min(3,fallen.length);if(souls){boss._currentHp=Math.min(boss.hp,Number(boss._currentHp)+Math.floor(boss.hp*0.15*souls));boss._crazyAttackBoost=Math.min(0.3,Number(boss._crazyAttackBoost||0)+0.1*souls);battleLog.push("쓰러진 생명 "+souls+"개를 포식해 체력과 공격력을 회복했습니다.");}
+    bossAllTargetAttack(boss,participants,battleLog,2,"시체 포식");getAliveTargets(participants).forEach(f=>reduceFishMaxHpForBattle(f,0.10,battleLog,"세계수 침식"));
   }else if(boss.id==="azhi_dahaka"){
-    const target=getStrongestAliveFish(participants);if(target){const c=ensureCombatStats(target);c.traitSealedUntil=turn+3;c.gazeDebuffUntil=turn+3;battleLog.push(color(lineFish(target),target.grade)+"의 고유 특성·회피·치명타가 3턴 동안 봉인됩니다.");}
+    const targets=[...alive].sort((a,b)=>(ensureCombatStats(b).attack+ensureCombatStats(b).maxHp)-(ensureCombatStats(a).attack+ensureCombatStats(a).maxHp)).slice(0,3);targets.forEach((target,index)=>{const c=ensureCombatStats(target);bossAttackSpecificTarget(boss,target,battleLog,1.2,"여섯 눈의 응시",false);if(index===0)c.traitSealedUntil=turn+3;else if(index===1){c.bossAttackDebuffUntil=turn+3;c.bossAttackDebuffRate=0.5;}else c.gazeDebuffUntil=turn+3;});
   }else if(boss.id==="typhon"){
-    boss._voidShieldHp=Math.floor(boss.hp*0.04);boss._voidShieldUntil=turn+2;battleLog.push("최대 체력 4%의 폭풍 장벽을 생성했습니다.\n보호막 : "+boss._voidShieldHp.toLocaleString());
+    boss._voidShieldHp=Math.floor(boss.hp*0.12);boss._voidShieldUntil=turn+3;boss._stormBarrierStartedTurn=turn;boss._stormBarrierUntil=turn+3;boss._stormBarrierExploded=false;battleLog.push("최대 체력 12%의 폭풍 장벽과 3턴간 지속되는 대폭풍을 생성했습니다.\n보호막 : "+boss._voidShieldHp.toLocaleString());
   }else if(boss.id==="angra_mainyu"){
-    alive.forEach(f=>{damageFishByMaxHp(f,0.05,battleLog,"생명의 종언");const c=ensureCombatStats(f);c.healingBlockedUntil=turn+3;});if(activeTraitBattle)activeTraitBattle.lifeEndUntil=turn+3;
+    alive.forEach(f=>{damageFishByMaxHp(f,0.20,battleLog,"생명의 종언");const c=ensureCombatStats(f);c.healingBlockedUntil=turn+3;c.traitSealedUntil=turn+3;});if(activeTraitBattle)activeTraitBattle.lifeEndUntil=turn+3;
   }else if(boss.id==="erebos"){
-    alive.forEach(f=>{damageFishByMaxHp(f,0.20,battleLog,"빛이 존재하지 않는 세계");const c=ensureCombatStats(f);c.darknessDebuffUntil=turn+2;c.critSuppressedUntil=turn+2;});boss._darknessUntil=turn+2;
+    alive.forEach(f=>{damageFishByMaxHp(f,0.35,battleLog,"빛이 존재하지 않는 세계");const c=ensureCombatStats(f);c.darknessDebuffUntil=turn+3;c.critSuppressedUntil=turn+3;c.gazeDebuffUntil=turn+3;});boss._darknessUntil=turn+3;boss._ignoreDodgeUntil=turn+3;
   }else if(boss.id==="chronos"){
-    const recent=(boss._chronosDamageHistory||[]).reduce((s,v)=>s+Number(v||0),0);const heal=Math.min(Math.floor(boss.hp*0.15),Math.max(Math.floor(boss.hp*0.05),recent));boss._currentHp=Math.min(boss.hp,Number(boss._currentHp)+heal);battleLog.push("지워진 시간선에서 "+heal.toLocaleString()+" 체력을 되찾았습니다.");bossSingleTargetAttack(boss,participants,battleLog,1.4,"되돌아온 공격",false);bossSingleTargetAttack(boss,participants,battleLog,1.4,"되돌아온 공격",false);
+    const recent=(boss._chronosDamageHistory||[]).slice(-2).reduce((s,v)=>s+Number(v||0),0),heal=Math.min(Math.floor(boss.hp*0.30),recent);boss._currentHp=Math.min(boss.hp,Number(boss._currentHp)+heal);battleLog.push("지워진 시간선에서 "+heal.toLocaleString()+" 체력을 되찾았습니다.");[...alive].sort((a,b)=>ensureCombatStats(b).attack-ensureCombatStats(a).attack).slice(0,2).forEach(target=>{ensureCombatStats(target).bossDisabledUntil=turn+1;bossAttackSpecificTarget(boss,target,battleLog,2,"시간선 말소",false);});
   }else if(boss.id==="nyarlathotep"){
-    const target=getStrongestAliveFish(participants);if(target){const c=ensureCombatStats(target),cloneHp=Math.floor(c.maxHp*0.5);boss._summonSeq=Number(boss._summonSeq||0)+1;c.traitSealedUntil=turn+3;boss._summons.push({id:"void_clone_"+boss._summonSeq,summonType:"void_clone",name:"공허 복제체 · "+target.name,order:1,hp:cloneHp,maxHp:cloneHp,attack:Math.floor(c.attack*1.5),expiresTurn:turn+2});battleLog.push(color(lineFish(target),target.grade)+"의 150% 공격력을 가진 복제체가 3턴 동안 등장했습니다.");}
+    const target=getStrongestAliveFish(participants);if(target){const c=ensureCombatStats(target),cloneHp=Math.floor(c.maxHp);boss._summonSeq=Number(boss._summonSeq||0)+1;c.traitSealedUntil=999;c.bossAttackDebuffUntil=999;c.bossAttackDebuffRate=0.5;boss._summons.push({id:"void_clone_"+boss._summonSeq,summonType:"void_clone",name:"공허 복제체 · "+target.name,order:1,hp:cloneHp,maxHp:cloneHp,attack:Math.floor(c.attack*2),ownerFishId:String(target.id||"")});battleLog.push(color(lineFish(target),target.grade)+"의 공격력 200%·체력 100%를 가진 복제체가 등장했습니다.");}
   }else if(boss.id==="yog_sothoth"){
-    const sorted=[...alive].sort((a,b)=>(ensureCombatStats(b).attack+ensureCombatStats(b).maxHp)-(ensureCombatStats(a).attack+ensureCombatStats(a).maxHp));const banished=sorted.slice(0,Math.ceil(sorted.length/2));banished.forEach(f=>{const c=ensureCombatStats(f);c.voidBanishedUntil=turn+2;c.voidReturnDamage=true;});bossAllTargetAttack(boss,participants,battleLog,2.5,"모든 차원의 종착점",{ignoreDodge:true});battleLog.push(banished.length+"마리가 2턴 동안 공허로 추방되었습니다.");
+    const sorted=[...alive].sort((a,b)=>(ensureCombatStats(b).attack+ensureCombatStats(b).maxHp)-(ensureCombatStats(a).attack+ensureCombatStats(a).maxHp)),banished=sorted.slice(0,Math.ceil(sorted.length/2));bossAllTargetAttack(boss,participants,battleLog,3,"모든 차원의 종착점",{ignoreDodge:true});banished.filter(f=>ensureCombatStats(f).hp>0).forEach(f=>{const c=ensureCombatStats(f);c.voidBanishedUntil=turn+3;c.voidReturnDamage=true;});battleLog.push(banished.filter(f=>ensureCombatStats(f).hp>0).length+"마리가 3턴 동안 공허로 추방되었습니다.");
   }else if(boss.id==="azathoth"){
-    alive.forEach(f=>damageFishByMaxHp(f,0.15,battleLog,"잠든 신의 개안"));boss._awakenedUntil=turn+2;battleLog.push("3턴 동안 공격력 50% 증가, 두 번 행동, 전체 공격, 회피 무시 상태가 됩니다.");
+    alive.forEach(f=>damageFishByMaxHp(f,0.25,battleLog,"잠든 신의 개안"));boss._awakenedUntil=turn+2;boss._ignoreDodgeUntil=turn+2;boss._cosmicCollapseTurn=turn+2;battleLog.push("3턴 동안 공격력 75% 증가, 두 번 전체 행동, 회피와 피해 감소 무시 상태가 됩니다.");
   }
 }
 
@@ -2480,7 +2594,36 @@ function processBossStartTurnDifficultyMechanics(boss,participants,battleLog){
       c.hp=Math.max(1,Math.floor(c.hp*0.8));delete c.voidReturnDamage;delete c.voidBanishedUntil;
       battleLog.push(color(lineFish(f),f.grade)+"가 공허에서 돌아왔습니다.\n현재 체력 20% 감소\n\n"+hpBar(c.hp,c.maxHp));
     }
+    if(c.underworldReturnDamage&&Number(c.voidBanishedUntil||0)<turn){
+      c.hp=Math.max(1,Math.floor(c.hp*(1-Number(c.underworldReturnDamage||0.25))));delete c.underworldReturnDamage;delete c.voidBanishedUntil;
+      battleLog.push(color(lineFish(f),f.grade)+"가 명계에서 돌아왔습니다.\n현재 체력 25% 감소\n\n"+hpBar(c.hp,c.maxHp));
+    }
   });
+
+  if(boss.id==="jormungandr"&&boss.difficulty==="crazy"&&boss._ragnarokRingActive&&turn%2===0){
+    getAliveTargets(participants).forEach(f=>{const stacks=Math.min(3,Number(ensureCombatStats(f).poisonStacks||0));if(stacks>0)damageFishByMaxHp(f,stacks*0.05,battleLog,"라그나로크의 고리");});
+  }
+
+  if(boss.id==="typhon"&&boss.difficulty==="crazy"&&Number(boss._stormBarrierUntil||0)>0){
+    if(turn>Number(boss._stormBarrierStartedTurn||0)&&turn<=Number(boss._stormBarrierUntil||0))bossAllTargetAttack(boss,participants,battleLog,1.2,"대폭풍",{ignoreDodge:true});
+    if(turn>Number(boss._stormBarrierUntil||0)&&!boss._stormBarrierExploded){
+      boss._stormBarrierExploded=true;
+      if(Number(boss._voidShieldHp||0)>0)bossAllTargetAttack(boss,participants,battleLog,2.5,"폭풍 장벽 붕괴",{ignoreDodge:true});
+      boss._voidShieldHp=0;
+    }
+  }
+
+  if(boss.id==="azathoth"&&boss.difficulty==="crazy"){
+    if(turn%4===0){
+      const pool=["healing","trait","causality"].sort(()=>Math.random()-0.5),count=Number(boss._currentHp||boss.hp)<=boss.hp*0.25?2:1,labels={healing:"생명의 법칙 붕괴",trait:"존재의 법칙 붕괴",causality:"인과의 법칙 붕괴"};
+      boss._chaosDreamRules=pool.slice(0,count);boss._chaosDreamUntil=turn+1;
+      if(boss._chaosDreamRules.includes("trait"))getAliveTargets(participants).forEach(f=>ensureCombatStats(f).traitSealedUntil=Math.max(Number(ensureCombatStats(f).traitSealedUntil||0),turn+1));
+      battleLog.push(bossBattleEvent(boss,"혼돈의 꿈",boss._chaosDreamRules.map(rule=>labels[rule]).join(" + ")+" · 2턴 지속","passive"));
+    }
+    if(Number(boss._cosmicCollapseTurn||0)>0&&turn>=Number(boss._cosmicCollapseTurn)&&!boss._cosmicCollapseUsed){
+      boss._cosmicCollapseUsed=true;bossAllTargetAttack(boss,participants,battleLog,3,"우주 붕괴",{ignoreDodge:true,ignoreReduction:true});
+    }
+  }
 
   if(boss.id==="kraken"&&boss.difficulty==="crazy"){
     boss._krakenPressure=Number(boss._krakenPressure||0)+1;
@@ -2619,7 +2762,7 @@ function runBossAction(boss, participants, battleLog){
 
     const mega=scaleBossSkillChance(boss,15),roar=scaleBossSkillChance(boss,25);
     if(r < mega){
-      if(!bossSingleTargetAttack(boss, participants, battleLog, 3, "메가 플레어", false,{isSpecial:true})) return;
+      if(!bossSingleTargetAttack(boss, participants, battleLog, 3, "메가 플레어",!!boss._megaFlareIgnoreDodge,{isSpecial:true})) return;
       boss._fishDisabledNextTurn = true;
       battleLog.push(bossColor(boss.name, boss) + "의 메가 플레어 여파\n다음 턴 참가 물고기 전체가 행동할 수 없습니다.");
       return;
@@ -2654,6 +2797,11 @@ function runBossAction(boss, participants, battleLog){
         const completedCap=boss.difficulty==="crazy"?150:boss.difficulty==="hard"?125:100;
         boss._attackBoost = Math.max(Number(boss._attackBoost || 0), completedBoost);
         battleLog.push(bossBattleEvent(boss,"세계의 고리 완성","공격력 증가 한도가 "+completedCap+"%로 확장됩니다.","passive"));
+        if(boss.difficulty==="crazy"){
+          boss._ragnarokRingActive=true;
+          getAliveTargets(participants).forEach(f=>{const c=ensureCombatStats(f);c.poisonStacks=Math.min(3,Number(c.poisonStacks||0)+1);});
+          battleLog.push(bossBattleEvent(boss,"라그나로크의 고리","모든 물고기에게 독 1중첩, 이후 2턴마다 고리가 조여옵니다.","passive"));
+        }
       } else {
         battleLog.push(bossColor(boss.name, boss) + "의 세계의 고리 " + boss._ring + " / "+needed);
       }
@@ -2701,6 +2849,11 @@ function cleanupBattleEffects(participants){
     delete c.traitSealedUntil;
     delete c.healingBlockedUntil;
     delete c.healingPenalty;
+    delete c.leviathanHealingUntil;
+    delete c.roarAttackDebuffRate;
+    delete c.roarCritDebuff;
+    delete c.underworldReturnDamage;
+    delete c.goodDeniedByAngra;
     if(c._preErosionMaxHp){
       c.maxHp = c._preErosionMaxHp;
       if(c.hp > 0) c.hp = Math.max(1, Math.min(c.maxHp, Math.floor(c.hp)));
@@ -2720,6 +2873,19 @@ function getPreparedRecoveryFishes(){
     .filter(f => f && f.grade !== "쓰레기" && getCombatStatusText(f) !== "정상");
 }
 
+function getBossReplayStatuses(boss){
+  const statuses=[];
+  if(boss.id==="surtr")statuses.push({key:"sword",icon:"🗡️",label:"불꽃의 검",current:Math.max(0,Number(boss._flameSwordHp||0)),max:Math.max(1,Number(boss._flameSwordMaxHp||1)),state:boss._flameSwordBroken?"파괴":"유지"});
+  if(boss.id==="fenrir")statuses.push({key:"knots",icon:"⛓️",label:"글레이프니르",current:Math.max(0,Number(boss._gleipnirKnots||0)),max:boss.difficulty==="crazy"?8:boss.difficulty==="hard"?7:6,state:Number(boss._gleipnirKnots||0)<=0?"해방":"속박"});
+  if(boss.id==="jormungandr")statuses.push({key:"ring",icon:"⭕",label:"세계의 고리",current:Math.max(0,Number(boss._ring||0)),max:boss.difficulty==="crazy"?2:3,state:boss._ringCompleted?"완성":"진행"});
+  if(boss.id==="erebos")statuses.push({key:"light",icon:"🌘",label:"남은 빛",current:Math.max(0,Number(boss._lightGauge??100)),max:100,state:Number(boss._darknessUntil||0)>=(activeTraitBattle?activeTraitBattle.turn:0)?"완전 암흑":"감소 중"});
+  if(Number(boss._stoneArmorHp||0)>0)statuses.push({key:"armor",icon:"🪨",label:"암석 갑옷",current:Number(boss._stoneArmorHp),max:Math.max(1,Number(boss._stoneArmorMaxHp||boss._stoneArmorHp)),state:"보호"});
+  if(Number(boss._voidShieldHp||0)>0)statuses.push({key:"shield",icon:"🛡️",label:boss.id==="typhon"?"폭풍 장벽":boss.id==="erebos"?"원초의 장막":"보호막",current:Number(boss._voidShieldHp),max:Math.max(1,boss.id==="typhon"?Math.floor(boss.hp*0.12):Math.floor(boss.hp*0.15)),state:"보호"});
+  if(boss.id==="typhon"&&Array.isArray(boss._typhonWeathers)&&boss._typhonWeathers.length)statuses.push({key:"weather",icon:"🌪️",label:"폭풍",text:boss._typhonWeathers.map(x=>({headwind:"역풍",turbulence:"난기류",eye:"폭풍의 눈"}[x]||x)).join(" + "),state:"활성"});
+  if(boss.id==="azathoth"&&Array.isArray(boss._chaosDreamRules)&&Number(boss._chaosDreamUntil||0)>=(activeTraitBattle?activeTraitBattle.turn:0)){const labels={healing:"회복 봉인",trait:"특성 봉인",causality:"피해 전이"};statuses.push({key:"chaos",icon:"🕳️",label:"혼돈의 꿈",text:boss._chaosDreamRules.map(rule=>labels[rule]||rule).join(" + "),state:"규칙 붕괴"});}
+  return statuses.slice(0,3);
+}
+
 function createBossBattleLog(boss,participants){
   const log=[],frames=[];
   Object.defineProperty(log,"replayFrames",{value:frames,enumerable:false});
@@ -2735,8 +2901,11 @@ function createBossBattleLog(boss,participants){
           key:String(f.id||index),name:String(f.name||""),displayName:displayFishName(f.name),grade:f.grade,
           battleLabel:String(lineFish(f)||displayFishName(f.name)),
           hp:Math.max(0,Number(c.hp||0)),maxHp:Math.max(1,displayMaxHp),status:getCombatStatusText(f),
-          evolutionStage:typeof getFishEvolutionStage==="function"?getFishEvolutionStage(f):0
+          evolutionStage:typeof getFishEvolutionStage==="function"?getFishEvolutionStage(f):0,
+          dimensionGroup:index%2===0?"A":"B"
         };}),
+        bossStatuses:getBossReplayStatuses(boss),
+        dimension:boss.id==="yog_sothoth"&&boss.difficulty==="crazy"&&!!boss._dimensionSplit?{active:true,activeGroup:(activeTraitBattle&&Number(activeTraitBattle.turn||0)%2===0)?"A":"B"}:{active:false,activeGroup:""},
         summons:(boss._summons||[]).map((summon,index)=>({summon,index})).filter(({summon})=>{
           const turn=activeTraitBattle?Number(activeTraitBattle.turn||0):0;
           return Number(summon.hp||0)>0&&(!summon.expiresTurn||Number(summon.expiresTurn)>=turn);
@@ -2863,6 +3032,24 @@ function runBossBattle(){
     _nyarlMaskIndex:-1,
     _nyarlMasks:[],
     _nyarlDualActive:false,
+    _absoluteOrderActive:false,
+    _megaFlareIgnoreDodge:false,
+    _wrathReduction:0.5,
+    _wrathReflect:0.3,
+    _wrathFinalePending:false,
+    _wrathFinaleReady:false,
+    _babyDragonDeaths:0,
+    _primordialDragonSummoned:false,
+    _ragnarokRingActive:false,
+    _stormBarrierStartedTurn:0,
+    _stormBarrierUntil:0,
+    _stormBarrierExploded:false,
+    _erebosVeilStacks:0,
+    _ignoreDodgeUntil:0,
+    _cosmicCollapseTurn:0,
+    _cosmicCollapseUsed:false,
+    _chaosDreamRules:[],
+    _chaosDreamUntil:0,
     _difficulty:selectedDifficulty
   };
   boss._baseCritRate=boss.critRate;
@@ -3021,6 +3208,7 @@ function runBossBattle(){
 
         if(targetSummon.hp <= 0){
           battleLog.push(targetSummon.name + "을 쓰러뜨렸습니다.");
+          handleDefeatedBossSummon(boss,targetSummon,participants,battleLog);
         }
         continue;
       }
@@ -3060,10 +3248,20 @@ function runBossBattle(){
         entry += bossColor(boss.name, boss) + "\n" + hpBar(bossHp, boss.hp);
         battleLog.push(entry);
 
+        if(boss.id==="azathoth"&&boss.difficulty==="crazy"&&Array.isArray(boss._chaosDreamRules)&&boss._chaosDreamRules.includes("causality")&&Number(boss._chaosDreamUntil||0)>=turn){
+          const allies=getAliveTargets(participants).filter(ally=>ally!==f),target=allies.length?allies[Math.floor(Math.random()*allies.length)]:f;
+          if(target)applyDamageToFish(target,Math.max(1,Math.floor(damage*0.3)),battleLog,"인과의 법칙 붕괴\n"+color(lineFish(f),f.grade)+"의 공격이 아군에게 되돌아왔습니다.\n",{fromBoss:true,isSpecial:true,skillName:"인과의 법칙 붕괴"});
+        }
+
         if(Number(boss._lastReflectedDamage||0)>0 && isBattleActionableFish(f)){
           const reflected=Number(boss._lastReflectedDamage||0);
           boss._lastReflectedDamage=0;
           applyDamageToFish(f,reflected,battleLog,bossColor(boss.name,boss)+"의 용왕의 역린\n반사 피해\n",{fromBoss:true,isSpecial:true,skillName:"용왕의 역린"});
+        }
+        if(boss._wrathFinaleReady&&getAliveTargets(participants).length){
+          boss._wrathFinaleReady=false;boss._wrathFinalePending=false;
+          battleLog.push(bossBattleEvent(boss,"메가 플레어 반격","세 장의 역린이 깨지며 축적된 힘이 폭발합니다.","crazy"));
+          bossAllTargetAttack(boss,participants,battleLog,2.5,"메가 플레어 반격",{ignoreDodge:true});
         }
 
         afterFishAttackTrait(f,boss,hit.crit?"crit":"hit",ts.attack,battleLog);

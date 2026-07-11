@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#071b2d">
   <meta name="description" content="낚시하고 성장하며 보스와 대전하는 온라인 낚시 RPG">
   <title>FishingLife</title>
-  <link rel="stylesheet" href="./css/legacy.css?v=4.0">
-  <link rel="stylesheet" href="./css/game-ui.css?v=4.0">
+  <link rel="stylesheet" href="./css/legacy.css?v=4.1">
+  <link rel="stylesheet" href="./css/game-ui.css?v=4.1">
 </head>
 <body>
   <div class="ambient-bg" aria-hidden="true">
@@ -146,14 +146,14 @@
         <section id="bucketView" class="game-view" data-title="양동이" data-eyebrow="잡은 물고기를 한눈에 관리하세요">
           <div class="section-toolbar">
             <div><h2>내 물고기</h2><p id="bucketSummary">보유 중인 물고기가 없습니다.</p></div>
-            <div class="segmented" aria-label="양동이 정렬">
+            <div class="bucket-toolbar-actions"><div class="segmented" aria-label="양동이 정렬">
               <button class="active" data-sort="등급">등급</button>
               <button data-sort="공격력">공격력</button>
               <button data-sort="체력">체력</button>
-            </div>
+            </div><button class="bucket-bulk-sell" data-bulk-sell>일괄판매</button></div>
           </div>
           <section class="recent-catches-panel glass-panel">
-            <div class="panel-heading"><div><small>RECENT CATCH</small><h3>최근 잡은 물고기 10회</h3></div><span id="recentCatchCount" class="live-pill">0 / 10</span></div>
+            <div class="panel-heading"><div><small>RECENT CATCH</small><h3>최근 잡은 물고기 10회</h3></div><div class="recent-catch-actions"><span id="recentCatchCount" class="live-pill">0 / 10</span><button data-recent-catches-all>전체보기</button></div></div>
             <div id="recentCatchGrid" class="recent-catch-grid"></div>
             <div id="recentCatchEmpty" class="recent-catch-empty">아직 최근 낚시 기록이 없습니다.</div>
           </section>
@@ -215,6 +215,7 @@
             <button class="community-card" data-ui-action="cosmetics"><span>🌌</span><div><small>정복 보상</small><h3>프로필 꾸미기</h3><p>테두리·오라·배경·공격 연출을 장착합니다.</p></div></button>
             <button class="community-card" data-ui-action="settings"><span>⚙️</span><div><small>게임 환경</small><h3>설정</h3><p>효과음과 모바일 진동을 설정합니다.</p></div></button>
             <button class="community-card transfer-card" data-ui-action="transfer"><span>🎁</span><div><small>안전한 선물</small><h3>송금·물고기 전송</h3><p>닉네임을 입력해 골드나 물고기를 보냅니다.</p></div></button>
+            <button class="community-card inbox-card" data-ui-action="inbox"><span>📬</span><div><small>나중에 확인</small><h3>받은 소식 <em id="inboxUnreadBadge" hidden>0</em></h3><p>읽지 않은 메시지·송금·물고기 선물을 확인합니다.</p></div></button>
             <button class="community-card message-card" data-ui-action="message"><span>💌</span><div><small>친구에게 전송</small><h3>메시지 보내기</h3><p>닉네임을 입력해 메시지를 보냅니다.</p></div></button>
           </div>
           <section class="account-strip glass-panel">
@@ -253,12 +254,12 @@
 
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="./js/data/fish-data.js?v=4.0"></script>
-  <script src="./js/core.js?v=4.0"></script>
-  <script src="./js/data/combat-data.js?v=4.0"></script>
-  <script src="./js/combat.js?v=4.0"></script>
-  <script src="./js/gameplay.js?v=4.0"></script>
-  <script src="./js/commands.js?v=4.0"></script>
-  <script src="./js/ui.js?v=4.0"></script>
+  <script src="./js/data/fish-data.js?v=4.1"></script>
+  <script src="./js/core.js?v=4.1"></script>
+  <script src="./js/data/combat-data.js?v=4.1"></script>
+  <script src="./js/combat.js?v=4.1"></script>
+  <script src="./js/gameplay.js?v=4.1"></script>
+  <script src="./js/commands.js?v=4.1"></script>
+  <script src="./js/ui.js?v=4.1"></script>
 </body>
 </html>

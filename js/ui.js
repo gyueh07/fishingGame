@@ -21,12 +21,12 @@
   };
   const ratingColors = {PERFECT:"#ffe46a", GREAT:"#5ef0d1", GOOD:"#73cfff", BAD:"#ff8b91"};
   const cosmeticGrades = {
-    "영웅":{slug:"hero",icon:"🔵",name:"영웅의 심해",primary:"#6f9dff",secondary:"#2858d9"},
-    "전설":{slug:"legend",icon:"🟠",name:"전설의 해역",primary:"#ffac55",secondary:"#ff6238"},
-    "신화":{slug:"myth",icon:"🔴",name:"신화의 화염천",primary:"#ff6279",secondary:"#ff263f"},
-    "초월":{slug:"transcend",icon:"🟡",name:"초월의 황금해",primary:"#ffe25b",secondary:"#ff9f1c"},
-    "영원":{slug:"eternal",icon:"🟢",name:"영원의 성해",primary:"#45f1d0",secondary:"#00a98e"},
-    "공허":{slug:"void",icon:"🟣",name:"공허의 우주",primary:"#d053ff",secondary:"#4b006e"}
+    "영웅":{slug:"hero",icon:"🔵",name:"영웅",primary:"#6f9dff",secondary:"#2858d9"},
+    "전설":{slug:"legend",icon:"🟠",name:"전설",primary:"#ffac55",secondary:"#ff6238"},
+    "신화":{slug:"myth",icon:"🔴",name:"신화",primary:"#ff6279",secondary:"#ff263f"},
+    "초월":{slug:"transcend",icon:"🟡",name:"초월",primary:"#ffe25b",secondary:"#ff9f1c"},
+    "영원":{slug:"eternal",icon:"🟢",name:"영원",primary:"#45f1d0",secondary:"#00a98e"},
+    "공허":{slug:"void",icon:"🟣",name:"공허",primary:"#d053ff",secondary:"#4b006e"}
   };
   const profileAuraTierClasses=[1,2,3,4,5].map(tier=>`profile-aura-tier-${tier}`);
   const gradeAttackClasses=Object.values(cosmeticGrades).map(config=>"grade-attack-"+config.slug);
@@ -38,11 +38,13 @@
     activeView:"fishingView", bucketKey:"", bossKey:"", collectionKey:"", previousBucketCount:0,
     initialized:false, toastTimer:null, trainingSyncKey:"", trainingBucketRef:null, timingActive:false, timingStartedAt:0, timingDuration:1900,
     timingTarget:.5, timingPosition:0, timingRaf:0, timingTimeout:0,
-    battleReplayToken:0, battleReplaySpeed:2, battleReplaySkip:false, lastBattleReplay:null, bossPartySortOrder:"전투력", catchCelebrationTimer:0,
-    pvpReplayToken:0,pvpReplaySpeed:2,pvpReplaySkip:false,lastPvpReplay:null,pvpReplayDom:null,pvpPartySortOrder:"전투력",pvpVisibleCount:30,pendingPvpRequest:null,
+    battleReplayToken:0, battleReplaySpeed:1, battleReplaySkip:false, battleReplayRunning:false,lastBattleReplay:null, bossPartySortOrder:"전투력", catchCelebrationTimer:0,
+    pvpReplayToken:0,pvpReplaySpeed:1,pvpReplaySkip:false,pvpReplayRunning:false,lastPvpReplay:null,pvpReplayDom:null,pvpPartySortOrder:"전투력",pvpVisibleCount:30,pendingPvpRequest:null,
     fusionMaterialIds:[],fusionAnimationResolve:null,presetEditorType:"boss",presetEditorIds:[],
-    renderQueued:false,renderForce:false,bucketRenderToken:0,replayDom:null,replaySummonKey:"",lastActionHtml:"",bossPartyVisibleCount:30,soundAt:{},gradeAttackPulse:0
+    renderQueued:false,renderForce:false,bucketRenderToken:0,replayDom:null,replaySummonKey:"",replaySummonIds:new Set(),lastActionHtml:"",bossPartyVisibleCount:30,soundAt:{},gradeAttackPulse:0,transferFishIds:[],transferTarget:"",transferVisibleCount:30
   };
+  globalThis.isFishingLifeBattleLocked=()=>!!(state.battleReplayRunning||state.pvpReplayRunning);
+  globalThis.showFishingLifeBattleLockNotice=()=>showToast("전투가 끝난 뒤 나갈 수 있습니다. 빠르게 보려면 건너뛰기를 눌러주세요.");
 
   function getProfileAuraTier(auraId){
     const boss=bossList.find(item=>item.id===auraId);if(!boss)return 0;
@@ -104,6 +106,7 @@
     }else if(type==="bossAttack")tones.push({frequency:130,endFrequency:65,duration:.2,type:"square",gain:.025});
     else if(type==="crit")tones.push({frequency:1180,endFrequency:420,duration:.16,type:"sawtooth",gain:.035},{frequency:90,duration:.2,delay:.04,type:"square",gain:.03});
     else if(type==="crazy")tones.push({frequency:70,endFrequency:45,duration:.6,type:"sawtooth",gain:.04},{frequency:440,endFrequency:110,duration:.48,delay:.08,type:"square",gain:.025});
+    else if(type==="summon")tones.push({frequency:120,endFrequency:360,duration:.34,type:"triangle",gain:.03},{frequency:520,duration:.22,delay:.18,type:"sine",gain:.032});
     else if(type==="victory")tones.push({frequency:523,duration:.18,gain:.035},{frequency:659,duration:.2,delay:.12,gain:.04},{frequency:784,duration:.22,delay:.24,gain:.04},{frequency:1046,duration:.36,delay:.38,gain:.035});
     else if(type==="fusion")tones.push({frequency:260,endFrequency:720,duration:.42,type:"triangle",gain:.032},{frequency:740,duration:.16,delay:.38,gain:.04},{frequency:1110,duration:.25,delay:.48,gain:.035});
     else if(type==="evolution"){
@@ -292,7 +295,7 @@
     if(!host)return;
     const list=Array.isArray(summons)?summons:[],counts={};
     list.forEach(s=>{counts[s.name]=(counts[s.name]||0)+1;});
-    const entryText=String(entry||"");
+    const entryText=String(entry||""),previousIds=state.replaySummonIds instanceof Set?state.replaySummonIds:new Set(),currentIds=new Set(list.map(s=>String(s.key||s.name))),newIds=new Set([...currentIds].filter(id=>!previousIds.has(id)));
     const targetKey=list.map(s=>counts[s.name]>1?`${s.name} ${Number(s.order||1)}`:s.name).find(label=>entryText.includes(label))||list.find(s=>entryText.includes(s.name))?.name||"";
     const renderKey=list.map(s=>`${s.key||s.name}:${Number(s.hp||0)}:${Number(s.maxHp||0)}:${Number(s.attack||0)}`).join("|")+`>${targetKey}`;
     if(renderKey===state.replaySummonKey)return;
@@ -301,8 +304,17 @@
     host.innerHTML=list.length?`<small class="replay-summon-title">BOSS SUMMONS · ${list.length}</small><div>${list.map(s=>{
       const label=counts[s.name]>1?`${s.name} ${Number(s.order||1)}`:s.name;
       const targeted=entryText.includes(label)||entryText.includes(s.name);
-      return `<article class="replay-summon ${targeted?"targeted":""}"><span>${replaySummonIcon(s.name)}</span><div><b>${safe(label)}</b><small>⚔ ${compactNumber(s.attack)}</small><div class="replay-hp summon-hp"><i style="width:${hpPercent(s.hp,s.maxHp)}%"></i></div><em>${combatHpNumber(s.hp)} / ${combatHpNumber(s.maxHp)}</em></div></article>`;
+      const spawned=newIds.has(String(s.key||s.name));
+      return `<article class="replay-summon ${targeted?"targeted":""} ${spawned?"spawned":""}"><span>${replaySummonIcon(s.name)}</span><div><small>${spawned?"SUMMONED":"BOSS MINION"}</small><b>${safe(label)}</b><em>⚔ ${compactNumber(s.attack)}</em><div class="replay-hp summon-hp"><i style="width:${hpPercent(s.hp,s.maxHp)}%"></i></div><em>${combatHpNumber(s.hp)} / ${combatHpNumber(s.maxHp)}</em></div></article>`;
     }).join("")}</div>`:"";
+    state.replaySummonIds=currentIds;
+    if(newIds.size){host.classList.remove("summon-arrival");void host.offsetWidth;host.classList.add("summon-arrival");playGameSound("summon");}
+  }
+
+  function renderReplayBossStatuses(statuses){
+    const host=state.replayDom?.statuses||$("#replayBossStatuses");if(!host)return;
+    const list=Array.isArray(statuses)?statuses:[];host.hidden=!list.length;
+    host.innerHTML=list.map(status=>{const hasGauge=Number.isFinite(Number(status.current))&&Number.isFinite(Number(status.max)),percent=hasGauge?hpPercent(status.current,status.max):0;return `<article class="replay-boss-status"><span>${safe(status.icon||"✦")}</span><div><small>${safe(status.label||"보스 상태")} · ${safe(status.state||"")}</small><b>${safe(status.text||(hasGauge?`${combatHpNumber(status.current)} / ${combatHpNumber(status.max)}`:"활성"))}</b>${hasGauge?`<i><em style="width:${percent}%"></em></i>`:""}</div></article>`;}).join("");
   }
 
   function updateReplayFrame(frame){
@@ -341,14 +353,19 @@
     const bossBar=dom.bossBar||$("#replayBossHpBar"),bossHp=dom.bossHp||$("#replayBossHpText");
     if(bossBar)bossBar.style.width=hpPercent(frame.bossHp,frame.bossMaxHp)+"%";
     if(bossHp)bossHp.textContent=combatHpNumber(frame.bossHp)+" / "+combatHpNumber(frame.bossMaxHp);
+    const dimensionActive=!!frame.dimension?.active,activeDimension=String(frame.dimension?.activeGroup||"");
+    arena.classList.toggle("dimension-split",dimensionActive);arena.dataset.activeDimension=dimensionActive?activeDimension:"";
+    const dimensionLabel=dom.dimension||$("#battleDimensionState");if(dimensionLabel){dimensionLabel.hidden=!dimensionActive;dimensionLabel.innerHTML=dimensionActive?`<span class="${activeDimension==="A"?"active":""}">A차원 ${activeDimension==="A"?"· 행동":"· 대기"}</span><i>차원 단절</i><span class="${activeDimension==="B"?"active":""}">B차원 ${activeDimension==="B"?"· 행동":"· 대기"}</span>`:"";}
     (frame.fish||[]).forEach((fish,index)=>{
       const card=dom.fishCards?.[index]||$(`[data-replay-fish-index="${index}"]`),bar=dom.fishBars?.[index]||$(`[data-replay-fish-bar="${index}"]`),hp=dom.fishHp?.[index]||$(`[data-replay-fish-hp="${index}"]`);
       if(card)card.classList.toggle("down",Number(fish.hp)<=0);
       if(card)card.classList.toggle("attacking",index===attackerIndex);
+      if(card){card.classList.toggle("dimension-a",dimensionActive&&fish.dimensionGroup==="A");card.classList.toggle("dimension-b",dimensionActive&&fish.dimensionGroup==="B");card.classList.toggle("dimension-inactive",dimensionActive&&fish.dimensionGroup!==activeDimension);}
       if(bar)bar.style.width=hpPercent(fish.hp,fish.maxHp)+"%";
       if(hp)hp.textContent=combatHpNumber(fish.hp)+" / "+combatHpNumber(fish.maxHp);
     });
     renderReplaySummons(frame.summons, text);
+    renderReplayBossStatuses(frame.bossStatuses);
 
     if(isSkillResult){
       arena.classList.add("event-result");
@@ -384,7 +401,7 @@
 
   async function playBossBattleReplay(replay){
     const token=++state.battleReplayToken;
-    state.battleReplaySkip=false;
+    state.battleReplaySkip=false;state.battleReplayRunning=true;
     const frames=prepareBossReplayFrames(replay.frames);
     for(let i=0;i<frames.length;i++){
       if(token!==state.battleReplayToken||$("#modalOverlay")?.style.display==="none")return;
@@ -392,21 +409,21 @@
       updateReplayFrame(frames[i]);
       await sleep(Math.max(45,replayDelay(frames[i])/Math.max(1,state.battleReplaySpeed)));
     }
-    if(token===state.battleReplayToken)finishBossBattleReplay(replay);
+    if(token===state.battleReplayToken){state.battleReplayRunning=false;finishBossBattleReplay(replay);}
   }
 
   function openBossBattleReplay(replay){
     state.lastBattleReplay=replay;
-    state.battleReplaySpeed=2;
+    state.battleReplaySpeed=1;
     const first=replay.frames?.[0]||{bossHp:replay.boss.maxHp,bossMaxHp:replay.boss.maxHp,fish:[]};
     const party=(first.fish||[]).map((fish,index)=>`<article class="replay-fish ${gradeClass(fish.grade)} ${fishEvolutionClass(fish)}" data-replay-fish-index="${index}"><span>${fishIcon(fish)}</span><div><b>${safe(fish.name)} ${fishEvolutionBadge(fish)}</b><div class="replay-hp"><i data-replay-fish-bar="${index}" style="width:${hpPercent(fish.hp,fish.maxHp)}%"></i></div><small data-replay-fish-hp="${index}">${combatHpNumber(fish.hp)} / ${combatHpNumber(fish.maxHp)}</small></div></article>`).join("");
     const borderId=isProfileCosmeticUnlocked("border",profileCosmetics.border)?profileCosmetics.border:"",auraId=isProfileCosmeticUnlocked("aura",profileCosmetics.aura)?profileCosmetics.aura:"";
     const borderBoss=bossList.find(boss=>boss.id===borderId),auraBoss=bossList.find(boss=>boss.id===auraId),captainName=currentUser||"게스트 선장",captainTitle=currentUser?getCurrentTitle():"";
     const captainAvatar=borderBoss?bossSymbols[borderBoss.id]||"✦":"⚓",captainClasses=`profile-preview battle-player-avatar ${borderBoss?"has-profile-border":""} ${auraBoss?"has-profile-aura":""} ${getProfileAuraClass(auraBoss?.id)}`;
     const captainStyle=`--profile-border-color:${borderBoss?.color||"#4ee4ce"};--profile-aura-color:${auraBoss?.color||"#4ee4ce"}`;
-    openUiModal(`${replay.boss.name} · ${replay.boss.difficulty}`,`<div class="boss-battle-replay"><header class="battle-replay-head"><div><small>LIVE BOSS RAID</small><b id="battleTurnLabel">BATTLE START</b></div><div class="battle-speed"><button data-battle-speed="1">×1</button><button class="active" data-battle-speed="2">×2</button><button data-battle-speed="4">×4</button><button data-battle-skip>건너뛰기</button></div></header><section id="bossBattleArena" class="boss-battle-arena" data-boss-name="${safe(replay.boss.name)}" data-boss-symbol="${safe(bossSymbols[replay.boss.id]||"🐲")}"><div class="grade-attack-layer" aria-hidden="true"></div><div class="replay-boss-zone"><div class="replay-boss ${gradeClass(replay.boss.grade)}"><div class="replay-boss-symbol">${bossSymbols[replay.boss.id]||"🐲"}</div><div><small>${safe(replay.boss.grade)} · ${safe(replay.boss.difficulty)}</small><h2>${safe(replay.boss.name)}</h2><div class="replay-hp boss-hp"><i id="replayBossHpBar" style="width:${hpPercent(first.bossHp,first.bossMaxHp)}%"></i></div><b id="replayBossHpText">${combatHpNumber(first.bossHp)} / ${combatHpNumber(first.bossMaxHp)}</b></div></div><div id="replayBossSummons" class="replay-boss-summons"></div></div><div class="battle-versus">VS</div><div class="replay-player-zone"><div class="battle-player-card"><div class="${captainClasses}" style="${captainStyle}" data-aura-symbol="${safe(auraBoss?bossSymbols[auraBoss.id]||"✦":"")}"><span>${captainAvatar}</span></div><div><small>MY CAPTAIN · PARTY ${(first.fish||[]).length}</small><b>${safe(captainName)}</b><em>${safe(captainTitle?`[${captainTitle}]`:"칭호 없음")}</em></div></div><div class="replay-party">${party}</div></div><div id="battleActionCard" class="battle-action-card">전투가 시작됩니다.</div></section></div>`);
-    state.replaySummonKey="";state.lastActionHtml="";
-    state.replayDom={arena:$("#bossBattleArena"),action:$("#battleActionCard"),turnLabel:$("#battleTurnLabel"),bossBar:$("#replayBossHpBar"),bossHp:$("#replayBossHpText"),summons:$("#replayBossSummons"),fishCards:$$('[data-replay-fish-index]'),fishBars:$$('[data-replay-fish-bar]'),fishHp:$$('[data-replay-fish-hp]')};
+    openUiModal(`${replay.boss.name} · ${replay.boss.difficulty}`,`<div class="boss-battle-replay"><header class="battle-replay-head"><div><small>LIVE BOSS RAID</small><b id="battleTurnLabel">BATTLE START</b></div><div class="battle-speed"><button class="active" data-battle-speed="1">×1</button><button data-battle-speed="2">×2</button><button data-battle-speed="4">×4</button><button data-battle-skip>건너뛰기</button></div></header><section id="bossBattleArena" class="boss-battle-arena" data-boss-name="${safe(replay.boss.name)}" data-boss-symbol="${safe(bossSymbols[replay.boss.id]||"🐲")}"><div class="grade-attack-layer" aria-hidden="true"></div><div id="battleDimensionState" class="battle-dimension-state" hidden></div><div class="replay-boss-zone"><div class="replay-boss ${gradeClass(replay.boss.grade)}"><div class="replay-boss-symbol">${bossSymbols[replay.boss.id]||"🐲"}</div><div><small>${safe(replay.boss.grade)} · ${safe(replay.boss.difficulty)}</small><h2>${safe(replay.boss.name)}</h2><div class="replay-hp boss-hp"><i id="replayBossHpBar" style="width:${hpPercent(first.bossHp,first.bossMaxHp)}%"></i></div><b id="replayBossHpText">${combatHpNumber(first.bossHp)} / ${combatHpNumber(first.bossMaxHp)}</b></div></div><div id="replayBossStatuses" class="replay-boss-statuses" hidden></div><div id="replayBossSummons" class="replay-boss-summons"></div></div><div class="battle-versus">VS</div><div class="replay-player-zone"><div class="battle-player-card"><div class="${captainClasses}" style="${captainStyle}" data-aura-symbol="${safe(auraBoss?bossSymbols[auraBoss.id]||"✦":"")}"><span>${captainAvatar}</span></div><div><small>MY CAPTAIN · PARTY ${(first.fish||[]).length}</small><b>${safe(captainName)}</b><em>${safe(captainTitle?`[${captainTitle}]`:"칭호 없음")}</em></div></div><div class="replay-party">${party}</div></div><div id="battleActionCard" class="battle-action-card">전투가 시작됩니다.</div></section></div>`);
+    state.replaySummonKey="";state.replaySummonIds=new Set();state.lastActionHtml="";
+    state.replayDom={arena:$("#bossBattleArena"),action:$("#battleActionCard"),turnLabel:$("#battleTurnLabel"),bossBar:$("#replayBossHpBar"),bossHp:$("#replayBossHpText"),statuses:$("#replayBossStatuses"),dimension:$("#battleDimensionState"),summons:$("#replayBossSummons"),fishCards:$$('[data-replay-fish-index]'),fishBars:$$('[data-replay-fish-bar]'),fishHp:$$('[data-replay-fish-hp]')};
     playBossBattleReplay(replay);
   }
 
@@ -448,7 +465,7 @@
     if(won){playGameSound("victory");gameVibrate("victory");}
   }
   async function playPvpBattleReplay(replay){
-    const token=++state.pvpReplayToken;state.pvpReplaySkip=false;state.lastActionHtml="";
+    const token=++state.pvpReplayToken;state.pvpReplaySkip=false;state.pvpReplayRunning=true;state.lastActionHtml="";
     const intro=$("#pvpBattleIntro"),countdown=$("#pvpIntroCountdown");
     if(intro){
       for(let remaining=7;remaining>=1;remaining--){
@@ -469,13 +486,13 @@
       updatePvpReplayFrame(frame);
       await sleep(Math.max(55,base/Math.max(1,state.pvpReplaySpeed)));
     }
-    if(token===state.pvpReplayToken)finishPvpBattleReplay(replay);
+    if(token===state.pvpReplayToken){state.pvpReplayRunning=false;finishPvpBattleReplay(replay);}
   }
   function openPvpBattleReplay(replay){
     if(!replay||!Array.isArray(replay.frames)||!replay.frames.length)return showToast("재생할 1대1 전투 기록이 없습니다.");
-    state.lastPvpReplay=replay;state.pvpReplaySpeed=2;
+    state.lastPvpReplay=replay;state.pvpReplaySpeed=1;
     const mineSide=currentUser===replay.right?.name?"right":"left",enemySide=mineSide==="left"?"right":"left",mine=replay[mineSide]||{},enemy=replay[enemySide]||{},first=replay.frames[0],mineTeam=first[mineSide]||[],enemyTeam=first[enemySide]||[],mineProfile=pvpProfileVisual(mine.profile),enemyProfile=pvpProfileVisual(enemy.profile);
-    openUiModal("1대1 라이브 전투",`<div class="pvp-battle-replay"><header class="battle-replay-head"><div><small>LIVE PVP BATTLE</small><b id="pvpBattleTurnLabel">MATCH PREVIEW · 7</b></div><div class="battle-speed"><button data-pvp-battle-speed="1">×1</button><button class="active" data-pvp-battle-speed="2">×2</button><button data-pvp-battle-speed="4">×4</button><button data-pvp-battle-skip>건너뛰기</button></div></header><section id="pvpBattleArena" class="pvp-battle-arena is-intro"><div class="grade-attack-layer" aria-hidden="true"></div><div id="pvpBattleIntro" class="pvp-battle-intro"><header><small>PVP MATCH ANALYSIS</small><h2>출전 파티 비교</h2><p><strong id="pvpIntroCountdown">7</strong>초 후 교대 전투가 시작됩니다.</p></header><div class="pvp-intro-matchup">${pvpIntroTeamHtml(mineTeam,mine.name,"MY TEAM")}<strong>VS</strong>${pvpIntroTeamHtml(enemyTeam,enemy.name,"RIVAL TEAM")}</div><i class="pvp-intro-timer"></i></div><section class="pvp-battle-side ally"><div class="battle-player-card"><div class="${mineProfile.classes}" style="${mineProfile.style}" data-aura-symbol="${safe(mineProfile.aura)}"><span>${mineProfile.avatar}</span></div><div><small>MY CAPTAIN</small><b>${safe(mine.name||"나")}</b><em>${safe(mine.title?`[${mine.title}]`:"칭호 없음")}</em></div></div><div class="pvp-live-team">${pvpReplayTeamHtml(mineTeam,mineSide)}</div></section><div class="battle-versus">VS</div><section class="pvp-battle-side enemy"><div class="battle-player-card rival"><div class="${enemyProfile.classes}" style="${enemyProfile.style}" data-aura-symbol="${safe(enemyProfile.aura)}"><span>${enemyProfile.avatar}</span></div><div><small>RIVAL CAPTAIN</small><b>${safe(enemy.name||"상대")}</b><em>${safe(enemy.title?`[${enemy.title}]`:"칭호 없음")}</em></div></div><div class="pvp-live-team">${pvpReplayTeamHtml(enemyTeam,enemySide)}</div></section><div id="pvpBattleAction" class="battle-action-card">한 마리씩 번갈아 공격합니다.</div></section></div>`);
+    openUiModal("1대1 라이브 전투",`<div class="pvp-battle-replay"><header class="battle-replay-head"><div><small>LIVE PVP BATTLE</small><b id="pvpBattleTurnLabel">MATCH PREVIEW · 7</b></div><div class="battle-speed"><button class="active" data-pvp-battle-speed="1">×1</button><button data-pvp-battle-speed="2">×2</button><button data-pvp-battle-speed="4">×4</button><button data-pvp-battle-skip>건너뛰기</button></div></header><section id="pvpBattleArena" class="pvp-battle-arena is-intro"><div class="grade-attack-layer" aria-hidden="true"></div><div id="pvpBattleIntro" class="pvp-battle-intro"><header><small>PVP MATCH ANALYSIS</small><h2>출전 파티 비교</h2><p><strong id="pvpIntroCountdown">7</strong>초 후 교대 전투가 시작됩니다.</p></header><div class="pvp-intro-matchup">${pvpIntroTeamHtml(mineTeam,mine.name,"MY TEAM")}<strong>VS</strong>${pvpIntroTeamHtml(enemyTeam,enemy.name,"RIVAL TEAM")}</div><i class="pvp-intro-timer"></i></div><section class="pvp-battle-side ally"><div class="battle-player-card"><div class="${mineProfile.classes}" style="${mineProfile.style}" data-aura-symbol="${safe(mineProfile.aura)}"><span>${mineProfile.avatar}</span></div><div><small>MY CAPTAIN</small><b>${safe(mine.name||"나")}</b><em>${safe(mine.title?`[${mine.title}]`:"칭호 없음")}</em></div></div><div class="pvp-live-team">${pvpReplayTeamHtml(mineTeam,mineSide)}</div></section><div class="battle-versus">VS</div><section class="pvp-battle-side enemy"><div class="battle-player-card rival"><div class="${enemyProfile.classes}" style="${enemyProfile.style}" data-aura-symbol="${safe(enemyProfile.aura)}"><span>${enemyProfile.avatar}</span></div><div><small>RIVAL CAPTAIN</small><b>${safe(enemy.name||"상대")}</b><em>${safe(enemy.title?`[${enemy.title}]`:"칭호 없음")}</em></div></div><div class="pvp-live-team">${pvpReplayTeamHtml(enemyTeam,enemySide)}</div></section><div id="pvpBattleAction" class="battle-action-card">한 마리씩 번갈아 공격합니다.</div></section></div>`);
     const sideElements=side=>({cards:$$(`[data-pvp-replay-fish^="${side}-"]`),bars:$$(`[data-pvp-replay-bar^="${side}-"]`),hp:$$(`[data-pvp-replay-hp^="${side}-"]`)}),mineElements=sideElements(mineSide),enemyElements=sideElements(enemySide);
     state.pvpReplayDom={arena:$("#pvpBattleArena"),action:$("#pvpBattleAction"),turnLabel:$("#pvpBattleTurnLabel"),mineSide,enemySide,enemyAttackEffect:cosmeticGrades[enemyProfile.attackEffect]?enemyProfile.attackEffect:"",mineCards:mineElements.cards,mineBars:mineElements.bars,mineHp:mineElements.hp,enemyCards:enemyElements.cards,enemyBars:enemyElements.bars,enemyHp:enemyElements.hp};
     playPvpBattleReplay(replay);
@@ -519,7 +536,7 @@
     if(location.hostname!=="127.0.0.1")return;
     const params=new URLSearchParams(location.search);
     if(!params.has("fusionDemo")&&!params.has("presetDemo"))return;
-    const makeDemoFish=(id,name,grade,attack,hp,price,stage=0,count=0)=>({id,name,grade,size:null,price,locked:false,time:"로컬 UI 검사",combat:{attack,hp,maxHp:hp,dodge:18,critRate:32,critDamage:260,_baseAttack:attack,_baseMaxHp:hp,_baseCritDamage:260,status:"정상",combatVersion:15,hpBalanceVersion:1,stars:{attack:1,hp:1,dodge:0,critRate:1,critDamage:1}},fusion:count||stage?{count,evolutionStage:stage,hpBalanceVersion:1,permanentAttack:attack,permanentMaxHp:hp,totalAttackGain:0,totalHpGain:0,totalGoldSpent:0}:undefined});
+    const makeDemoFish=(id,name,grade,attack,hp,price,stage=0,count=0)=>({id,name,grade,size:null,price,locked:false,time:"로컬 UI 검사",combat:{attack,hp,maxHp:hp,dodge:18,critRate:32,critDamage:260,_baseAttack:attack,_baseMaxHp:hp,_baseCritDamage:260,status:"정상",combatVersion:16,hpBalanceVersion:1,voidStatBalanceVersion:1,stars:{attack:1,hp:1,dodge:0,critRate:1,critDamage:1}},fusion:count||stage?{count,evolutionStage:stage,hpBalanceVersion:1,voidStatBalanceVersion:1,permanentAttack:attack,permanentMaxHp:hp,totalAttackGain:0,totalHpGain:0,totalGoldSpent:0}:undefined});
     bucket=[makeDemoFish("demo-main","해신룡","영원",1000000,5000000,1000000000,0,2),makeDemoFish("demo-mat-1","해신룡","영원",600000,3000000,1000000000),makeDemoFish("demo-mat-2","해신룡","영원",750000,3600000,1000000000),makeDemoFish("demo-mat-3","해신룡","영원",920000,4100000,1000000000),makeDemoFish("demo-evo","바다를 삼킨 태양","공허",2400000,12000000,5000000000,3,18),makeDemoFish("demo-party","휘몰아치는 마음","초월",480000,2400000,500000000)];
     if(params.has("newCatchDemo"))bucket[bucket.length-1].isNewCatch=true;
     currentUser="로컬테스터";money=1000000000000;fusionMainFishId="demo-main";fusionMainFishIds={"해신룡":"demo-main","바다를 삼킨 태양":"demo-evo"};partyPresets={boss:["demo-evo"],pvp:["demo-party"]};
@@ -742,6 +759,29 @@
       </button>`).join("");
   }
 
+  function openRecentCatches(){
+    const recent=bucket.map((fish,originalIndex)=>({fish,originalIndex})).slice(-10).reverse(),cards=recent.map(({fish,originalIndex},index)=>`<button type="button" class="recent-catch-item ${gradeClass(fish.grade)} ${fishEvolutionClass(fish)}" data-recent-bucket-index="${originalIndex}"><span>${fishIcon(fish)}</span><div><b>${safe(fish.name)}${fish.isNewCatch?` <i class="new-catch-badge">NEW</i>`:""}</b><small>${safe(fish.grade)} · ${safe(fish.time||"최근 획득")}</small></div><em>${index+1}회 전</em></button>`).join("");
+    openUiModal("최근 잡은 물고기",`<div class="game-dialog recent-catch-dialog"><div class="dialog-summary"><div><small>RECENT CATCH</small><b>최근 기록 ${recent.length} / 10</b><p>물고기를 누르면 상세 능력치를 확인할 수 있습니다.</p></div><span>🎣</span></div><div class="recent-catch-grid">${cards||`<div class="recent-catch-empty">최근 낚시 기록이 없습니다.</div>`}</div></div>`);
+  }
+
+  function openSaleConfirmation(displayNumber){
+    const idx=getBucketIndexByDisplayNumber(Number(displayNumber)),fish=bucket[idx];if(!fish)return showToast("물고기를 찾을 수 없습니다.");
+    if(fish.locked)return showToast("잠금된 물고기는 판매할 수 없습니다.");
+    const finalPrice=applyMarketPrice(fish);
+    openUiModal("판매 확인",`<div class="game-dialog confirm-sale-dialog"><div class="dialog-summary ${gradeClass(fish.grade)}"><div><small>SELL FISH</small><b>${safe(fish.name)}</b><p>${safe(fish.grade)} · 판매 금액 ${safe(formatMoney(finalPrice))}</p></div><span>${fishIcon(fish)}</span></div><div class="confirm-danger"><b>정말 판매할까요?</b><p>판매한 물고기는 되돌릴 수 없습니다.${isFishInPartyPreset(fish)?" 파티 프리셋에서도 제거됩니다.":""}</p></div><div class="dialog-actions"><button class="danger" data-confirm-sell="${Number(displayNumber)}">${safe(formatMoney(finalPrice))}에 판매</button><button onclick="closeModal()">취소</button></div></div>`);
+  }
+
+  function openBulkSaleConfirmation(){
+    const sellable=bucket.filter(f=>!f.locked),total=sellable.reduce((sum,f)=>sum+applyMarketPrice(f),0),protectedCount=bucket.length-sellable.length;
+    if(!sellable.length)return showToast(bucket.length?"판매 가능한 물고기가 없습니다.":"양동이가 비어 있습니다.");
+    openUiModal("일괄판매 확인",`<div class="game-dialog confirm-sale-dialog"><div class="dialog-summary"><div><small>BULK SELL</small><b>${sellable.length.toLocaleString()}마리 일괄판매</b><p>잠금 물고기 ${protectedCount.toLocaleString()}마리는 안전하게 제외됩니다.</p></div><span>🪙</span></div><div class="confirm-danger"><b>정말 모두 판매할까요?</b><p>판매 대상에 포함된 프리셋 물고기도 함께 제거되며 되돌릴 수 없습니다.</p></div><div class="sale-total-preview"><small>예상 판매 금액</small><strong>${safe(formatMoney(total))}</strong></div><div class="dialog-actions"><button class="danger" data-confirm-bulk-sell>${safe(formatMoney(total))}에 일괄판매</button><button onclick="closeModal()">취소</button></div></div>`);
+  }
+
+  function showSaleResult({count=1,total=0,fish=null}={}){
+    closeModal(true);const card=document.createElement("div");card.className="sale-result-pop";card.innerHTML=`<span>${fish?fishIcon(fish):"🪙"}</span><div><small>${count>1?`${Number(count).toLocaleString()}마리 판매 완료`:safe(fish?.name||"판매 완료")}</small><b>+${safe(formatMoney(total))}</b></div>`;document.body.appendChild(card);requestAnimationFrame(()=>card.classList.add("show"));setTimeout(()=>{card.classList.remove("show");setTimeout(()=>card.remove(),260);},2300);state.bucketKey="";renderAll(true);
+  }
+  globalThis.showFishingLifeSaleResult=showSaleResult;
+
   function bucketRenderKey() {
     return `${bucket.length}|${bucketSortOrder}|${fusionMainFishId}|${Object.values(fusionMainFishIds||{}).join(",")}|${bucket[0]?.id||""}|${bucket[bucket.length-1]?.id||""}`;
   }
@@ -865,7 +905,7 @@
       const alreadyScaled=String(baseBoss.skillName||"")&&rawTitle.startsWith(String(baseBoss.skillName));
       const title=rawTitle.replace(/\((\d+(?:\.\d+)?)%\)/g,(_match,rate)=>`(${Number((Number(rate)*(alreadyScaled?1:multiplier)).toFixed(2)).toLocaleString()}%)`);
       const body=lines.join("\n").replace(/^(.+?)\s+(\d+(?:\.\d+)?)%(\s*:)/gm,(_match,name,rate,suffix)=>`${name} ${Number((Number(rate)*multiplier).toFixed(2)).toLocaleString()}%${suffix}`);
-      const passive=/^(패시브|크레이지 진화)/.test(rawTitle)||(!/\(\d+(?:\.\d+)?%\)/.test(rawTitle)&&category!=="skill");
+      const passive=/^(패시브|크레이지 진화|크레이지 전용)/.test(rawTitle)||(!/\(\d+(?:\.\d+)?%\)/.test(rawTitle)&&category!=="skill");
       cards.push(`<article class="boss-intel-card ${passive?"passive":"skill"}"><small>${passive?"PASSIVE":"BOSS SKILL"}</small><b>${safe(title)}</b><p>${safe(body).replace(/\n/g,"<br>")}</p></article>`);
     });
     const crazyName=baseBoss.crazySkillName||CRAZY_BOSS_SKILL_NAMES[baseBoss.id]||"크레이지 궁극기";
@@ -1029,6 +1069,9 @@
       const incoming = active.requester !== currentUser;
       return openUiModal("1대1 대전", `<div class="game-dialog"><div class="dialog-summary"><div><small>대전 신청 ${incoming ? "도착" : "전송 완료"}</small><b>VS ${safe(active.opponent || "상대")}</b></div><span>⚔️</span></div><div class="dialog-actions">${incoming ? `<button class="primary" data-pvp-accept>수락</button><button data-pvp-reject>거절</button>` : ""}<button data-pvp-cancel>대전 취소</button></div></div>`);
     }
+    if(active.status==="accepted"&&active.ready){
+      return openUiModal("대전 준비 완료",`<div class="game-dialog pvp-ready-dialog"><div class="dialog-summary"><div><small>MATCH READY</small><b>VS ${safe(active.opponent||"상대")}</b><p>내 출전 파티 준비가 끝났습니다. 상대가 준비를 마치면 자동으로 전투가 시작됩니다.</p></div><span>✅</span></div><div class="pvp-ready-pulse"><i></i><b>상대 준비 대기 중</b><small>이 화면을 닫지 않아도 결과가 자동으로 표시됩니다.</small></div><div class="dialog-actions"><button data-pvp-cancel>대전 취소</button></div></div>`);
+    }
     const sortedPvpBucket=sortedBucketList(),pvpDisplayNumberMap=new Map(sortedPvpBucket.map((entry,index)=>[entry.originalIndex,index+1])),gradeRank=Object.fromEntries(grades.map((grade,index)=>[grade.name,index]));
     const list=bucket.map((fish,originalIndex)=>{if(!fish||fish.grade==="쓰레기")return null;const combat=ensureCombatStats(fish),power=combat.attack*(1+combat.critRate/100*Math.max(0,combat.critDamage/100-1))+combat.maxHp*.2;return {fish,originalIndex,combat,power};}).filter(Boolean).sort((a,b)=>{
       if(state.pvpPartySortOrder==="공격력")return b.combat.attack-a.combat.attack||b.originalIndex-a.originalIndex;
@@ -1043,6 +1086,7 @@
     const sortButtons=["전투력","공격력","체력","등급","최근 획득"].map(order=>`<button data-pvp-party-sort="${order}" class="${state.pvpPartySortOrder===order?"active":""}">${order}</button>`).join(""),more=list.length>visibleIds.size?`<button class="boss-party-more" data-pvp-party-more>물고기 더 보기 · ${visibleIds.size.toLocaleString()} / ${list.length.toLocaleString()}</button>`:"";
     openUiModal("1대1 대전", `<div class="game-dialog"><div class="dialog-summary"><div><small>VS ${safe(active.opponent || "상대")}</small><b>출전 파티 ${pvpPrepIndexes.length} / 3</b></div><span>⚔️</span></div><div class="party-preset-quick"><div><small>저장 파티</small><b>PVP 프리셋 ${partyPresets.pvp.length} / 3</b></div><button data-party-preset-load="pvp" ${partyPresets.pvp.length?"":"disabled"}>${partyPresets.pvp.length?"PVP 프리셋 불러오기":"저장된 프리셋 없음"}</button></div><div class="boss-party-sort"><small>출전 물고기 정렬</small><div>${sortButtons}</div></div><div class="boss-party-list">${fishCards}</div>${more}<div class="dialog-actions"><button class="primary" data-pvp-ready>준비 완료</button><button data-pvp-cancel>대전 취소</button></div></div>`);
   }
+  globalThis.openPvpPanel=openPvpPanel;
 
   function fusionProgressHtml(fish){
     const count=getFishFusionCount(fish),stage=getFishEvolutionStage(fish),progress=Math.min(100,count/15*100);
@@ -1120,8 +1164,9 @@
     if(!currentUser)return openUiModal("송금·물고기 전송",`<div class="game-dialog"><div class="dialog-summary"><div><small>SAFE TRANSFER</small><b>로그인이 필요합니다.</b><p>로그인 후 다른 선장에게 골드나 물고기를 보낼 수 있습니다.</p></div><span>🎁</span></div></div>`);
     const tabs=`<div class="transfer-tabs"><button data-transfer-tab="money" class="${type==="money"?"active":""}">💰 송금</button><button data-transfer-tab="fish" class="${type==="fish"?"active":""}">🐟 물고기 전송</button></div>`;
     if(type==="money")return openUiModal("송금·물고기 전송",`<div class="game-dialog transfer-dialog"><div class="dialog-summary"><div><small>SAFE MONEY TRANSFER</small><b>보유 골드 ${safe(formatMoney(money))}</b><p>서버에서 받는 사람과 잔액을 다시 확인한 뒤 한 번에 처리합니다.</p></div><span>💸</span></div>${tabs}<div class="dialog-form transfer-form"><label for="transferNickname">받는 사람 닉네임</label><input id="transferNickname" maxlength="16" autocomplete="off" placeholder="닉네임"><label for="transferAmount">송금할 금액</label><input id="transferAmount" inputmode="numeric" autocomplete="off" placeholder="1 이상의 정수"><p class="transfer-warning">거래가 완료되면 직접 되돌릴 수 없습니다. 닉네임과 금액을 확인해주세요.</p><button data-money-transfer>송금하기</button></div></div>`);
-    const options=sortedBucketList().map((entry,index)=>{const fish=entry.fish,blocked=fish.locked||isFusionMainFish(fish),reason=fish.locked?"잠금":isFusionMainFish(fish)?"합성 본체":"";return `<option value="${index+1}" ${blocked?"disabled":""}>${index+1}번 · [${safe(fish.grade)}] ${safe(fish.name)}${reason?` · ${reason}`:""}</option>`;}).join("");
-    return openUiModal("송금·물고기 전송",`<div class="game-dialog transfer-dialog"><div class="dialog-summary"><div><small>SAFE FISH TRANSFER</small><b>보유 물고기 ${bucket.length.toLocaleString()}마리</b><p>잠금 물고기와 합성 본체는 보호를 위해 전송할 수 없습니다.</p></div><span>🐟</span></div>${tabs}<div class="dialog-form transfer-form"><label for="fishTransferNickname">받는 사람 닉네임</label><input id="fishTransferNickname" maxlength="16" autocomplete="off" placeholder="닉네임"><label for="transferFishNumber">전송할 물고기</label><select id="transferFishNumber"><option value="">물고기를 선택하세요</option>${options}</select><p class="transfer-warning">전송받은 물고기는 원래 능력치·진화·합성 수치·현재 체력을 그대로 유지합니다.</p><button data-fish-transfer ${options?"":"disabled"}>물고기 전송하기</button></div></div>`);
+    const eligible=sortedBucketList().filter(entry=>!entry.fish.locked&&!isFusionMainFish(entry.fish)),eligibleIds=new Set(eligible.map(entry=>String(entry.fish.id)));state.transferFishIds=state.transferFishIds.filter(id=>eligibleIds.has(String(id)));
+    const visible=eligible.slice(0,state.transferVisibleCount),cards=visible.map(entry=>{const fish=entry.fish,selected=state.transferFishIds.includes(String(fish.id)),c=ensureCombatStats(fish);return `<button type="button" class="transfer-fish-choice ${gradeClass(fish.grade)} ${selected?"selected":""}" data-transfer-fish-id="${safe(fish.id)}"><span>${fishIcon(fish)}</span><div><b>${safe(fish.name)}</b><small>${safe(fish.grade)} · ⚔ ${compactNumber(c.attack)} · ❤️ ${compactNumber(c.maxHp)}</small></div><em>${selected?"선택됨":"선택"}</em></button>`;}).join(""),more=visible.length<eligible.length?`<button type="button" class="boss-party-more" data-transfer-fish-more>물고기 더 보기 · ${visible.length.toLocaleString()} / ${eligible.length.toLocaleString()}</button>`:"";
+    return openUiModal("송금·물고기 전송",`<div class="game-dialog transfer-dialog"><div class="dialog-summary"><div><small>SAFE FISH TRANSFER</small><b>다중 선택 ${state.transferFishIds.length.toLocaleString()}마리</b><p>잠금 물고기와 합성 본체는 보호를 위해 목록에서 제외됩니다.</p></div><span>🐟</span></div>${tabs}<div class="dialog-form transfer-form"><label for="fishTransferNickname">받는 사람 닉네임</label><input id="fishTransferNickname" maxlength="16" autocomplete="off" placeholder="닉네임" value="${safe(state.transferTarget)}"><div class="transfer-fish-heading"><label>전송할 물고기</label><b>${state.transferFishIds.length.toLocaleString()}마리 선택</b></div><div class="transfer-fish-list">${cards||`<div class="fusion-empty">전송 가능한 물고기가 없습니다.</div>`}</div>${more}<p class="transfer-warning">선택한 물고기는 한 번의 안전한 거래로 전송되며 능력치·진화·합성·현재 체력을 유지합니다.</p><button data-fish-transfer ${state.transferFishIds.length?"":"disabled"}>선택한 ${state.transferFishIds.length.toLocaleString()}마리 전송하기</button></div></div>`);
   }
   async function submitMoneyTransfer(button){
     if(button.disabled)return;
@@ -1133,13 +1178,30 @@
   async function submitFishTransfer(button){
     if(button.disabled)return;
     button.disabled=true;button.textContent="전송 처리 중…";
-    const result=await sendFish($("#fishTransferNickname")?.value,$("#transferFishNumber")?.value);
-    if(result?.ok){state.bucketKey="";renderAll(true);showToast(result.message);return openTransferHub("fish");}
+    state.transferTarget=$("#fishTransferNickname")?.value||state.transferTarget;
+    const result=await sendFishBatch(state.transferTarget,state.transferFishIds);
+    if(result?.ok){state.bucketKey="";state.transferFishIds=[];renderAll(true);showToast(result.message);return openTransferHub("fish");}
     if(document.body.contains(button)){button.disabled=false;button.textContent="물고기 전송하기";}
   }
   function openMessageForm() {
     openUiModal("메시지 보내기", `<div class="game-dialog"><div class="dialog-summary"><div><small>DIRECT MESSAGE</small><b>친구에게 메시지를 보냅니다</b></div><span>💌</span></div><div class="dialog-form"><label for="messageNickname">받는 사람 닉네임</label><input id="messageNickname" maxlength="12" placeholder="닉네임"><label for="messageText">메시지</label><input id="messageText" maxlength="300" placeholder="보낼 내용을 입력하세요"><button data-message-send>메시지 보내기</button></div></div>`);
   }
+  function inboxMessageText(item){
+    if(item.type==="money")return `${Number(item.amount||0).toLocaleString()}원을 송금했습니다.`;
+    if(item.type==="fish"){const names=(item.fishNames||[]).slice(0,3).map(displayFishName),more=Math.max(0,Number(item.count||names.length)-names.length);return `물고기 ${Number(item.count||names.length).toLocaleString()}마리를 보냈습니다.${names.length?`\n${names.join(", ")}${more?` 외 ${more}마리`:""}`:""}`;}
+    return safeMessageText(item.text||"내용이 없는 메시지입니다.");
+  }
+  function renderInboxBadge(){const badge=$("#inboxUnreadBadge"),count=(messages||[]).filter(item=>item&&item.read!==true).length;if(!badge)return;badge.hidden=count<=0;badge.textContent=count>99?"99+":String(count);}
+  function openInbox(){
+    if(!currentUser)return openUiModal("받은 소식",`<div class="game-dialog"><div class="dialog-summary"><div><small>INBOX</small><b>로그인이 필요합니다.</b></div><span>📬</span></div></div>`);
+    const list=[...(messages||[])].sort((a,b)=>Number(b.createdAtMillis||0)-Number(a.createdAtMillis||0)),unread=list.filter(item=>item.read!==true).length;
+    const cards=list.map(item=>{const sender=formatUserName(item.from||"알 수 없음",item.fromTitle||""),icon=item.type==="money"?"💰":item.type==="fish"?"🐟":"💌";return `<article class="inbox-message ${item.read===true?"read":"unread"}"><span>${icon}</span><div><small>${safe(formatDateTime(item.createdAtMillis||Date.now()))}</small><h3>${safe(sender)}</h3><p>${safe(inboxMessageText(item)).replace(/\n/g,"<br>")}</p></div><button data-inbox-read="${safe(item.id||"")}" ${item.read===true?"disabled":""}>${item.read===true?"확인함":"확인"}</button></article>`;}).join("");
+    openUiModal("받은 소식",`<div class="game-dialog inbox-dialog"><div class="dialog-summary"><div><small>CAPTAIN INBOX</small><b>읽지 않은 소식 ${unread.toLocaleString()}개</b><p>메시지·송금·물고기 선물 기록은 직접 확인할 때까지 남아 있습니다.</p></div><span>📬</span></div><div class="inbox-actions"><button data-inbox-read-all ${unread?"":"disabled"}>모두 확인</button></div><div class="inbox-list">${cards||`<div class="fusion-empty">도착한 소식이 없습니다.</div>`}</div></div>`);
+  }
+  function markInboxRead(id=""){
+    let changed=false;(messages||[]).forEach(item=>{if(item&&item.read!==true&&(!id||String(item.id||"")===String(id))){item.read=true;changed=true;}});if(changed){saveGame();if(currentUser)saveCloudData().catch(console.error);}renderInboxBadge();openInbox();
+  }
+  globalThis.showFishingLifeInboxNotice=count=>{renderInboxBadge();showToast(`읽지 않은 소식이 ${Number(count||0).toLocaleString()}개 있습니다.`);};
   async function sendDirectMessage(targetNickname, messageText) {
     if (!currentUser) return showToast("로그인 후 사용할 수 있습니다.");
     targetNickname = cleanNickname(targetNickname); messageText = safeMessageText(messageText);
@@ -1150,8 +1212,8 @@
     try {
       const targetRef = db.collection("users").doc(targetNickname), targetSnap = await targetRef.get();
       if (!targetSnap.exists) throw new Error("TARGET_NOT_FOUND");
-      const payload = {id:`msg_${Date.now()}_${Math.random().toString(36).slice(2)}`,from:currentUser,fromTitle:getCurrentTitle(),text:messageText,createdAtMillis:Date.now()};
-      await db.runTransaction(async tx => { const snap=await tx.get(targetRef); if(!snap.exists) throw new Error("TARGET_NOT_FOUND"); const data=snap.data(),targetMessages=[...(data.gameState?.messages || []),payload]; tx.set(targetRef,{cloudRevision:Number(data.cloudRevision||0)+1,gameState:{...(data.gameState||{}),messages:targetMessages},updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true}); });
+      const payload = {id:`msg_${Date.now()}_${Math.random().toString(36).slice(2)}`,type:"message",read:false,from:currentUser,fromTitle:getCurrentTitle(),text:messageText,createdAtMillis:Date.now()};
+      await db.runTransaction(async tx => { const snap=await tx.get(targetRef); if(!snap.exists) throw new Error("TARGET_NOT_FOUND"); const data=snap.data(),targetMessages=[...(data.gameState?.messages || [])].slice(-99);targetMessages.push(payload);tx.set(targetRef,{cloudRevision:Number(data.cloudRevision||0)+1,gameState:{...(data.gameState||{}),messages:targetMessages},updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true}); });
       await db.collection("serverAlerts").add({type:"userMessage",from:currentUser,fromTitle:getCurrentTitle(),to:targetNickname,text:messageText,messageId:payload.id,createdAt:firebase.firestore.FieldValue.serverTimestamp(),createdAtMillis:payload.createdAtMillis});
       closeModal(); showToast(`${targetNickname} 님에게 메시지를 보냈습니다.`);
     } catch (error) { console.error(error); showToast(error.message === "TARGET_NOT_FOUND" ? "존재하지 않는 닉네임입니다." : "메시지를 보내지 못했습니다."); }
@@ -1177,6 +1239,7 @@
     try {
       syncOwnedFishTrainingBonuses();
       renderHeader();
+      renderInboxBadge();
       if(state.activeView==="fishingView")renderFishing();
       else if(state.activeView==="bucketView")renderBucket(force);
       else if(state.activeView==="collectionView")renderCollection(force);
@@ -1195,7 +1258,7 @@
   }
 
   function handleUiAction(action) {
-    const map = {market:openMarket,fishCollection:openFishCollection,coreCollection:openCoreCollection,bossParty:()=>openBossParty(),ranking:openRanking,myInfo:openMyInfo,battleHistory:()=>openBattleHistory(),wallet:openWallet,achievements:openAchievements,titles:openTitles,cosmetics:openCosmetics,settings:openSettings,pvp:openPvpPanel,presets:openPresets,fusion:openFusionLab,transfer:()=>openTransferHub(),message:openMessageForm};
+    const map = {market:openMarket,fishCollection:openFishCollection,coreCollection:openCoreCollection,bossParty:()=>openBossParty(),ranking:openRanking,myInfo:openMyInfo,battleHistory:()=>openBattleHistory(),wallet:openWallet,achievements:openAchievements,titles:openTitles,cosmetics:openCosmetics,settings:openSettings,pvp:openPvpPanel,presets:openPresets,fusion:openFusionLab,transfer:()=>openTransferHub(),inbox:openInbox,message:openMessageForm};
     map[action]?.();
   }
 
@@ -1221,6 +1284,8 @@
     const quickPresetButton=event.target.closest("[data-party-preset-load]");
     if(quickPresetButton&&!quickPresetButton.disabled){const type=quickPresetButton.dataset.partyPresetLoad,result=applyPartyPreset(type);if(!result.ok)return showToast(result.message);showToast(`${type==="boss"?"보스":"PVP"} 프리셋 ${result.count}마리를 불러왔습니다.${result.skipped?` 기절·HP 0 ${result.skipped}마리 제외`:""}`);return type==="boss"?openBossParty():openPvpPanel();}
     const transferTab=event.target.closest("[data-transfer-tab]");if(transferTab)return openTransferHub(transferTab.dataset.transferTab);
+    const transferFishChoice=event.target.closest("[data-transfer-fish-id]");if(transferFishChoice){state.transferTarget=$("#fishTransferNickname")?.value||state.transferTarget;const id=String(transferFishChoice.dataset.transferFishId),pos=state.transferFishIds.indexOf(id);if(pos>=0)state.transferFishIds.splice(pos,1);else state.transferFishIds.push(id);return openTransferHub("fish");}
+    if(event.target.closest("[data-transfer-fish-more]")){state.transferTarget=$("#fishTransferNickname")?.value||state.transferTarget;state.transferVisibleCount+=30;return openTransferHub("fish");}
     const moneyTransferButton=event.target.closest("[data-money-transfer]");if(moneyTransferButton)return submitMoneyTransfer(moneyTransferButton);
     const fishTransferButton=event.target.closest("[data-fish-transfer]");if(fishTransferButton)return submitFishTransfer(fishTransferButton);
     const feedbackToggle=event.target.closest("[data-feedback-toggle]");
@@ -1248,13 +1313,18 @@
     const commandButton = event.target.closest("[data-game-command]"); if (commandButton) { await runGameCommand(commandButton.dataset.gameCommand); if ($("#modalOverlay").style.display === "block" && commandButton.closest(".modalBody")) closeModal(); return; }
     const sortButton = event.target.closest("[data-sort]"); if (sortButton) return runGameCommand(`정렬 ${sortButton.dataset.sort}`);
     const recentFishButton = event.target.closest("[data-recent-bucket-index]"); if (recentFishButton) return openFishDetailByBucketIndex(Number(recentFishButton.dataset.recentBucketIndex));
+    if(event.target.closest("[data-recent-catches-all]"))return openRecentCatches();
+    if(event.target.closest("[data-bulk-sell]"))return openBulkSaleConfirmation();
+    const confirmSell=event.target.closest("[data-confirm-sell]");if(confirmSell){sellOne(Number(confirmSell.dataset.confirmSell),true);return;}
+    if(event.target.closest("[data-confirm-bulk-sell]")){sellAll(true);return;}
     const fishButton = event.target.closest("[data-fish-action]");
     if (fishButton) {
       const no=fishButton.dataset.number, action=fishButton.dataset.fishAction;
       if(action==="info") return openFishDetail(no);
       if(action==="fusion"){const idx=getBucketIndexByDisplayNumber(Number(no)),fish=bucket[idx],main=getFusionMainFishForName(fish?.name);if(main){setFusionMainFish(main.id);return openFusionLab();}return openFusionMainPicker(fish?.name||"");}
       if(action==="fusionMain"){const idx=getBucketIndexByDisplayNumber(Number(no)),fish=bucket[idx],result=setFusionMainFish(fish?.id);if(!result.ok)return showToast(result.message);state.fusionMaterialIds=[];state.bucketKey="";renderAll(true);showToast(`${result.fish.name}을 합성 본체로 설정했습니다.`);return openFusionLab();}
-      return runGameCommand(`${action==="lock" ? (fishButton.textContent.includes("해제") ? "잠금해제" : "잠금") : "판매"} ${no}`);
+      if(action==="sell")return openSaleConfirmation(no);
+      return runGameCommand(`${fishButton.textContent.includes("해제") ? "잠금해제" : "잠금"} ${no}`);
     }
     const bossButton = event.target.closest("[data-boss-index]"); if (bossButton && !bossButton.disabled) return openBossParty(bossButton.dataset.bossIndex);
     const difficultyButton=event.target.closest("[data-boss-difficulty]"); if(difficultyButton&&!difficultyButton.disabled){selectBossDifficulty(difficultyButton.dataset.bossDifficulty,true);return openBossParty();}
@@ -1270,6 +1340,8 @@
     if(event.target.closest("[data-boss-confirm]")){ runBossBattle(); return; }
     const titleButton=event.target.closest("[data-title-index]"); if(titleButton){ equipTitle(titleButton.dataset.titleIndex); return openTitles(); }
     if(event.target.closest("[data-message-send]")) return sendDirectMessage($("#messageNickname").value,$("#messageText").value);
+    const inboxRead=event.target.closest("[data-inbox-read]");if(inboxRead)return markInboxRead(inboxRead.dataset.inboxRead);
+    if(event.target.closest("[data-inbox-read-all]"))return markInboxRead("");
     const pvpPartySort=event.target.closest("[data-pvp-party-sort]");if(pvpPartySort){state.pvpPartySortOrder=pvpPartySort.dataset.pvpPartySort;state.pvpVisibleCount=30;return openPvpPanel();}
     if(event.target.closest("[data-pvp-party-more]")){state.pvpVisibleCount+=30;return openPvpPanel();}
     if(event.target.closest("[data-pvp-request]")){state.pvpVisibleCount=30;await requestPvp($("#pvpNickname").value);return openPvpPanel();}

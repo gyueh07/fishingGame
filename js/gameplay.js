@@ -822,10 +822,10 @@ function sellOne(n,confirmed=false){
   const idx=getBucketIndexByDisplayNumber(n);
   if(idx < 0 || !bucket[idx]) return print("존재하지 않는 번호입니다.");
   if(bucket[idx].locked) return print("잠금된 물고기는 판매할 수 없습니다.");
-  if(isFishInPartyPreset(bucket[idx]) && !confirmed){
+  if(!confirmed){
     pendingPresetSaleId = bucket[idx].id;
     pendingPresetSellAll = false;
-    return print("파티 프리셋에 편성된 물고기입니다.\n\n" + color(lineFish(bucket[idx]),bucket[idx].grade) + "\n\n정말 판매할까요?\n계속하려면 확인 을 입력하세요.");
+    return print((isFishInPartyPreset(bucket[idx])?"파티 프리셋에 편성된 물고기입니다.\n\n":"") + color(lineFish(bucket[idx]),bucket[idx].grade) + "\n\n정말 판매할까요?\n계속하려면 확인 을 입력하세요.");
   }
   const f=bucket.splice(idx,1)[0];
   ensureAllFishIds();
@@ -840,17 +840,10 @@ function sellOne(n,confirmed=false){
   const newTitles = checkSpecialTitles();
   saveGame();
 
-  let msg = color(lineFish(f), f.grade)+objParticle(f.name)+" 판매했습니다.\n\n";
-  if(bonus > 0 || getAppraisalResearchLevel() > 0){
-    msg += "기본가 : "+formatMoney(f.price)+"\n";
-    if(bonus > 0) msg += "시세 : +"+bonus+"%\n";
-    if(getAppraisalResearchLevel() > 0) msg += "감정 연구 : +"+getAppraisalBonus()+"%\n";
-    msg += "최종가 : "+formatMoney(finalPrice)+"\n";
-  }
-  msg += "+"+formatMoney(finalPrice);
-
-  print(msg);
+  if(typeof globalThis.showFishingLifeSaleResult==="function")globalThis.showFishingLifeSaleResult({count:1,total:finalPrice,fish:f,bonus});
+  else print(lineFish(f)+" 판매 완료 · +"+formatMoney(finalPrice));
   if(newTitles.length > 0) print("칭호 획득!\n\n" + newTitles.map(x => "[" + x + "]").join("\n"));
+  return {ok:true,count:1,total:finalPrice,fish:f};
 }
 
 function confirmPresetSale(){
@@ -869,10 +862,10 @@ function sellAll(confirmed=false){
   const keep=bucket.filter(f=>f.locked);
   if(sell.length===0) return print("판매할 수 있는 물고기가 없습니다. 전부 잠금 상태입니다.");
   const presetFishes = sell.filter(isFishInPartyPreset);
-  if(presetFishes.length > 0 && !confirmed){
+  if(!confirmed){
     pendingPresetSellAll = true;
     pendingPresetSaleId = "";
-    return print("일괄판매 대상에 파티 프리셋 물고기 " + presetFishes.length + "마리가 포함되어 있습니다.\n\n정말 판매할까요?\n계속하려면 확인 을 입력하세요.");
+    return print((presetFishes.length?"일괄판매 대상에 파티 프리셋 물고기 " + presetFishes.length + "마리가 포함되어 있습니다.\n\n":"")+"잠금되지 않은 물고기 "+sell.length+"마리를 정말 판매할까요?\n계속하려면 확인 을 입력하세요.");
   }
   const baseTotal=sell.reduce((s,f)=>s+f.price,0);
   const total=sell.reduce((s,f)=>s+applyMarketPrice(f),0);
@@ -888,15 +881,10 @@ function sellAll(confirmed=false){
   const newTitles = checkSpecialTitles();
   saveGame();
 
-  let msg = "잠금된 물고기를 제외한\n"+sell.length+"마리를 판매했습니다.\n\n";
-  if(bonusTotal > 0){
-    msg += "기본가 합계 : "+formatMoney(baseTotal)+"\n";
-    msg += "추가 보너스 : +"+formatMoney(bonusTotal)+"\n";
-    msg += "최종 판매가 : "+formatMoney(total)+"\n\n";
-  }
-  msg += "+"+formatMoney(total);
-  print(msg);
+  if(typeof globalThis.showFishingLifeSaleResult==="function")globalThis.showFishingLifeSaleResult({count:sell.length,total,bonus:bonusTotal});
+  else print(sell.length+"마리 판매 완료 · +"+formatMoney(total));
   if(newTitles.length > 0) print("칭호 획득!\n\n" + newTitles.map(x => "[" + x + "]").join("\n"));
+  return {ok:true,count:sell.length,total};
 }
 
 function confirmPresetSellAll(){
@@ -1209,6 +1197,19 @@ function getPvpPreparedFishes(){
     });
 }
 
+function repairPvpCombatStats(f){
+  if(!f||f.grade==="쓰레기")return f;
+  const c=f.combat||(f.combat={}),stars=c.stars||{},tier=key=>Math.max(0,Math.min(3,Math.floor(Number(stars[key]||0))));
+  const dodgeMid=[5.5,12.5,20,35],critMid=[15,25,35,45],critDamageMid=[200,300,400,475];
+  if(!Number.isFinite(Number(c.dodge))||Number(c.dodge)<=0)c.dodge=dodgeMid[tier("dodge")];
+  if(!Number.isFinite(Number(c.critRate))||Number(c.critRate)<=0)c.critRate=critMid[tier("critRate")];
+  if(!Number.isFinite(Number(c.critDamage))||Number(c.critDamage)<=0)c.critDamage=critDamageMid[tier("critDamage")];
+  if(!Number.isFinite(Number(c.attack))||Number(c.attack)<0)c.attack=Math.max(0,Number(c._baseAttack||1));
+  if(!Number.isFinite(Number(c.maxHp))||Number(c.maxHp)<=0)c.maxHp=Math.max(1,Number(c._baseMaxHp||c.hp||1));
+  if(!Number.isFinite(Number(c.hp)))c.hp=c.maxHp;
+  return f;
+}
+
 function cloneForPvp(f, levels){
   const c = JSON.parse(JSON.stringify(f || {}));
   const raw = JSON.parse(JSON.stringify(ensureCombatStats(f)));
@@ -1230,6 +1231,7 @@ function cloneForPvp(f, levels){
   delete raw.recoveryStartHp;
 
   c.combat = raw;
+  repairPvpCombatStats(c);
   return c;
 }
 
@@ -1281,8 +1283,8 @@ function pvpHpBar(cur,max){
 }
 
 function simulatePvpBattle({leftName,leftTitle,leftProfile,leftTeam,rightName,rightTitle,rightProfile,rightTeam}){
-  const left = (leftTeam || []).map(f => JSON.parse(JSON.stringify(f))).slice(0,3);
-  const right = (rightTeam || []).map(f => JSON.parse(JSON.stringify(f))).slice(0,3);
+  const left = (leftTeam || []).map(f => repairPvpCombatStats(JSON.parse(JSON.stringify(f)))).slice(0,3);
+  const right = (rightTeam || []).map(f => repairPvpCombatStats(JSON.parse(JSON.stringify(f)))).slice(0,3);
   const allPvpFishes = left.concat(right);
   setBattleDisplayNumbers(left);
   setBattleDisplayNumbers(right);
@@ -2379,10 +2381,12 @@ async function sendMoney(targetNickname, amount){
       const senderMoneyAfter=normalizeMoney(currentMoney-amount),targetMoneyAfter=normalizeMoney((targetData.money??targetState.money??0)+amount);
       const targetNotifications=(Array.isArray(targetState.notifications)?targetState.notifications:[]).slice(-49);
       targetNotifications.push(`📢 알림\n\n${formatUserName(senderName,senderTitle)} 님이 ${amount.toLocaleString()}원을 송금했습니다.`);
+      const targetMessages=(Array.isArray(targetState.messages)?targetState.messages:[]).slice(-99);
+      targetMessages.push({id:`money_${Date.now()}_${Math.random().toString(36).slice(2)}`,type:"money",read:false,from:senderName,fromTitle:senderTitle,amount,createdAtMillis:Date.now()});
       const myRevision=Number(myData.cloudRevision||0)+1,targetRevision=Number(targetData.cloudRevision||0)+1;
       const nextMyState={...myState,money:senderMoneyAfter};
       tx.set(myRef,{money:senderMoneyAfter,cloudRevision:myRevision,gameState:nextMyState,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
-      tx.set(targetRef,{money:targetMoneyAfter,cloudRevision:targetRevision,gameState:{...targetState,money:targetMoneyAfter,notifications:targetNotifications},updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+      tx.set(targetRef,{money:targetMoneyAfter,cloudRevision:targetRevision,gameState:{...targetState,money:targetMoneyAfter,notifications:targetNotifications,messages:targetMessages},updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
       committed={state:nextMyState,revision:myRevision};
     });
     if(!committed)throw new Error("TRANSFER_NOT_COMMITTED");
@@ -2441,12 +2445,14 @@ async function sendFish(targetNickname,displayNumber){
       myPresets.pvp=myPresets.pvp.filter(id=>String(id)!==String(sourceFish.id));
       const targetNotifications=(Array.isArray(targetState.notifications)?targetState.notifications:[]).slice(-49);
       targetNotifications.push(`📢 알림\n\n${formatUserName(senderName,senderTitle)} 님이 ${lineFish(movedFish)}${objParticle(movedFish.name)} 전송했습니다.`);
+      const targetMessages=(Array.isArray(targetState.messages)?targetState.messages:[]).slice(-99);
+      targetMessages.push({id:`fish_${Date.now()}_${Math.random().toString(36).slice(2)}`,type:"fish",read:false,from:senderName,fromTitle:senderTitle,fishNames:[movedFish.name],fishGrades:[movedFish.grade],count:1,createdAtMillis:Date.now()});
       const targetCollection={...(targetState.collection||{})},oldEntry=targetCollection[movedFish.name];
       if(!oldEntry)targetCollection[movedFish.name]={count:1,bestSize:movedFish.size??null,bestGrade:movedFish.grade};
       const nextMyState={...myState,bucket:myBucket,pvpPrepIndexes:[],partyPresets:myPresets};
       const myRevision=Number(myData.cloudRevision||0)+1,targetRevision=Number(targetData.cloudRevision||0)+1;
       tx.set(myRef,{cloudRevision:myRevision,gameState:nextMyState,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
-      tx.set(targetRef,{cloudRevision:targetRevision,gameState:{...targetState,bucket:targetBucket,collection:targetCollection,notifications:targetNotifications},updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+      tx.set(targetRef,{cloudRevision:targetRevision,gameState:{...targetState,bucket:targetBucket,collection:targetCollection,notifications:targetNotifications,messages:targetMessages},updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
       committed={state:nextMyState,revision:myRevision};
     });
     if(!committed||!transferredFish)throw new Error("TRANSFER_NOT_COMMITTED");
@@ -2467,34 +2473,47 @@ async function sendFish(targetNickname,displayNumber){
   }finally{isOnlineActionRunning=false;}
 }
 
+async function sendFishBatch(targetNickname,fishIds){
+  if(isOnlineActionRunning)return transferFailure("처리 중입니다. 잠시만 기다려주세요.");
+  if(!currentUser)return transferFailure("로그인 후 사용 가능합니다.");
+  targetNickname=cleanNickname(targetNickname);fishIds=[...new Set((fishIds||[]).map(String).filter(Boolean))];
+  if(!targetNickname||!fishIds.length)return transferFailure("받는 사람과 전송할 물고기를 선택해주세요.");
+  if(targetNickname===currentUser)return transferFailure("자기 자신에게는 전송할 수 없습니다.");
+  isOnlineActionRunning=true;let committed=null,moved=[];
+  try{
+    await saveCloudData();if(hasPendingLocalCloudChanges())throw new Error("SYNC_REQUIRED");
+    const sessionHash=await getCurrentSessionHash();if(!sessionHash)throw new Error("SESSION_INVALID");
+    const senderName=currentUser,senderTitle=getCurrentTitle(),myRef=db.collection("users").doc(senderName),targetRef=db.collection("users").doc(targetNickname);
+    await db.runTransaction(async tx=>{
+      const mySnap=await tx.get(myRef),targetSnap=await tx.get(targetRef);if(!mySnap.exists)throw new Error("MY_ACCOUNT_NOT_FOUND");if(!targetSnap.exists)throw new Error("TARGET_NOT_FOUND");
+      const myData=mySnap.data()||{},targetData=targetSnap.data()||{};if(myData.sessionTokenHash!==sessionHash)throw new Error("SESSION_INVALID");
+      const myState={...(myData.gameState||{})},targetState={...(targetData.gameState||{})},myBucket=Array.isArray(myState.bucket)?[...myState.bucket]:[],targetBucket=Array.isArray(targetState.bucket)?[...targetState.bucket]:[];
+      const selected=myBucket.filter(f=>f&&fishIds.includes(String(f.id||"")));if(selected.length!==fishIds.length)throw new Error("FISH_NOT_FOUND");
+      const mainIds=new Set([String(myState.fusionMainFishId||""),...Object.values(myState.fusionMainFishIds&&typeof myState.fusionMainFishIds==="object"?myState.fusionMainFishIds:{}).map(String)]);
+      if(selected.some(f=>f.locked))throw new Error("FISH_LOCKED");if(selected.some(f=>mainIds.has(String(f.id||""))))throw new Error("FISH_IS_MAIN");
+      const selectedIds=new Set(selected.map(f=>String(f.id||""))),targetIds=new Set(targetBucket.map(f=>String(f?.id||"")));moved=selected.map(source=>{let id=String(source.id||makeFishId());if(targetIds.has(id))id=makeFishId();targetIds.add(id);return {...source,id,locked:false,isNewCatch:true,time:`${new Date().toLocaleString()} · ${senderName}에게 받은 선물`,transferredFrom:senderName,transferredAtMillis:Date.now()};});
+      const nextBucket=myBucket.filter(f=>!selectedIds.has(String(f?.id||"")));targetBucket.push(...moved);
+      const myPresets=normalizePartyPresets(myState.partyPresets);myPresets.boss=myPresets.boss.filter(id=>!selectedIds.has(String(id)));myPresets.pvp=myPresets.pvp.filter(id=>!selectedIds.has(String(id)));
+      const targetCollection={...(targetState.collection||{})};moved.forEach(f=>{const old=targetCollection[f.name]||{};targetCollection[f.name]={...old,count:Math.max(0,Number(old.count||0))+1,bestSize:old.bestSize??f.size??null,bestGrade:old.bestGrade||f.grade};});
+      const targetNotifications=(Array.isArray(targetState.notifications)?targetState.notifications:[]).slice(-49);targetNotifications.push(`📢 알림\n\n${formatUserName(senderName,senderTitle)} 님이 물고기 ${moved.length}마리를 전송했습니다.`);
+      const targetMessages=(Array.isArray(targetState.messages)?targetState.messages:[]).slice(-99);targetMessages.push({id:`fish_batch_${Date.now()}_${Math.random().toString(36).slice(2)}`,type:"fish",read:false,from:senderName,fromTitle:senderTitle,fishNames:moved.map(f=>f.name),fishGrades:moved.map(f=>f.grade),count:moved.length,createdAtMillis:Date.now()});
+      const nextMyState={...myState,bucket:nextBucket,pvpPrepIndexes:[],partyPresets:myPresets},myRevision=Number(myData.cloudRevision||0)+1,targetRevision=Number(targetData.cloudRevision||0)+1;
+      tx.set(myRef,{cloudRevision:myRevision,gameState:nextMyState,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+      tx.set(targetRef,{cloudRevision:targetRevision,gameState:{...targetState,bucket:targetBucket,collection:targetCollection,notifications:targetNotifications,messages:targetMessages},updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});committed={state:nextMyState,revision:myRevision};
+    });
+    if(!committed||!moved.length)throw new Error("TRANSFER_NOT_COMMITTED");finishOnlineTransferState(committed.state,committed.revision);
+    db.collection("serverAlerts").add({type:"fishTransfer",from:currentUser,fromTitle:getCurrentTitle(),to:targetNickname,fishName:moved[0].name,fishGrade:moved[0].grade,fishSize:moved[0].size,fishCount:moved.length,createdAt:firebase.firestore.FieldValue.serverTimestamp(),createdAtMillis:Date.now()}).catch(console.error);
+    return {ok:true,targetNickname,fishes:moved,count:moved.length,message:`${targetNickname} 님에게 물고기 ${moved.length}마리를 전송했습니다.`};
+  }catch(e){console.error(e);if(e.message==="TARGET_NOT_FOUND")return transferFailure("존재하지 않는 닉네임입니다.");if(e.message==="FISH_NOT_FOUND")return transferFailure("선택한 물고기를 찾을 수 없습니다.");if(e.message==="FISH_LOCKED")return transferFailure("잠금된 물고기는 전송할 수 없습니다.");if(e.message==="FISH_IS_MAIN")return transferFailure("합성 본체는 해제한 뒤 전송할 수 있습니다.");if(e.message==="SYNC_REQUIRED")return transferFailure("최신 데이터를 저장하지 못했습니다. 네트워크를 확인해주세요.");return transferFailure("물고기 전송 중 오류가 발생했습니다.");}
+  finally{isOnlineActionRunning=false;}
+}
+
 async function showNewMessages(){
   if(!messages || messages.length === 0) return;
-
-  const list = [...messages].sort((a,b)=>(a.createdAtMillis || 0) - (b.createdAtMillis || 0));
-
-  let full = "메세지\n\n";
-  full += "────┬────────────────────\n";
-
-  list.forEach((m,i)=>{
-    const sender = formatUserName(m.from || "알 수 없음", m.fromTitle || "");
-    full += rankNumber(i+1) + "│" + sender + "\n";
-    full += "    " + formatDateTime(m.createdAtMillis || Date.now()) + "\n";
-    full += "    " + safeMessageText(m.text) + "\n";
-    if(i !== list.length - 1) full += "────┼────────────────────\n";
-  });
-
-  full += "────┴────────────────────";
-
-  printPreview(
-    "메세지",
-    "새로운 메세지가 " + list.length + "개 도착했습니다.",
-    "메세지 전체보기",
-    full
-  );
-
-  messages = [];
-  saveGame();
-  if(currentUser) await saveCloudData();
+  const unread=messages.filter(message=>message&&message.read!==true).length;
+  if(unread<=0)return;
+  if(typeof globalThis.showFishingLifeInboxNotice==="function")globalThis.showFishingLifeInboxNotice(unread);
+  else print("읽지 않은 소식이 "+unread+"개 있습니다.\n\n광장의 받은 소식에서 확인할 수 있습니다.");
 }
 
 async function sendMessage(targetNickname){
@@ -2523,6 +2542,8 @@ async function sendMessage(targetNickname){
     const messageId = "msg_" + Date.now() + "_" + Math.random().toString(36).slice(2);
     const payload = {
       id: messageId,
+      type:"message",
+      read:false,
       from: currentUser,
       fromTitle: getCurrentTitle(),
       text: text,
@@ -2535,7 +2556,7 @@ async function sendMessage(targetNickname){
 
       const data = snap.data();
       const state = data.gameState || {};
-      const targetMessages = Array.isArray(state.messages) ? state.messages : [];
+      const targetMessages = (Array.isArray(state.messages) ? state.messages : []).slice(-99);
 
       targetMessages.push(payload);
 

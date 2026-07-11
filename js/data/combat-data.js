@@ -1,16 +1,19 @@
-﻿const COMBAT_VERSION = 15;
+﻿const COMBAT_VERSION = 16;
 const FISH_HP_BALANCE_VERSION = 1;
 const FISH_HP_BALANCE_MULTIPLIER = 3;
 const BOSS_ATTACK_BALANCE_MULTIPLIER = 2.7;
+const VOID_STAT_BALANCE_VERSION = 1;
+const LEGACY_VOID_ATTACK_RANGE = [400000,800000];
+const LEGACY_VOID_HP_RANGE = [6000000,15000000];
 
 const combatAttackRanges = {
   "일반":[30,150], "희귀":[100,500], "영웅":[500,2000], "전설":[2000,8000],
-  "신화":[8000,20000], "초월":[20000,50000], "영원":[150000,300000], "공허":[400000,800000]
+  "신화":[8000,20000], "초월":[20000,50000], "영원":[150000,300000], "공허":[900000,2100000]
 };
 
 const combatHpRanges = {
   "일반":[450,2700], "희귀":[1500,9000], "영웅":[7500,36000], "전설":[30000,240000],
-  "신화":[120000,540000], "초월":[360000,1500000], "영원":[1800000,4500000], "공허":[6000000,15000000]
+  "신화":[120000,540000], "초월":[360000,1500000], "영원":[1800000,4500000], "공허":[13500000,31500000]
 };
 
 const materialInfo = {

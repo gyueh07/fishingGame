@@ -29,9 +29,21 @@ let cloudSaveChain=Promise.resolve();
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
-const GAME_VERSION = "2026-07-11-fishinglife-hp-pvp-turn-v23";
+const GAME_VERSION = "2026-07-11-fishinglife-crazy-void-ui-v24";
 const UPDATE_NOTICE_TITLE = "📢 업데이트 안내";
 const UPDATE_NOTICES = [
+  {
+    id:"2026-07-11-fishinglife-crazy-void-ui-24",
+    title:"크레이지 보스·공허 밸런스·게임 UI 업데이트",
+    lines:[
+      "공허 무별 공격력·체력이 영원 ★★ 구간과 같아지고 기존 공허 물고기·합성·진화 수치도 자동 보정됩니다.",
+      "모든 보스의 전투당 1회 크레이지 궁극기가 강화되고, 6개 보스에 크레이지 전용 패시브가 추가됩니다.",
+      "요그 소토스 차원 분리·보스 특수 자원·소환물 등장이 라이브 전투 화면에 직접 표시됩니다.",
+      "보스전과 1대1 기본 재생 속도가 1배로 바뀌고 1대1 회피·치명타 0% 및 전투 이탈 문제가 수정됩니다.",
+      "판매 확인·일괄판매·간결한 판매 결과, 읽지 않은 소식함과 다중 물고기 전송이 추가됩니다.",
+      "모바일 최근 물고기는 전체보기에서만 표시되며 프로필 오라와 공격 연출이 더 깔끔하게 정리됩니다."
+    ]
+  },
   {
     id:"2026-07-11-fishinglife-hp-pvp-turn-23",
     title:"체력 3배·1대1 교대 전투 업데이트",
@@ -1341,8 +1353,8 @@ function startServerAlertListener(){
             size: data.fishSize ?? null
           };
           const fishText = lineFish(fish) + objParticle(data.fishName) + " 전송했습니다.";
-
-          print("📢 알림\n\n" + sender + " 님이 " + color(lineFish(fish), fish.grade) + objParticle(data.fishName) + " 전송했습니다.");
+          const fishCount=Math.max(1,Number(data.fishCount||1));
+          print("📢 알림\n\n" + sender + " 님이 " + (fishCount>1?`물고기 ${fishCount.toLocaleString()}마리를 전송했습니다.`:color(lineFish(fish), fish.grade) + objParticle(data.fishName) + " 전송했습니다."));
           removeRealtimeNotification(fishText);
           setTimeout(() => refreshMyCloudData(), 300);
           return;
@@ -1361,6 +1373,7 @@ function startServerAlertListener(){
           if(data.to !== currentUser) return;
           const sender = formatUserName(data.from, data.fromTitle);
           print("⚔️ 대전 수락\n\n" + sender + " 님이 대전을 수락했습니다.\n\n이제 대전준비 번호 로 물고기를 고르고 대전준비완료 를 입력하세요.");
+          if(typeof globalThis.openPvpPanel==="function")setTimeout(()=>globalThis.openPvpPanel(),80);
           return;
         }
 
@@ -1368,6 +1381,7 @@ function startServerAlertListener(){
           if(data.to !== currentUser) return;
           const sender = formatUserName(data.from, data.fromTitle);
           print("⚔️ 대전 준비완료\n\n" + sender + " 님이 준비완료했습니다.");
+          if(typeof globalThis.openPvpPanel==="function")setTimeout(()=>globalThis.openPvpPanel(),80);
           return;
         }
 
@@ -1409,20 +1423,7 @@ function startServerAlertListener(){
           const body = safeMessageText(data.text);
 
           print(sender + " 님이 메세지를 보냈습니다.\n\n" + body);
-          setTimeout(() => {
-            refreshMyCloudData().then(() => {
-              messages = (messages || []).filter(m => {
-                if(data.messageId && m.id === data.messageId) return false;
-
-                return !(
-                  m.from === data.from &&
-                  m.text === data.text &&
-                  Math.abs((m.createdAtMillis || 0) - (data.createdAtMillis || 0)) < 5000
-                );
-              });
-              saveGame();
-            });
-          }, 300);
+          setTimeout(()=>refreshMyCloudData(),300);
           return;
         }
       });
@@ -1595,7 +1596,11 @@ function openModal(title, content){
   document.getElementById("modalBody").innerHTML = sanitizeGameHtml(content);
   document.getElementById("modalOverlay").style.display = "block";
 }
-function closeModal(){
+function closeModal(force=false){
+  if(!force&&typeof globalThis.isFishingLifeBattleLocked==="function"&&globalThis.isFishingLifeBattleLocked()){
+    if(typeof globalThis.showFishingLifeBattleLockNotice==="function")globalThis.showFishingLifeBattleLockNotice();
+    return;
+  }
   document.getElementById("modalOverlay").style.display = "none";
 }
 function printPreview(title, summary, buttonText, modalContent){
