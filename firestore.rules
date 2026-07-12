@@ -1,0 +1,190 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function currentWriteSchema() {
+      return 248;
+    }
+
+    function currentWriteProtocol() {
+      return 2;
+    }
+
+    function validWriteEnvelope(data) {
+      return data.keys().hasAll([
+          'writeSchemaVersion',
+          'writeProtocol',
+          'writeProtocolSeq',
+          'writeGuardAt',
+          'updatedAt'
+        ])
+        && data.writeSchemaVersion is int
+        && data.writeSchemaVersion == currentWriteSchema()
+        && data.writeProtocol is int
+        && data.writeProtocol == currentWriteProtocol()
+        && data.writeProtocolSeq is int
+        && data.writeGuardAt is timestamp
+        && data.writeGuardAt == request.time
+        && data.updatedAt is timestamp
+        && data.updatedAt == request.time;
+    }
+
+    function validUserCore(data) {
+      let state = data.gameState;
+      return data.keys().hasAll([
+          'nickname',
+          'money',
+          'rodLevel',
+          'totalEarned',
+          'totalFishingCount',
+          'cloudRevision',
+          'gameState'
+        ])
+        && data.nickname is string
+        && data.money is number
+        && data.rodLevel is int
+        && data.totalEarned is number
+        && data.totalFishingCount is int
+        && data.cloudRevision is int
+        && state is map
+        && state.keys().hasAll([
+          'saveSchemaVersion',
+          'money',
+          'rodLevel',
+          'totalEarned',
+          'totalFishingCount'
+        ])
+        && state.saveSchemaVersion is int
+        && state.saveSchemaVersion == currentWriteSchema()
+        && state.money is number
+        && state.rodLevel is int
+        && state.totalEarned is number
+        && state.totalFishingCount is int
+        && data.money == state.money
+        && data.rodLevel == state.rodLevel
+        && data.totalEarned == state.totalEarned
+        && data.totalFishingCount == state.totalFishingCount
+        && data.money >= 0
+        && data.rodLevel >= 1
+        && data.totalEarned >= 0
+        && data.totalFishingCount >= 0;
+    }
+
+    function writeGuardChanged() {
+      let affected = request.resource.data.diff(resource.data).affectedKeys();
+      return affected.hasAny(['writeGuardAt'])
+        && affected.hasAny(['writeProtocolSeq'])
+        && affected.hasAny(['updatedAt']);
+    }
+
+    function identityFieldsUnchanged() {
+      let affected = request.resource.data.diff(resource.data).affectedKeys();
+      return !affected.hasAny(['passwordHash', 'createdAt'])
+        && (!affected.hasAny(['nickname'])
+          || !resource.data.keys().hasAny(['nickname']));
+    }
+
+    function validUpdateSequence() {
+      return request.resource.data.cloudRevision
+          == resource.data.get('cloudRevision', 0) + 1
+        && request.resource.data.writeProtocolSeq
+          == resource.data.get('writeProtocolSeq', 0) + 1;
+    }
+
+    function progressDoesNotRegress() {
+      let oldState = resource.data.get('gameState', {});
+      return request.resource.data.rodLevel
+          >= resource.data.get('rodLevel', oldState.get('rodLevel', 1))
+        && request.resource.data.gameState.rodLevel
+          >= oldState.get('rodLevel', resource.data.get('rodLevel', 1))
+        && request.resource.data.totalFishingCount
+          >= resource.data.get('totalFishingCount', oldState.get('totalFishingCount', 0))
+        && request.resource.data.gameState.totalFishingCount
+          >= oldState.get('totalFishingCount', resource.data.get('totalFishingCount', 0))
+        && request.resource.data.totalEarned
+          >= resource.data.get('totalEarned', oldState.get('totalEarned', 0))
+        && request.resource.data.gameState.totalEarned
+          >= oldState.get('totalEarned', resource.data.get('totalEarned', 0));
+    }
+
+    match /users/{userId} {
+      allow read: if true;
+
+      allow create: if validWriteEnvelope(request.resource.data)
+        && validUserCore(request.resource.data)
+        && request.resource.data.keys().hasAll([
+          'passwordHash',
+          'sessionTokenHash',
+          'sessionTokens',
+          'createdAt'
+        ])
+        && request.resource.data.passwordHash is string
+        && request.resource.data.sessionTokenHash is string
+        && request.resource.data.sessionTokens is map
+        && request.resource.data.nickname == userId
+        && request.resource.data.cloudRevision == 0
+        && request.resource.data.writeProtocolSeq == 1
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.createdAt == request.time;
+
+      allow update: if validWriteEnvelope(request.resource.data)
+        && validUserCore(request.resource.data)
+        && writeGuardChanged()
+        && identityFieldsUnchanged()
+        && validUpdateSequence()
+        && progressDoesNotRegress()
+        && request.resource.data.nickname == userId;
+
+      allow delete: if false;
+
+      match /backups/{slotId} {
+        allow read: if false;
+
+        allow create, update: if slotId in ['slot0', 'slot1', 'slot2']
+          && validWriteEnvelope(request.resource.data)
+          && request.resource.data.username == userId
+          && request.resource.data.slot is int
+          && request.resource.data.slot >= 0
+          && request.resource.data.slot < 3
+          && request.resource.data.sourceRevision is int
+          && request.resource.data.sourceRevision >= 0
+          && request.resource.data.summary is map
+          && request.resource.data.gameState is map
+          && request.resource.data.capturedAt is timestamp
+          && request.resource.data.capturedAt == request.time;
+
+        allow delete: if false;
+      }
+    }
+
+    match /config/{documentId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /serverAlerts/{documentId} {
+      allow read, create: if true;
+      allow update, delete: if false;
+    }
+
+    match /onlineUsers/{documentId} {
+      allow read, write: if true;
+    }
+
+    match /pvpRequests/{documentId} {
+      allow read, write: if true;
+    }
+
+    match /pvpRooms/{documentId} {
+      allow read, write: if true;
+    }
+
+    match /pvpActive/{documentId} {
+      allow read, write: if true;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
