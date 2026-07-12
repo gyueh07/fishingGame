@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#071b2d">
   <meta name="description" content="낚시하고 성장하며 보스와 대전하는 온라인 낚시 RPG">
   <title>FishingLife</title>
-  <link rel="stylesheet" href="./css/legacy.css?v=25.1.1">
-  <link rel="stylesheet" href="./css/game-ui.css?v=25.1.1">
+  <link rel="stylesheet" href="./css/legacy.css?v=25.2.1">
+  <link rel="stylesheet" href="./css/game-ui.css?v=25.2.1">
 </head>
 <body>
   <div class="ambient-bg" aria-hidden="true">
@@ -109,8 +109,6 @@
                 <div class="catch-rays"></div><div class="catch-particles" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
                 <strong id="celebrationKicker">물고기 획득</strong><span id="celebrationIcon">🐟</span><h2 id="celebrationName">물고기 획득!</h2><p id="celebrationMeta"></p>
               </div>
-
-              <div id="worldCatchFeed" class="world-catch-feed" aria-live="polite" aria-label="실시간 희귀 낚시 알림"></div>
 
               <div id="catchSpotlight" class="catch-spotlight" aria-live="polite">
                 <span id="catchIcon" class="catch-icon">🐟</span>
@@ -239,6 +237,8 @@
     </nav>
   </div>
 
+  <div id="worldCatchFeed" class="world-catch-feed" aria-live="polite" aria-label="실시간 희귀 낚시 알림"></div>
+
   <div class="legacy-runtime" aria-hidden="true">
     <div id="wallet"></div>
     <div id="log"></div>
@@ -259,12 +259,12 @@
 
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="./js/data/fish-data.js?v=25.1.1"></script>
-  <script src="./js/core.js?v=25.1.1"></script>
-  <script src="./js/data/combat-data.js?v=25.1.1"></script>
-  <script src="./js/combat.js?v=25.1.1"></script>
-  <script src="./js/gameplay.js?v=25.1.1"></script>
-  <script src="./js/commands.js?v=25.1.1"></script>
-  <script src="./js/ui.js?v=25.1.1"></script>
+  <script src="./js/data/fish-data.js?v=25.2.1"></script>
+  <script src="./js/core.js?v=25.2.1"></script>
+  <script src="./js/data/combat-data.js?v=25.2.1"></script>
+  <script src="./js/combat.js?v=25.2.1"></script>
+  <script src="./js/gameplay.js?v=25.2.1"></script>
+  <script src="./js/commands.js?v=25.2.1"></script>
+  <script src="./js/ui.js?v=25.2.1"></script>
 </body>
 </html>

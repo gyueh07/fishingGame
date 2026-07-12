@@ -12,6 +12,11 @@ function bossBattleEvent(boss,title,body="",kind="skill"){
   return `<span class="battle-event battle-event--${safeKind}"><span class="battle-event__eyebrow">${labels[safeKind]}</span><b>${bossColor(escapeHtml(boss.name),boss)} · ${escapeHtml(title)}</b>${body?`<span class="battle-event__body">${escapeHtml(body)}</span>`:""}</span>`;
 }
 
+function bossCrazyPassiveEvent(boss,title,body="",variant=""){
+  const safeVariant=["phoenix","phoenix-apex"].includes(variant)?` battle-event--crazy-passive-${variant}`:"";
+  return `<span class="battle-event battle-event--phase battle-event--crazy-passive${safeVariant}"><span class="battle-event__eyebrow">CRAZY PASSIVE</span><b>${bossColor(escapeHtml(boss.name),boss)} · ${escapeHtml(title)}</b>${body?`<span class="battle-event__body">${escapeHtml(body)}</span>`:""}</span>`;
+}
+
 function hpBar(current,max,size=10){
   current = Math.max(0, Number(current || 0));
   max = Math.max(1, Number(max || 1));
@@ -1206,8 +1211,10 @@ function traitUseByFish(f, body="", titleOverride=""){
       "수상한 기운 👁️":{className:"observer",eyebrow:"VOID OBSERVATION"},
       "기묘한 기운 🌀":{className:"anomaly",eyebrow:"SYSTEM ERROR"}
     }[f.name];
+    const allyPresentation=title==="태양 폭발"?{className:"solar",eyebrow:"SOLAR BURST"}:title==="승천"?{className:"ascension",eyebrow:"DRAGON ASCENSION"}:title==="별자리 완성"?{className:"constellation",eyebrow:"CONSTELLATION"}:title==="백염 폭발"?{className:"white-flame",eyebrow:"WHITE FLAME"}:title==="밀물의 파도"?{className:"tide",eyebrow:"RISING TIDE"}:title==="화염의 심박"?{className:"heartbeat",eyebrow:"BURNING HEART"}:null;
     const voidClass=voidSkill?` battle-event--void${voidPresentation?` battle-event--void-${voidPresentation.className}`:""}`:"";
-    return `<span class="battle-event battle-event--ally${voidClass}"><span class="battle-event__eyebrow">${voidPresentation?.eyebrow||(voidSkill?"VOID SIGNATURE":"ALLY SKILL")}</span><b>${fishLabel} · ${escapeHtml(title)}</b>${body?`<span class="battle-event__body">${body}</span>`:""}</span>`;
+    const allyClass=allyPresentation?` battle-event--ally-${allyPresentation.className}`:"";
+    return `<span class="battle-event battle-event--ally${allyClass}${voidClass}"><span class="battle-event__eyebrow">${voidPresentation?.eyebrow||allyPresentation?.eyebrow||(voidSkill?"VOID SIGNATURE":"ALLY SKILL")}</span><b>${fishLabel} · ${escapeHtml(title)}</b>${body?`<span class="battle-event__body">${body}</span>`:""}</span>`;
   }
   return traitUseText(title, body);
 }
@@ -1272,7 +1279,7 @@ function startTraitTurn(turn,boss,battleLog){
     if(turn>=7&&!st.ascended&&c.hp>0){
       st.ascended=true;
       const old=c.maxHp; c.maxHp=Math.floor(c.maxHp*1.2); healFishForBattle(f,Math.floor(old*0.3),battleLog);
-      battleLog.push(traitUseByFish(f, color(lineFish(f),f.grade)+"\n최대 체력 20% 증가, 체력 30% 회복, 공격력과 회피율이 상승했습니다."));
+      battleLog.push(traitUseByFish(f, color(lineFish(f),f.grade)+"\n최대 체력 20% 증가, 체력 30% 회복, 공격력과 회피율이 상승했습니다.","승천"));
     }
   });
 
@@ -1477,17 +1484,18 @@ function dealTraitDamage(boss,raw,label,battleLog){
   const damage=applyBossPassiveBeforeFishAttack(boss,Math.max(1,Math.floor(raw)),battleLog);
   const beforeBossHp=Math.max(0,Number(boss._currentHp||0)),actualBossDamage=Math.min(beforeBossHp,damage);
   boss._currentHp=Math.max(0,beforeBossHp-damage);ctx.traitDamage+=actualBossDamage+Number(boss._lastDamageToSword||0);
+  const eventLabel=String(label||"").includes("battle-event--ally")?String(label).replace("battle-event--ally","battle-event--ally battle-event--ally-attack"):String(label||"");
   if(boss.id==="surtr" && Number(boss._lastDamageToSword||0)>0){
-    let entry = label + "\n\n";
-    entry += "수르트가 피해를 불꽃의 검과 나눠 받았습니다.\n\n";
+    let entry = "수르트가 피해를 불꽃의 검과 나눠 받았습니다.\n\n";
     entry += "수르트 : " + damage.toLocaleString() + " 피해\n";
     entry += "불꽃의 검 : " + Number(boss._lastDamageToSword||0).toLocaleString() + " 피해\n";
     entry += "검 내구도 : " + Number(boss._flameSwordHp||0).toLocaleString() + " / 30,000,000";
     entry += "\n\n" + bossColor(boss.name,boss) + "\n" + hpBar(boss._currentHp,boss.hp);
-    battleLog.push(entry);
+    if(eventLabel.includes("battle-event--ally-attack")){battleLog.push(eventLabel);battleLog.push(entry);}else battleLog.push(eventLabel+"\n\n"+entry);
     if(boss._flameSwordJustBroken)battleLog.push(bossBattleEvent(boss,"불꽃의 검 파괴","검의 피해 분담이 끝나고 수르트가 받는 피해가 "+(boss.difficulty==="crazy"?20:boss.difficulty==="hard"?25:30)+"% 증가합니다.","phase"));
   } else {
-    battleLog.push(label+"\n\n"+damage.toLocaleString()+" 피해\n\n"+bossColor(boss.name,boss)+"\n"+hpBar(boss._currentHp,boss.hp));
+    const result=damage.toLocaleString()+" 피해\n\n"+bossColor(boss.name,boss)+"\n"+hpBar(boss._currentHp,boss.hp);
+    if(eventLabel.includes("battle-event--ally-attack")){battleLog.push(eventLabel);battleLog.push(result);}else battleLog.push(eventLabel+"\n\n"+result);
   }
   startPeriodTraitIfNeeded(boss,battleLog);
   return damage;
@@ -1520,7 +1528,7 @@ function afterFishAttackTrait(f,boss,outcome,baseAttack,battleLog){
     const gs=traitState(galaxy);if(!gs.constellation)gs.constellation={hit:false,crit:false,miss:false};gs.constellation[outcome]=true;
     if(gs.constellation.hit&&gs.constellation.crit&&gs.constellation.miss){
       const raw=getAliveTargets(ctx.participants).reduce((sum,x)=>sum+Math.floor(getEffectiveFishAttack(x,boss)*0.3),0);gs.constellation={hit:false,crit:false,miss:false};
-      dealTraitDamage(boss,raw,traitUseByFish(galaxy, "일반 적중, 치명타, 빗나감을 모두 기록해 별자리가 완성되었습니다.\n살아 있는 아군의 힘이 별빛으로 이어집니다."),battleLog);
+      dealTraitDamage(boss,raw,traitUseByFish(galaxy, "일반 적중, 치명타, 빗나감을 모두 기록해 별자리가 완성되었습니다.\n살아 있는 아군의 힘이 별빛으로 이어집니다.","별자리 완성"),battleLog);
     }
   }
   if(outcome==="miss")return;
@@ -1536,19 +1544,19 @@ function afterFishAttackTrait(f,boss,outcome,baseAttack,battleLog){
   }
   if(f.name==="푸른 눈의 백염룡"){
     boss._whiteFlameStacks=Number(boss._whiteFlameStacks||0)+1;
-    if(boss._whiteFlameStacks>=3){boss._whiteFlameStacks=0;dealTraitDamage(boss,getEffectiveFishAttack(f,boss)*1.5,traitUseByFish(f, "백염이 3중첩이 되어 폭발했습니다."),battleLog);}
+    if(boss._whiteFlameStacks>=3){boss._whiteFlameStacks=0;dealTraitDamage(boss,getEffectiveFishAttack(f,boss)*1.5,traitUseByFish(f, "백염이 3중첩이 되어 폭발했습니다.","백염 폭발"),battleLog);}
     else battleLog.push(traitUseByFish(f, "백염 "+boss._whiteFlameStacks+" / 3"));
   }
   if(f.name==="해신룡"){
-    if(st.tideHigh){dealTraitDamage(boss,getEffectiveFishAttack(f,boss)*0.4,traitUseByFish(f, "밀물의 파도가 이어져 추가 피해가 들어갑니다."),battleLog);st.tideStored=false;}
+    if(st.tideHigh){dealTraitDamage(boss,getEffectiveFishAttack(f,boss)*0.4,traitUseByFish(f, "밀물의 파도가 이어져 추가 피해가 들어갑니다.","밀물의 파도"),battleLog);st.tideStored=false;}
     else st.tideStored=true;
   }
-  if(f.name==="바다를 삼킨 태양"&&st.sunStage===5)dealTraitDamage(boss,getEffectiveFishAttack(f,boss)*2,traitUseByFish(f, "태양 주기가 태양 폭발 단계에 도달했습니다."),battleLog);
+  if(f.name==="바다를 삼킨 태양"&&st.sunStage===5)dealTraitDamage(boss,getEffectiveFishAttack(f,boss)*2,traitUseByFish(f, "태양 주기가 태양 폭발 단계에 도달했습니다.","태양 폭발"),battleLog);
   if(f.name==="불타는 마음"&&Number(st.heartbeatStage||0)>=2&&Number(boss._currentHp)>0){
     const chance=Number(st.heartbeatStage)>=3?0.5:0.3;
     const ratio=Number(st.heartbeatStage)>=3?0.5:0.4;
     if(Math.random()<chance){
-      dealTraitDamage(boss,getEffectiveFishAttack(f,boss)*ratio,traitUseByFish(f, "심장이 한 번 더 뛰었습니다."),battleLog);
+      dealTraitDamage(boss,getEffectiveFishAttack(f,boss)*ratio,traitUseByFish(f, "심장이 한 번 더 뛰었습니다.","화염의 심박"),battleLog);
     }
   }
   if(f.name==="불타는 마음"&&Number(st.heartbeatStage||0)>=3){
@@ -2113,7 +2121,11 @@ function applyPhoenixImmortalityIfNeeded(boss, bossHp, battleLog){
   boss._revived=true;
   bossHp = Math.floor(boss.hp * reviveRates[used]);
   boss._currentHp=bossHp;
-  battleLog.push(bossBattleEvent(boss,"불사 부활",(used+1)+"번째 부활 · 체력 "+Math.round(reviveRates[used]*100)+"%로 되살아났습니다.\n"+hpBar(bossHp,boss.hp),"phase"));
+  const reviveBody=(used+1)+"번째 부활 · 체력 "+Math.round(reviveRates[used]*100)+"%로 되살아났습니다.\n"+hpBar(bossHp,boss.hp);
+  if(boss.difficulty==="crazy"){
+    const apex=used===1;
+    battleLog.push(bossCrazyPassiveEvent(boss,apex?"불멸의 재점화":"불사조의 대부활",reviveBody,apex?"phoenix-apex":"phoenix"));
+  }else battleLog.push(bossBattleEvent(boss,"불사 부활",reviveBody,"phase"));
   return bossHp;
 }
 
@@ -2921,6 +2933,26 @@ function getBossReplayStatuses(boss){
   return statuses.slice(0,5);
 }
 
+function getFishReplayEffects(f,boss){
+  const c=ensureCombatStats(f),effects=[],turn=activeTraitBattle?Number(activeTraitBattle.turn||0):0;
+  const addStack=(key,icon,label,value)=>{const stacks=Math.max(0,Number(value||0));if(stacks>0)effects.push({key,icon,label,stacks});};
+  const add=(key,icon,label,detail="")=>effects.push({key,icon,label,detail:String(detail||"")});
+  addStack("burn","🔥","화상",c.burnStacks);
+  addStack("poison","☠️","독",c.poisonStacks);
+  if(Array.isArray(c.rootLinkedPeers)&&c.rootLinkedPeers.length)add("root","🌿","뿌리 연결",Number(boss?._rootLinkTurns||0)>0?`${Number(boss._rootLinkTurns)}턴`:"");
+  if(c.ratatoskrRedirect)add("redirect","🐿️","이간질");
+  if(c.azhiCurses?.weakness)add("weakness","⚔️","쇠약");
+  if(c.azhiCurses?.fear)add("fear","💨","공포");
+  if(c.azhiCurses?.distrust)add("distrust","💥","불신");
+  if(c.devouredByFenrir)add("devoured","⛓️","포식");
+  if(Number(c.voidBanishedUntil||0)>=turn&&turn>0)add("banished","🌀","차원 추방",`${Math.max(1,Number(c.voidBanishedUntil)-turn+1)}턴`);
+  else if(Number(c.bossDisabledUntil||0)>=turn&&turn>0)add("disabled","🔒","행동 불가",`${Math.max(1,Number(c.bossDisabledUntil)-turn+1)}턴`);
+  if(Number(c.traitSealedUntil||0)>=turn&&turn>0)add("trait-sealed","🚫","특성 봉인");
+  if(Number(c.healingBlockedUntil||0)>=turn&&turn>0)add("healing-blocked","❤️","회복 봉인");
+  if(Number(c.critSuppressedUntil||0)>=turn&&turn>0)add("crit-blocked","💥","치명타 봉인");
+  return effects.slice(0,6);
+}
+
 function createBossBattleLog(boss,participants){
   const log=[],frames=[];
   Object.defineProperty(log,"replayFrames",{value:frames,enumerable:false});
@@ -2935,7 +2967,7 @@ function createBossBattleLog(boss,participants){
         fish:participants.map((f,index)=>{const c=ensureCombatStats(f),displayMaxHp=Math.max(Number(c.maxHp||1),Number(c._traitBattle?.originalMaxHp||1));return {
           key:String(f.id||index),name:String(f.name||""),displayName:displayFishName(f.name),grade:f.grade,
           battleLabel:String(lineFish(f)||displayFishName(f.name)),
-          hp:Math.max(0,Number(c.hp||0)),maxHp:Math.max(1,displayMaxHp),status:getCombatStatusText(f),
+          hp:Math.max(0,Number(c.hp||0)),maxHp:Math.max(1,displayMaxHp),status:getCombatStatusText(f),effects:getFishReplayEffects(f,boss),
           evolutionStage:typeof getFishEvolutionStage==="function"?getFishEvolutionStage(f):0,
           dimensionGroup:index%2===0?"A":"B"
         };}),

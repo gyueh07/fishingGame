@@ -35,7 +35,7 @@ let accountSessionUnsubscribe=null;
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
-const GAME_VERSION = "2026-07-13-fishinglife-transfer-refresh-v25-1-1";
+const GAME_VERSION = "2026-07-13-fishinglife-battle-finisher-v25-2-1";
 const USER_WRITE_SCHEMA_VERSION = 250;
 const USER_WRITE_PROTOCOL_VERSION = 4;
 const ACCOUNT_RESET_VERSION = 1;
@@ -2872,7 +2872,7 @@ function startServerAlertListener(){
 
   serverAlertUnsubscribe = db.collection("serverAlerts")
     .orderBy("createdAtMillis", "desc")
-    .limit(10)
+    .limit(50)
     .onSnapshot(snapshot => {
       snapshot.docChanges().forEach(change => {
         if(change.type !== "added") return;
@@ -3122,7 +3122,10 @@ function sanitizeGameHtml(value){
   template.innerHTML = String(value ?? "");
   const allowedTags = new Set(["SPAN", "B", "BR"]);
   const battleClasses = new Set([
-    "battle-event", "battle-event--skill", "battle-event--crazy", "battle-event--passive", "battle-event--phase", "battle-event--ally",
+    "battle-event", "battle-event--skill", "battle-event--crazy", "battle-event--passive", "battle-event--phase", "battle-event--ally", "battle-event--ally-attack",
+    "battle-event--ally-solar", "battle-event--ally-ascension", "battle-event--ally-constellation", "battle-event--ally-white-flame",
+    "battle-event--ally-tide", "battle-event--ally-heartbeat", "battle-event--crazy-passive",
+    "battle-event--crazy-passive-phoenix", "battle-event--crazy-passive-phoenix-apex",
     "battle-event--void", "battle-event--void-letter-one", "battle-event--void-letter-two", "battle-event--void-letter-three",
     "battle-event--void-observer", "battle-event--void-anomaly",
     "battle-event__eyebrow", "battle-event__body"
