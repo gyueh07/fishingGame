@@ -34,7 +34,7 @@ let accountSessionUnsubscribe=null;
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
-const GAME_VERSION = "2026-07-12-fishinglife-session-verify-v24-9-3";
+const GAME_VERSION = "2026-07-12-fishinglife-pending-save-v24-9-4";
 const USER_WRITE_SCHEMA_VERSION = 249;
 const USER_WRITE_PROTOCOL_VERSION = 3;
 const ACCOUNT_RESET_VERSION = 1;
@@ -1472,22 +1472,46 @@ function clearPersistentCloudDirty(username=currentUser){
 }
 
 function storeCloudRecovery(username,localState=getGameState(),baseState=lastCloudSyncedState,dirty=true){
-  if(!username)return;
+  username=cleanNickname(username);
+  if(!username)return false;
   try{
     const persistedBase=baseState&&typeof baseState==="object"?baseState:readCloudSyncBase(username)?.state||null;
-    localStorage.setItem("textFishingCloudRecovery:"+username,JSON.stringify({localState:cloneCloudState(localState),baseState:cloneCloudState(persistedBase),dirty:dirty===true,savedAt:Date.now()}));
-  }catch(e){console.error(e);}
+    const existing=username===currentUser?null:peekCloudRecovery(username);
+    const pendingState=cloneCloudState(localState),pendingBase=cloneCloudState(persistedBase);
+    if(Number(pendingState?.accountResetVersion||0)!==ACCOUNT_RESET_VERSION)return false;
+    if(!pendingBase||Number(pendingBase.accountResetVersion||0)!==ACCOUNT_RESET_VERSION)return false;
+    localStorage.setItem("textFishingCloudRecovery:"+username,JSON.stringify({
+      username,
+      localState:pendingState,
+      baseState:pendingBase,
+      dirty:dirty===true,
+      baseRevision:Number(username===currentUser?cloudRevision:existing?.baseRevision??cloudRevision??0),
+      localSaveSeq:Number(localSaveSeq||0),
+      accountResetVersion:ACCOUNT_RESET_VERSION,
+      schemaVersion:USER_WRITE_SCHEMA_VERSION,
+      savedAt:Date.now()
+    }));
+    return true;
+  }catch(e){console.error(e);return false;}
 }
 
 function discardCloudRecovery(username){if(username)localStorage.removeItem("textFishingCloudRecovery:"+username);}
 
 function peekCloudRecovery(username){
+  username=cleanNickname(username);
   if(!username)return null;
   const key="textFishingCloudRecovery:"+username,raw=localStorage.getItem(key);
   if(!raw)return null;
   try{
     const value=JSON.parse(raw);
-    if(Number(value?.localState?.accountResetVersion||0)!==ACCOUNT_RESET_VERSION){localStorage.removeItem(key);return null;}
+    const valid=value?.dirty===true
+      && cleanNickname(value?.username)===username
+      && Number(value?.accountResetVersion||0)===ACCOUNT_RESET_VERSION
+      && Number(value?.schemaVersion||0)===USER_WRITE_SCHEMA_VERSION
+      && Number.isFinite(Number(value?.baseRevision))
+      && Number(value?.localState?.accountResetVersion||0)===ACCOUNT_RESET_VERSION
+      && Number(value?.baseState?.accountResetVersion||0)===ACCOUNT_RESET_VERSION;
+    if(!valid){localStorage.removeItem(key);return null;}
     return value;
   }catch(e){console.error(e);return null;}
 }
@@ -1838,6 +1862,7 @@ function syncCloudSoon(){
   }
   localSaveSeq++;
   markPersistentCloudDirty(currentUser);
+  storeCloudRecovery(currentUser,getGameState(),lastCloudSyncedState,true);
   setCloudSyncStatus("saving","Firebase에 변경 내용을 저장하고 있습니다.");
   clearTimeout(cloudSaveTimer);
   cloudSaveTimer = setTimeout(saveCloudData, 700);
@@ -2132,8 +2157,9 @@ async function loginUser(providedNickname,providedPassword){
   const sessionRef=db.collection("accountSessions").doc(nickname);
   const passwordHash=await hashPassword(password);
   const sessionTokenHash=await startUserSession(nickname);
+  const pendingRecovery=peekCloudRecovery(nickname);
   let loginData=null,nextRevision=0;
-  let accountWasReset=false,replacedExistingSession=false;
+  let accountWasReset=false,replacedExistingSession=false,pendingRecoveryApplied=false;
 
   try{
     await db.runTransaction(async tx=>{
@@ -2145,7 +2171,18 @@ async function loginUser(providedNickname,providedPassword){
       const activeSession=sessionSnap.exists?(sessionSnap.data()||{}):null;
       replacedExistingSession=isOtherDeviceSessionActive(activeSession);
       accountWasReset=Number(latest.accountResetVersion||0)<ACCOUNT_RESET_VERSION;
-      const nextState=accountWasReset?createFreshAccountState():cloneCloudState(latest.gameState||createFreshAccountState());
+      const serverState=accountWasReset?createFreshAccountState():cloneCloudState(latest.gameState||createFreshAccountState());
+      const pendingBaseIsCurrent=!accountWasReset
+        && pendingRecovery?.dirty===true
+        && cleanNickname(pendingRecovery.username)===nickname
+        && Number(pendingRecovery.accountResetVersion||0)===ACCOUNT_RESET_VERSION
+        && Number(pendingRecovery.schemaVersion||0)===USER_WRITE_SCHEMA_VERSION
+        && Number(pendingRecovery.baseRevision)===Number(latest.cloudRevision||0)
+        && sameCloudValue(pendingRecovery.baseState,serverState);
+      pendingRecoveryApplied=!!pendingBaseIsCurrent&&!sameCloudValue(pendingRecovery.localState,serverState);
+      const nextState=pendingBaseIsCurrent
+        ?mergeCloudGameStates(pendingRecovery.localState,serverState,pendingRecovery.baseState)
+        :serverState;
       const serverTime=firebase.firestore.FieldValue.serverTimestamp();
       const write=txSetProtectedUser(tx,ref,latest,{
         sessionTokenHash,
@@ -2167,7 +2204,6 @@ async function loginUser(providedNickname,providedPassword){
   }catch(e){
     console.error(e);
     clearUserSession();
-    const pendingRecovery=peekCloudRecovery(nickname);
     const protectedWriteBlocked=handleProtectedWriteError(e,nickname,pendingRecovery?.localState||null,pendingRecovery?.baseState||null);
     const message=e.message==="ACCOUNT_NOT_FOUND"?"존재하지 않는 닉네임입니다.":e.message==="WRONG_PASSWORD"?"비밀번호가 틀렸습니다.":protectedWriteBlocked?"최신 FishingLife 파일로 다시 접속해주세요.":e.message==="USER_STATE_TOO_LARGE"?"계정 데이터가 커서 초기화를 완료하지 못했습니다.":"네트워크가 불안정합니다. 잠시 후 다시 시도해주세요.";
     setLoginProgress(message,"error");
@@ -2188,8 +2224,8 @@ async function loginUser(providedNickname,providedPassword){
     persistCloudSyncBase(nickname,loginData.gameState,nextRevision);
     updateWallet();
     clearPersistentCloudDirty(nickname);
-    setCloudSyncStatus("saved",accountWasReset?"계정을 Lv.1로 초기화했습니다.":replacedExistingSession?"이 기기로 접속을 옮겼습니다.":"계정 데이터를 불러왔습니다.");
-    setLoginProgress(accountWasReset?"초기화 완료! Lv.1부터 시작합니다.":replacedExistingSession?"이 기기로 접속을 옮겼습니다!":"로그인 완료! 게임을 시작합니다.","success");
+    setCloudSyncStatus("saved",accountWasReset?"계정을 Lv.1로 초기화했습니다.":pendingRecoveryApplied?"종료 직전의 미저장 진행도까지 복구했습니다.":replacedExistingSession?"이 기기로 접속을 옮겼습니다.":"계정 데이터를 불러왔습니다.");
+    setLoginProgress(accountWasReset?"초기화 완료! Lv.1부터 시작합니다.":pendingRecoveryApplied?"마지막 진행도 복구 완료!":replacedExistingSession?"이 기기로 접속을 옮겼습니다!":"로그인 완료! 게임을 시작합니다.","success");
     if(typeof globalThis.completeFishingLifeLogin==="function")globalThis.completeFishingLifeLogin(nickname);
     print(nickname+" 님 로그인 완료.\n게임을 시작할 수 있습니다.");
   }catch(e){
