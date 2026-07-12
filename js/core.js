@@ -34,7 +34,7 @@ let accountSessionUnsubscribe=null;
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
-const GAME_VERSION = "2026-07-12-fishinglife-single-session-v24-9-2";
+const GAME_VERSION = "2026-07-12-fishinglife-session-verify-v24-9-3";
 const USER_WRITE_SCHEMA_VERSION = 249;
 const USER_WRITE_PROTOCOL_VERSION = 3;
 const ACCOUNT_RESET_VERSION = 1;
@@ -682,21 +682,48 @@ function stopAccountSessionHeartbeat(){
   if(accountSessionUnsubscribe){accountSessionUnsubscribe();accountSessionUnsubscribe=null;}
 }
 
+async function verifyAccountSessionOwnership(username,sessionHash){
+  if(!username||!sessionHash||currentUser!==username)return false;
+  try{
+    const [sessionSnap,userSnap]=await Promise.all([
+      db.collection("accountSessions").doc(username).get({source:"server"}),
+      db.collection("users").doc(username).get({source:"server"})
+    ]);
+    if(currentUser!==username)return false;
+    const session=sessionSnap.exists?(sessionSnap.data()||{}):{},user=userSnap.exists?(userSnap.data()||{}):{};
+    return session.tokenHash===sessionHash
+      && session.deviceId===getCloudDeviceId()
+      && user.activeSessionTokenHash===sessionHash
+      && user.activeSessionDeviceId===getCloudDeviceId();
+  }catch(error){
+    console.error(error);
+    // 네트워크 오류만으로 정상 로그인 화면을 내보내지 않습니다. 다음 실시간
+    // 알림이나 하트비트에서 다시 확인합니다.
+    return null;
+  }
+}
+
+async function handleAccountSessionSnapshot(username,snap){
+  if(!currentUser||currentUser!==username)return;
+  if(snap.metadata?.fromCache||snap.metadata?.hasPendingWrites)return;
+  const sessionHash=await getCurrentSessionHash();
+  if(!sessionHash)return forceSessionLogout("로그인 연결이 끝났습니다. 다시 로그인해주세요.");
+  const data=snap.exists?(snap.data()||{}):{};
+  if(snap.exists&&data.tokenHash===sessionHash&&data.deviceId===getCloudDeviceId())return;
+  const stillOwner=await verifyAccountSessionOwnership(username,sessionHash);
+  if(stillOwner===false&&currentUser===username)forceSessionLogout("다른 기기에서 로그인하여 이 기기의 접속을 종료했습니다.");
+}
+
 function startAccountSessionHeartbeat(){
   stopAccountSessionHeartbeat();
   if(!currentUser)return;
   const username=currentUser;
   refreshAccountSession();
   accountSessionHeartbeatTimer=setInterval(()=>{if(!document.hidden)refreshAccountSession();},ACCOUNT_SESSION_HEARTBEAT_MS);
-  accountSessionUnsubscribe=db.collection("accountSessions").doc(username).onSnapshot(async snap=>{
-    if(!currentUser||currentUser!==username)return;
-    // 로그인 직후 로컬 Firestore 캐시에 남아 있는 예전 세션을 현재 세션으로
-    // 오인하지 않습니다. 서버에서 확인된 스냅샷만 접속 종료 판정에 사용합니다.
-    if(snap.metadata?.fromCache||snap.metadata?.hasPendingWrites)return;
-    if(!snap.exists){forceSessionLogout("로그인 연결이 끝났습니다. 다시 로그인해주세요.");return;}
-    const sessionHash=await getCurrentSessionHash(),data=snap.data()||{};
-    if(!sessionHash||data.tokenHash!==sessionHash||data.deviceId!==getCloudDeviceId())forceSessionLogout("이 계정은 다른 기기에서 접속했습니다.");
-  },error=>console.error(error));
+  accountSessionUnsubscribe=db.collection("accountSessions").doc(username).onSnapshot(
+    snap=>handleAccountSessionSnapshot(username,snap),
+    error=>console.error(error)
+  );
 }
 
 async function releaseAccountSession(username=currentUser){
