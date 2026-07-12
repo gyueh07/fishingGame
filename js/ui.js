@@ -237,10 +237,24 @@
   }
   async function submitLoginGate(){
     const nickname=$("#loginGateNickname")?.value||"",password=$("#loginGatePassword")?.value||"";
+    $("#sessionTakeoverPanel")?.remove();
     const registering=$("#loginGateForm")?.dataset.authMode==="register";
     updateLoginGateStatus(registering?"새 계정을 만들고 있습니다.":"계정을 확인하고 있습니다.","loading");
     const result=registering?await registerUser(nickname,password):await loginUser(nickname,password);
     if(!result?.ok&&$("#loginGateSubmit"))$("#loginGateSubmit").disabled=false;
+    if(!registering&&result?.error==="SESSION_IN_USE"){
+      const form=$("#loginGateForm");
+      form?.insertAdjacentHTML("beforeend",`<div id="sessionTakeoverPanel" class="session-takeover-panel"><b>이전 접속이 정상적으로 종료되지 않았을 수 있어요.</b><p>90초를 기다리거나, 아래 버튼으로 기존 접속을 종료하고 이 기기에서 로그인하세요.</p><button type="button" data-session-takeover>기존 접속 종료 후 로그인</button></div>`);
+    }
+  }
+
+  async function takeoverAccountSession(button){
+    const nickname=$("#loginGateNickname")?.value||"",password=$("#loginGatePassword")?.value||"";
+    if(!nickname||!password){updateLoginGateStatus("닉네임과 비밀번호를 입력해주세요.","error");return;}
+    button.disabled=true;
+    updateLoginGateStatus("기존 접속을 종료하고 이 기기에서 로그인합니다.","loading");
+    const result=await loginUser(nickname,password,{forceTakeover:true});
+    if(!result?.ok){button.disabled=false;updateLoginGateStatus(result?.error==="WRONG_PASSWORD"?"비밀번호가 틀렸습니다.":"로그인하지 못했습니다. 잠시 후 다시 시도해주세요.","error");}
   }
   globalThis.openFishingLifeLogin=openLoginGate;
   globalThis.updateFishingLifeLoginStatus=updateLoginGateStatus;
@@ -1552,6 +1566,8 @@
   document.addEventListener("click", async event => {
     const authSwitch=event.target.closest("[data-auth-switch]");
     if(authSwitch){openLoginGate("",false,authSwitch.dataset.authSwitch);return;}
+    const sessionTakeover=event.target.closest("[data-session-takeover]");
+    if(sessionTakeover){takeoverAccountSession(sessionTakeover);return;}
     if(event.target.closest("[data-delete-account-next]")){openDeleteAccountFinal();return;}
     if(event.target.closest("[data-delete-account-cancel]")){closeModal(true);return;}
     if(!currentUser&&event.target.closest("button,a,input")&&!event.target.closest("#loginGateForm,[data-auth-switch],[data-version-gate-retry]")){
