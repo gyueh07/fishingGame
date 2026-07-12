@@ -35,7 +35,7 @@ let accountSessionUnsubscribe=null;
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
-const GAME_VERSION = "2026-07-13-fishinglife-battle-finisher-v25-2-1";
+const GAME_VERSION = "2026-07-13-fishinglife-finisher-order-v25-2-2";
 const USER_WRITE_SCHEMA_VERSION = 250;
 const USER_WRITE_PROTOCOL_VERSION = 4;
 const ACCOUNT_RESET_VERSION = 1;

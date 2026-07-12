@@ -695,17 +695,32 @@
     if(success){playGameSound("victory");gameVibrate("victory");}
   }
 
+  function findBossFinisherFrameIndex(frames,replay){
+    if(replay?.result!=="처치 성공")return -1;
+    for(let index=frames.length-1;index>0;index--){
+      const before=Math.max(0,Number(frames[index-1]?.bossHp||0)),after=Math.max(0,Number(frames[index]?.bossHp||0));
+      if(before>0&&after<=0)return index;
+    }
+    for(let index=frames.length-1;index>=0;index--){
+      const frame=frames[index],text=plain(frame?.entry||"");
+      if(Number(frame?.bossHp)<=0&&(/공격|피해|치명타|폭발|일격/.test(text)||frame?.skillResult))return index;
+    }
+    return -1;
+  }
+
   async function playBossBattleReplay(replay){
     const token=++state.battleReplayToken;
     state.battleReplaySkip=false;state.battleReplayRunning=true;
     const frames=prepareBossReplayFrames(replay.frames);
+    const finisherFrameIndex=findBossFinisherFrameIndex(frames,replay);let finisherPlayed=false;
     for(let i=0;i<frames.length;i++){
       if(token!==state.battleReplayToken||$("#modalOverlay")?.style.display==="none")return;
-      if(state.battleReplaySkip){updateReplayFrame(frames[frames.length-1]);break;}
+      if(i===finisherFrameIndex){await playBossFinisher(replay);finisherPlayed=true;break;}
+      if(state.battleReplaySkip){if(replay?.result==="처치 성공"){await playBossFinisher(replay);finisherPlayed=true;}else updateReplayFrame(frames[frames.length-1]);break;}
       updateReplayFrame(frames[i]);
       await sleep(Math.max(45,replayDelay(frames[i])/Math.max(1,state.battleReplaySpeed)));
     }
-    if(token===state.battleReplayToken){await playBossFinisher(replay);}
+    if(token===state.battleReplayToken&&replay?.result==="처치 성공"&&!finisherPlayed){await playBossFinisher(replay);}
     if(token===state.battleReplayToken){state.battleReplayRunning=false;finishBossBattleReplay(replay);}
   }
 
@@ -860,6 +875,20 @@
     dom.turnLabel.textContent="전투 종료";
     if(won){playGameSound("victory");gameVibrate("victory");}
   }
+  function findPvpFinisherFrameIndex(frames,replay,dom){
+    if(!replay?.winnerName||!dom)return -1;
+    const winnerSide=replay.left?.name===replay.winnerName?"left":replay.right?.name===replay.winnerName?"right":"";if(!winnerSide)return -1;
+    const loserSide=winnerSide==="left"?"right":"left";
+    for(let index=frames.length-1;index>0;index--){
+      const before=frames[index-1]?.[loserSide]||[],after=frames[index]?.[loserSide]||[],beforeAlive=before.some(fish=>Number(fish.hp)>0),afterAlive=after.some(fish=>Number(fish.hp)>0);
+      if(beforeAlive&&!afterAlive)return index;
+    }
+    for(let index=frames.length-1;index>=0;index--){
+      const frame=frames[index],text=plain(frame?.entry||"");
+      if(frame?.actorSide===winnerSide&&/공격|피해|치명타|폭발|일격|쓰러/.test(text))return index;
+    }
+    return -1;
+  }
   async function playPvpBattleReplay(replay){
     const token=++state.pvpReplayToken;state.pvpReplaySkip=false;state.pvpReplayRunning=true;state.lastActionHtml="";
     const intro=$("#pvpBattleIntro"),countdown=$("#pvpIntroCountdown"),localFinisherDemo=location.hostname==="127.0.0.1"&&new URLSearchParams(location.search).has("pvpFinisherDemo");
@@ -875,14 +904,16 @@
       if(state.pvpReplayDom?.turnLabel)state.pvpReplayDom.turnLabel.textContent="전투 시작";
     }
     const frames=preparePvpReplayFrames(replay.frames);
+    const finisherFrameIndex=findPvpFinisherFrameIndex(frames,replay,state.pvpReplayDom);let finisherPlayed=false;
     for(let index=0;index<frames.length;index++){
       if(token!==state.pvpReplayToken||$("#modalOverlay")?.style.display==="none")return;
-      if(state.pvpReplaySkip){updatePvpReplayFrame(frames[frames.length-1]);break;}
+      if(index===finisherFrameIndex){await playPvpFinisher(replay);finisherPlayed=true;break;}
+      if(state.pvpReplaySkip){if(replay?.winnerName){await playPvpFinisher(replay);finisherPlayed=true;}else updatePvpReplayFrame(frames[frames.length-1]);break;}
       const frame=frames[index],text=plain(frame.entry),base=frame.skillResult?(frame.skillSourceKind==="damage"?950:1500):String(frame.entry||"").includes("battle-event--void")?1700:/특성|부활|되감|각성|폭발|유언/.test(text)?1500:/^턴 \d+/.test(text)?480:850;
       updatePvpReplayFrame(frame);
       await sleep(Math.max(160,base/(0.35*Math.max(1,state.pvpReplaySpeed))));
     }
-    if(token===state.pvpReplayToken){await playPvpFinisher(replay);}
+    if(token===state.pvpReplayToken&&replay?.winnerName&&!finisherPlayed){await playPvpFinisher(replay);}
     if(token===state.pvpReplayToken){state.pvpReplayRunning=false;finishPvpBattleReplay(replay);}
   }
   function openPvpBattleReplay(replay){
