@@ -1,15 +1,48 @@
-<!doctype html>
-<html lang="ko">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="robots" content="noindex,nofollow">
-  <meta http-equiv="cache-control" content="no-store, max-age=0, must-revalidate">
-  <meta http-equiv="refresh" content="0; url=./index.html">
-  <title>FishingLife로 이동합니다</title>
-</head>
-<body>
-  <p>이전 게임 파일은 계정 보호를 위해 종료되었습니다. <a href="./index.html">최신 FishingLife 열기</a></p>
-  <script>location.replace("./index.html");</script>
-</body>
-</html>
+{
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "hosting": {
+    "public": ".",
+    "ignore": [
+      "firebase.json",
+      "firestore.rules",
+      "README.md",
+      "validation/**",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "redirects": [
+      {
+        "source": "/original.html",
+        "destination": "/",
+        "type": 301
+      },
+      {
+        "source": "/validation/**",
+        "destination": "/",
+        "type": 301
+      }
+    ],
+    "headers": [
+      {
+        "source": "**/*.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-store, max-age=0, must-revalidate"
+          }
+        ]
+      },
+      {
+        "source": "**/*.@(js|css)",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, max-age=0, must-revalidate"
+          }
+        ]
+      }
+    ]
+  }
+}
