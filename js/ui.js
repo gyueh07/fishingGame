@@ -41,7 +41,7 @@
     battleReplayToken:0, battleReplaySpeed:1, battleReplaySkip:false, battleReplayRunning:false,lastBattleReplay:null, bossPartySortOrder:"전투력", catchCelebrationTimer:0,
     pvpReplayToken:0,pvpReplaySpeed:1,pvpReplaySkip:false,pvpReplayRunning:false,lastPvpReplay:null,pvpReplayDom:null,pvpPartySortOrder:"전투력",pvpVisibleCount:30,pendingPvpRequest:null,
     fusionMaterialIds:[],fusionAnimationResolve:null,presetEditorType:"boss",presetEditorIds:[],
-    renderQueued:false,renderForce:false,bucketRenderToken:0,replayDom:null,replaySummonKey:"",replaySummonIds:new Set(),lastActionHtml:"",bossPartyVisibleCount:30,soundAt:{},gradeAttackPulse:0,transferFishIds:[],transferTarget:"",transferVisibleCount:30,rankingSections:null
+    renderQueued:false,renderForce:false,bucketRenderToken:0,replayDom:null,replaySummonKey:"",replaySummonIds:new Set(),lastActionHtml:"",bossPartyVisibleCount:30,soundAt:{},gradeAttackPulse:0,transferFishIds:[],transferTarget:"",transferVisibleCount:30,rankingSections:null,authMode:"login"
   };
   globalThis.isFishingLifeBattleLocked=()=>!!(state.battleReplayRunning||state.pvpReplayRunning);
   globalThis.showFishingLifeBattleLockNotice=()=>showToast("전투가 끝난 뒤 나갈 수 있습니다. 빠르게 보려면 건너뛰기를 눌러주세요.");
@@ -207,7 +207,7 @@
   function openUiModal(title, html) {
     state.battleReplayToken++;
     state.pvpReplayToken++;
-    $("#modalOverlay")?.classList.remove("emergency-recovery-mode");
+    $("#modalOverlay")?.classList.remove("emergency-recovery-mode","login-required-mode");
     $("#modalTitle").textContent = title;
     $("#modalBody").innerHTML = html;
     $("#modalOverlay").style.display = "block";
@@ -218,30 +218,60 @@
   }
   globalThis.showFishingLifeVersionBlocker=openVersionBlocker;
   if(cloudGameReadOnlyBlocked)setTimeout(()=>openVersionBlocker(cloudVersionGateMessage),0);
-  function openLoginGate(message="",checking=false){
+  function openLoginGate(message="",checking=false,mode=state.authMode){
     if(currentUser&&!checking)return;
-    const disabled=checking?"disabled":"",statusKind=checking?"loading":message?"error":"";
-    openUiModal("FishingLife 로그인",`<div class="game-dialog login-gate"><section class="login-gate-hero"><span>🎣</span><div><small>WELCOME TO</small><h2>FishingLife</h2><p>계정에 저장된 낚시 여정을 불러옵니다.</p></div></section><form id="loginGateForm" class="login-gate-form"><label><span>선장 닉네임</span><input id="loginGateNickname" name="nickname" type="text" maxlength="16" autocomplete="username" autocapitalize="none" placeholder="닉네임 입력" ${disabled}></label><label><span>비밀번호</span><input id="loginGatePassword" name="password" type="password" autocomplete="current-password" placeholder="비밀번호 입력" ${disabled}></label><div id="loginGateStatus" class="login-gate-status ${statusKind}" role="status" aria-live="polite">${safe(message||"닉네임과 비밀번호를 입력해주세요.")}</div><button id="loginGateSubmit" class="login-gate-submit ${checking?"loading":""}" type="submit" ${disabled}><span>⚓</span><b>${checking?"확인 중...":"로그인"}</b></button></form><div class="login-gate-footer"><span>처음 시작하시나요?</span><button type="button" data-game-command="회원가입" ${disabled}>새 계정 만들기</button></div></div>`);
+    state.authMode=mode==="register"?"register":"login";
+    const registering=state.authMode==="register",savedNickname=localStorage.getItem("textFishingLastLoginNickname")||"";
+    const title=registering?"새 계정 만들기":"FishingLife 로그인";
+    const guide=registering?"모든 계정은 Lv.1부터 새로 시작합니다.":"로그인해야 게임을 시작할 수 있습니다.";
+    openUiModal(title,`<div class="game-dialog login-gate"><section class="login-gate-hero"><span>${registering?"🌊":"🎣"}</span><div><small>${registering?"NEW CAPTAIN":"WELCOME TO"}</small><h2>${registering?"새 항해 시작":"FishingLife"}</h2><p>${guide}</p></div></section><form id="loginGateForm" class="login-gate-form" data-auth-mode="${state.authMode}"><label><span>닉네임</span><input id="loginGateNickname" name="nickname" type="text" maxlength="16" autocomplete="username" autocapitalize="none" placeholder="닉네임 입력" value="${safe(savedNickname)}"></label><label><span>비밀번호</span><input id="loginGatePassword" name="password" type="password" autocomplete="${registering?"new-password":"current-password"}" placeholder="비밀번호 입력"></label><div id="loginGateStatus" class="login-gate-status ${message?"error":""}" role="status" aria-live="polite">${safe(message||guide)}</div><button id="loginGateSubmit" class="login-gate-submit" type="submit"><span>${registering?"🌊":"⚓"}</span><b>${registering?"Lv.1로 시작하기":"로그인"}</b></button></form><div class="login-gate-footer"><span>${registering?"이미 계정이 있나요?":"처음 시작하시나요?"}</span><button type="button" data-auth-switch="${registering?"login":"register"}">${registering?"로그인하기":"새 계정 만들기"}</button></div></div>`);
+    $("#modalOverlay")?.classList.add("login-required-mode");
+    setTimeout(()=>$("#loginGateNickname")?.focus(),30);
   }
   function updateLoginGateStatus(message,kind="loading"){
     const status=$("#loginGateStatus"),button=$("#loginGateSubmit");
     if(status){status.className="login-gate-status "+kind;status.textContent=message||"";}
     const loading=kind==="loading";
-    if(button){button.disabled=loading;button.classList.toggle("loading",loading);const label=button.querySelector("b");if(label)label.textContent=loading?"로그인 중...":"로그인";}
+    if(button){button.disabled=loading;button.classList.toggle("loading",loading);const label=button.querySelector("b");if(label)label.textContent=loading?(state.authMode==="register"?"계정 만드는 중...":"로그인 중..."):(state.authMode==="register"?"Lv.1로 시작하기":"로그인");}
     $$("#loginGateForm input,.login-gate-footer button").forEach(control=>control.disabled=loading);
   }
   async function submitLoginGate(){
     const nickname=$("#loginGateNickname")?.value||"",password=$("#loginGatePassword")?.value||"";
-    updateLoginGateStatus("로그인을 요청하고 있습니다.","loading");
-    const result=await loginUser(nickname,password);
+    const registering=$("#loginGateForm")?.dataset.authMode==="register";
+    updateLoginGateStatus(registering?"새 계정을 만들고 있습니다.":"계정을 확인하고 있습니다.","loading");
+    const result=registering?await registerUser(nickname,password):await loginUser(nickname,password);
     if(!result?.ok&&$("#loginGateSubmit"))$("#loginGateSubmit").disabled=false;
   }
   globalThis.openFishingLifeLogin=openLoginGate;
   globalThis.updateFishingLifeLoginStatus=updateLoginGateStatus;
   globalThis.completeFishingLifeLogin=nickname=>{
-    if($("#modalTitle")?.textContent==="FishingLife 로그인")closeModal(true);
+    $("#modalOverlay")?.classList.remove("login-required-mode");
+    if(["FishingLife 로그인","새 계정 만들기"].includes($("#modalTitle")?.textContent||""))closeModal(true);
     showGameNotice({icon:"⚓",eyebrow:"CAPTAIN ONLINE",title:`${nickname} 선장 로그인 완료`,detail:"낚시터를 먼저 열고 나머지 데이터를 준비하고 있습니다.",kind:"success",duration:3000});
   };
+
+  function openDeleteAccountWarning(){
+    if(!currentUser){openLoginGate();return;}
+    openUiModal("계정 탈퇴",`<div class="game-dialog delete-account-dialog"><div class="dialog-summary warning"><div><small>DELETE ACCOUNT</small><b>${safe(currentUser)} 계정을 탈퇴할까요?</b><p>탈퇴하면 레벨, 지갑, 물고기, 전투 기록을 모두 되돌릴 수 없습니다.</p></div><span>⚠️</span></div><div class="confirm-danger"><b>정말 탈퇴하려면 한 번 더 확인해주세요.</b><p>다음 화면에서 비밀번호를 입력해야 최종 탈퇴됩니다.</p></div><div class="dialog-actions"><button data-delete-account-next>계속</button><button class="primary" data-delete-account-cancel>취소</button></div></div>`);
+  }
+  globalThis.openFishingLifeDeleteAccount=openDeleteAccountWarning;
+
+  function openDeleteAccountFinal(){
+    openUiModal("최종 탈퇴 확인",`<div class="game-dialog delete-account-dialog"><div class="dialog-summary danger"><div><small>FINAL CHECK</small><b>정말 ${safe(currentUser)} 계정을 삭제할까요?</b><p>삭제한 데이터는 복구할 수 없습니다.</p></div><span>🗑️</span></div><form id="deleteAccountForm" class="login-gate-form"><label><span>현재 비밀번호</span><input id="deleteAccountPassword" type="password" autocomplete="current-password" placeholder="비밀번호 입력"></label><div id="deleteAccountStatus" class="login-gate-status" role="status">비밀번호를 입력한 뒤 최종 탈퇴를 눌러주세요.</div><button class="login-gate-submit delete-final-button" type="submit"><span>🗑️</span><b>정말 탈퇴하기</b></button></form><div class="dialog-actions"><button class="primary" data-delete-account-cancel>취소</button></div></div>`);
+    setTimeout(()=>$("#deleteAccountPassword")?.focus(),30);
+  }
+
+  async function submitDeleteAccount(){
+    const password=$("#deleteAccountPassword")?.value||"",status=$("#deleteAccountStatus"),button=$("#deleteAccountForm button[type=submit]");
+    if(!password){if(status){status.className="login-gate-status error";status.textContent="비밀번호를 입력해주세요.";}return;}
+    if(button)button.disabled=true;
+    if(status){status.className="login-gate-status loading";status.textContent="계정과 모든 기록을 삭제하고 있습니다.";}
+    const result=await deleteAccount(password);
+    if(!result?.ok){if(button)button.disabled=false;if(status){status.className="login-gate-status error";status.textContent=result?.message||"탈퇴하지 못했습니다.";}return;}
+    closeModal(true);
+    showGameNotice({icon:"🌊",eyebrow:"ACCOUNT DELETED",title:"탈퇴가 완료되었습니다",detail:"계정과 모든 게임 기록을 삭제했습니다.",kind:"info",duration:4500});
+    setTimeout(()=>openLoginGate("탈퇴가 완료되었습니다. 새 계정을 만들거나 다른 계정으로 로그인해주세요."),500);
+  }
 
   function emergencyRecoveryFeaturedHtml(summary){
     const featured=Array.isArray(summary?.featured)?summary.featured:[];
@@ -262,11 +292,9 @@
     const snapshot=typeof prepareEmergencyRecoveryOffer==="function"?prepareEmergencyRecoveryOffer():null;
     if(!snapshot)return false;
     const currentState=lastCloudSyncedState||getGameState(),serverSummary=getEmergencySnapshotSummary(currentState),localSummary=getEmergencySnapshotSummary(snapshot.state),unassigned=!snapshot.username;
-    const accountName=String(snapshot.username||currentUser||"현재"),special=typeof isEmergencyRecoveryAccount==="function"&&isEmergencyRecoveryAccount(accountName),hasBase=!!snapshot.baseState;
-    const memoryHtml=special?`<div class="emergency-recovery-memory"><small>사용자가 기억하는 롤백 전 기준</small><b>낚싯대 Lv.1,200 이상 · PVP 총전투력 약 5.3억</b></div>`:`<div class="emergency-recovery-memory"><small>저장 중 종료된 브라우저 기록</small><b>${hasBase?"마지막 동기화 이후 변경만 서버 최신값에 합칩니다.":"비교 기준이 없어 두 전체 기록을 직접 확인해야 합니다."}</b></div>`;
-    const warningTitle=unassigned?"이 기록에는 로그인 계정 표시가 남아 있지 않습니다.":`${safe(accountName)} 계정에서 Firebase 저장 전 남아 있던 브라우저 기록입니다.`;
-    const warningText=special?`레벨뿐 아니라 <strong>지갑과 물고기 목록까지</strong> 숫자가 롤백 전 기억과 맞는지 확인한 뒤 선택하세요.`:hasBase?`마지막 정상 동기화본을 기준으로 <strong>이 기기의 미저장 변경과 Firebase의 새 변경을 함께 보존</strong>합니다.`:`비교 기준이 없으므로 <strong>지갑과 물고기 목록을 직접 확인</strong>한 뒤 어느 기록을 유지할지 선택하세요.`;
-    openUiModal(`${safe(accountName)} 계정 복구`,`<div class="game-dialog emergency-recovery"><section class="emergency-recovery-hero"><span>🛟</span><div><small>ACCOUNT RESCUE · SAFE MERGE</small><h2>두 기록을 직접 확인해주세요</h2><p>복구를 선택하기 전에는 Firebase 자동 저장을 멈춘 상태입니다.</p></div></section>${memoryHtml}<div class="emergency-recovery-warning"><b>${warningTitle}</b><p>${warningText}</p></div><div class="emergency-recovery-grid">${emergencyRecoveryStateCard("server","현재 Firebase",serverSummary)}${emergencyRecoveryStateCard("local",snapshot.source||"이 브라우저 보존본",localSummary)}</div><div id="emergencyRecoveryStatus" class="emergency-recovery-status" role="status" aria-live="polite">현재 비교 화면 이후 서버 데이터가 바뀌면 복구를 중단하고 다시 비교합니다.</div><div class="emergency-recovery-actions"><button class="primary" data-emergency-restore="${safe(snapshot.id)}"><span>🛟</span><b>${hasBase?"이 기기의 미저장 변경 안전 복구":"이 브라우저 기록으로 전체 복구"}</b><small>지갑 · 물고기 · 레벨 · 진행도</small></button><button data-emergency-keep="${safe(snapshot.id)}"><span>☁️</span><b>Firebase 현재 데이터 유지</b><small>두 번 눌러 확정</small></button></div></div>`);
+    const accountName=String(snapshot.username||currentUser||"현재");
+    const warningTitle=unassigned?"주인을 확인할 수 없는 임시 기록입니다.":`${safe(accountName)} 계정에 저장되지 못한 기록이 이 기기에 있습니다.`;
+    openUiModal(`${safe(accountName)} 기록 선택`,`<div class="game-dialog emergency-recovery"><section class="emergency-recovery-hero"><span>🛟</span><div><small>SAVED GAME</small><h2>어느 기록으로 계속할까요?</h2><p>레벨, 돈, 물고기 수를 보고 하나를 골라주세요.</p></div></section><div class="emergency-recovery-warning"><b>${warningTitle}</b><p>선택하기 전에는 게임 저장을 잠시 멈춥니다.</p></div><div class="emergency-recovery-grid">${emergencyRecoveryStateCard("server","서버에 저장된 기록",serverSummary,false)}${emergencyRecoveryStateCard("local","이 기기에 남은 기록",localSummary,false)}</div><div id="emergencyRecoveryStatus" class="emergency-recovery-status" role="status" aria-live="polite">사용할 기록을 선택해주세요.</div><div class="emergency-recovery-actions"><button class="primary" data-emergency-restore="${safe(snapshot.id)}"><span>📱</span><b>이 기기 기록 사용</b><small>화면에 보이는 이 기기 기록으로 계속</small></button><button data-emergency-keep="${safe(snapshot.id)}"><span>☁️</span><b>서버 기록 사용</b><small>한 번 더 누르면 확정</small></button></div></div>`);
     $("#modalOverlay")?.classList.add("emergency-recovery-mode");
     return true;
   }
@@ -807,6 +835,7 @@
   }
 
   function switchView(viewId) {
+    if(!currentUser){openLoginGate("로그인해야 게임 메뉴를 이용할 수 있습니다.");return;}
     if (!document.getElementById(viewId)) return;
     if (viewId !== "bossView" && isBossMenu && typeof leaveBossMenu === "function") leaveBossMenu();
     state.activeView = viewId;
@@ -1515,11 +1544,21 @@
   globalThis.requestFishingLifeRender=force=>queueUiRender(!!force);
 
   function handleUiAction(action) {
-    const map = {market:openMarket,fishCollection:openFishCollection,coreCollection:openCoreCollection,bossParty:()=>openBossParty(),ranking:openRanking,myInfo:openMyInfo,battleHistory:()=>openBattleHistory(),wallet:openWallet,achievements:openAchievements,titles:openTitles,cosmetics:openCosmetics,settings:openSettings,pvp:openPvpPanel,presets:openPresets,fusion:openFusionLab,transfer:()=>openTransferHub(),inbox:openInbox,message:openMessageForm};
+    if(!currentUser){openLoginGate("로그인해야 게임 메뉴를 이용할 수 있습니다.");return;}
+    const map = {market:openMarket,fishCollection:openFishCollection,coreCollection:openCoreCollection,bossParty:()=>openBossParty(),ranking:openRanking,myInfo:openMyInfo,battleHistory:()=>openBattleHistory(),wallet:openWallet,achievements:openAchievements,titles:openTitles,cosmetics:openCosmetics,settings:openSettings,pvp:openPvpPanel,presets:openPresets,fusion:openFusionLab,transfer:()=>openTransferHub(),inbox:openInbox,message:openMessageForm,deleteAccount:openDeleteAccountWarning};
     map[action]?.();
   }
 
   document.addEventListener("click", async event => {
+    const authSwitch=event.target.closest("[data-auth-switch]");
+    if(authSwitch){openLoginGate("",false,authSwitch.dataset.authSwitch);return;}
+    if(event.target.closest("[data-delete-account-next]")){openDeleteAccountFinal();return;}
+    if(event.target.closest("[data-delete-account-cancel]")){closeModal(true);return;}
+    if(!currentUser&&event.target.closest("button,a,input")&&!event.target.closest("#loginGateForm,[data-auth-switch],[data-version-gate-retry]")){
+      event.preventDefault();
+      openLoginGate("로그인해야 게임을 시작할 수 있습니다.");
+      return;
+    }
     const versionRetryButton=event.target.closest("[data-version-gate-retry]");
     if(versionRetryButton){
       const status=$("#versionGateRetryStatus");versionRetryButton.disabled=true;
@@ -1540,7 +1579,7 @@
       const status=$("#emergencyRecoveryStatus"),buttons=$$("[data-emergency-restore],[data-emergency-keep]");
       buttons.forEach(button=>button.disabled=true);
       emergencyRestoreButton.classList.add("loading");
-      if(status){status.className="emergency-recovery-status loading";status.textContent="물고기와 지갑을 포함한 전체 기록을 Firebase에 안전하게 저장하고 있습니다...";}
+      if(status){status.className="emergency-recovery-status loading";status.textContent="이 기기 기록을 저장하고 있습니다...";}
       const result=await restoreStartupEmergencySnapshot(emergencyRestoreButton.dataset.emergencyRestore||"");
       if(result?.ok){
         $("#modalOverlay")?.classList.remove("emergency-recovery-mode");
@@ -1560,16 +1599,16 @@
       const status=$("#emergencyRecoveryStatus");
       if(emergencyKeepButton.dataset.confirmed!=="1"){
         emergencyKeepButton.dataset.confirmed="1";
-        emergencyKeepButton.querySelector("b").textContent="정말 Firebase 현재값 유지";
-        emergencyKeepButton.querySelector("small").textContent="한 번 더 누르면 브라우저 복구본 폐기";
-        if(status){status.className="emergency-recovery-status error";status.textContent="주의: 한 번 더 누르면 이 브라우저의 전체 복구본을 폐기합니다.";}
+        emergencyKeepButton.querySelector("b").textContent="서버 기록으로 계속";
+        emergencyKeepButton.querySelector("small").textContent="한 번 더 누르면 확정";
+        if(status){status.className="emergency-recovery-status error";status.textContent="서버 기록을 사용할까요? 한 번 더 눌러주세요.";}
         return;
       }
       const result=keepCurrentFirebaseEmergencyState(emergencyKeepButton.dataset.emergencyKeep||"");
       if(!result?.ok){if(status){status.className="emergency-recovery-status error";status.textContent=result?.message||"Firebase 현재값을 확정하지 못했습니다.";}return;}
       $("#modalOverlay")?.classList.remove("emergency-recovery-mode");
       closeModal(true);
-      showGameNotice({icon:"☁️",title:"Firebase 현재 데이터 유지",detail:"브라우저 복구본을 사용하지 않고 현재 서버 기록으로 계속합니다.",kind:"info",duration:4500});
+      showGameNotice({icon:"☁️",title:"서버 기록을 사용합니다",detail:"서버에 저장된 기록으로 게임을 계속합니다.",kind:"info",duration:4500});
       return;
     }
     if(event.target.closest("[data-fusion-animation-skip]")){finishFusionAnimation();return;}
@@ -1663,9 +1702,8 @@
   });
 
   document.addEventListener("submit",event=>{
-    if(event.target?.id!=="loginGateForm")return;
-    event.preventDefault();
-    submitLoginGate();
+    if(event.target?.id==="loginGateForm"){event.preventDefault();submitLoginGate();return;}
+    if(event.target?.id==="deleteAccountForm"){event.preventDefault();submitDeleteAccount();}
   });
 
   $("#castButton")?.addEventListener("click", startTimingGame);
@@ -1686,9 +1724,7 @@
   state.previousBucketCount = bucket.length;
   renderAll(true);
   installTooltips();
-  const missingStartupSession=!!currentUser&&(!sessionStorage.getItem("textFishingSessionToken")||sessionStorage.getItem("textFishingSessionUser")!==currentUser);
   if(!currentUser)setTimeout(()=>openLoginGate(),50);
-  else if(missingStartupSession)setTimeout(()=>openLoginGate("이전 로그인 상태를 확인하고 있습니다.",true),50);
   maybeOpenLocalBattleReplayDemo();
   maybeOpenLocalPvpReplayDemo();
   maybeOpenLocalNoticeDemo();

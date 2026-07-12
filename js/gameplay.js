@@ -235,6 +235,7 @@ function addCollection(f){
 }
 
 function fish(){
+  if(!currentUser){if(typeof globalThis.openFishingLifeLogin==="function")globalThis.openFishingLifeLogin("로그인해야 낚시할 수 있습니다.");return;}
   if(isFishing) return print("이미 낚시 중입니다.");
   isFishing=true;
   const castTimingResult = takeFishingTimingResult();

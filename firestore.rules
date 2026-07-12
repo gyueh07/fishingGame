@@ -3,11 +3,11 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function currentWriteSchema() {
-      return 248;
+      return 249;
     }
 
     function currentWriteProtocol() {
-      return 2;
+      return 3;
     }
 
     function validWriteEnvelope(data) {
@@ -37,6 +37,7 @@ service cloud.firestore {
           'rodLevel',
           'totalEarned',
           'totalFishingCount',
+          'accountResetVersion',
           'cloudRevision',
           'gameState'
         ])
@@ -45,6 +46,8 @@ service cloud.firestore {
         && data.rodLevel is int
         && data.totalEarned is number
         && data.totalFishingCount is int
+        && data.accountResetVersion is int
+        && data.accountResetVersion == 1
         && data.cloudRevision is int
         && state is map
         && state.keys().hasAll([
@@ -52,7 +55,8 @@ service cloud.firestore {
           'money',
           'rodLevel',
           'totalEarned',
-          'totalFishingCount'
+          'totalFishingCount',
+          'accountResetVersion'
         ])
         && state.saveSchemaVersion is int
         && state.saveSchemaVersion == currentWriteSchema()
@@ -60,6 +64,8 @@ service cloud.firestore {
         && state.rodLevel is int
         && state.totalEarned is number
         && state.totalFishingCount is int
+        && state.accountResetVersion is int
+        && state.accountResetVersion == 1
         && data.money == state.money
         && data.rodLevel == state.rodLevel
         && data.totalEarned == state.totalEarned
@@ -107,6 +113,39 @@ service cloud.firestore {
           >= oldState.get('totalEarned', resource.data.get('totalEarned', 0));
     }
 
+    function validFullReset() {
+      let state = request.resource.data.gameState;
+      return resource.data.get('accountResetVersion', 0) < 1
+        && request.resource.data.accountResetVersion == 1
+        && request.resource.data.money == 0
+        && request.resource.data.rodLevel == 1
+        && request.resource.data.totalEarned == 0
+        && request.resource.data.totalFishingCount == 0
+        && state.money == 0
+        && state.rodLevel == 1
+        && state.totalEarned == 0
+        && state.totalFishingCount == 0
+        && state.bucket is list
+        && state.bucket.size() == 0;
+    }
+
+    function activeSessionMatches(userId) {
+      let session = get(/databases/$(database)/documents/accountSessions/$(userId));
+      return resource.data.activeSessionTokenHash is string
+        && resource.data.activeSessionTokenHash.size() > 0
+        && session.data.tokenHash == resource.data.activeSessionTokenHash
+        && session.data.deviceId == resource.data.activeSessionDeviceId;
+    }
+
+    function parentActiveSessionMatches(userId) {
+      let user = get(/databases/$(database)/documents/users/$(userId));
+      let session = get(/databases/$(database)/documents/accountSessions/$(userId));
+      return user.data.activeSessionTokenHash is string
+        && user.data.activeSessionTokenHash.size() > 0
+        && session.data.tokenHash == user.data.activeSessionTokenHash
+        && session.data.deviceId == user.data.activeSessionDeviceId;
+    }
+
     match /users/{userId} {
       allow read: if true;
 
@@ -116,11 +155,19 @@ service cloud.firestore {
           'passwordHash',
           'sessionTokenHash',
           'sessionTokens',
+          'activeSessionDeviceId',
+          'activeSessionTokenHash',
+          'activeSessionSeenAt',
+          'accountResetVersion',
           'createdAt'
         ])
         && request.resource.data.passwordHash is string
         && request.resource.data.sessionTokenHash is string
         && request.resource.data.sessionTokens is map
+        && request.resource.data.activeSessionDeviceId is string
+        && request.resource.data.activeSessionTokenHash is string
+        && request.resource.data.activeSessionSeenAt is timestamp
+        && request.resource.data.activeSessionSeenAt == request.time
         && request.resource.data.nickname == userId
         && request.resource.data.cloudRevision == 0
         && request.resource.data.writeProtocolSeq == 1
@@ -132,10 +179,10 @@ service cloud.firestore {
         && writeGuardChanged()
         && identityFieldsUnchanged()
         && validUpdateSequence()
-        && progressDoesNotRegress()
+        && (progressDoesNotRegress() || validFullReset())
         && request.resource.data.nickname == userId;
 
-      allow delete: if false;
+      allow delete: if activeSessionMatches(userId);
 
       match /backups/{slotId} {
         allow read: if false;
@@ -153,7 +200,7 @@ service cloud.firestore {
           && request.resource.data.capturedAt is timestamp
           && request.resource.data.capturedAt == request.time;
 
-        allow delete: if false;
+        allow delete: if parentActiveSessionMatches(userId);
       }
     }
 
@@ -169,6 +216,10 @@ service cloud.firestore {
 
     match /onlineUsers/{documentId} {
       allow read, write: if true;
+    }
+
+    match /accountSessions/{documentId} {
+      allow read, create, update, delete: if true;
     }
 
     match /pvpRequests/{documentId} {

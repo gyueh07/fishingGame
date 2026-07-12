@@ -29,12 +29,17 @@ let startupEmergencySnapshot=null;
 let emergencyRestoreRunning=false;
 let cloudRevision=0;
 let cloudSaveChain=Promise.resolve();
+let accountSessionHeartbeatTimer=null;
+let accountSessionUnsubscribe=null;
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
-const GAME_VERSION = "2026-07-12-fishinglife-write-guard-v24-8";
-const USER_WRITE_SCHEMA_VERSION = 248;
-const USER_WRITE_PROTOCOL_VERSION = 2;
+const GAME_VERSION = "2026-07-12-fishinglife-season-reset-v24-9";
+const USER_WRITE_SCHEMA_VERSION = 249;
+const USER_WRITE_PROTOCOL_VERSION = 3;
+const ACCOUNT_RESET_VERSION = 1;
+const ACCOUNT_SESSION_TTL_MS = 90000;
+const ACCOUNT_SESSION_HEARTBEAT_MS = 20000;
 const ACCOUNT_BACKUP_SLOT_COUNT = 3;
 const GAME_VERSION_CHECK_TTL_MS = 5*60*1000;
 const MAX_SAFE_GAME_STATE_BYTES = 850000;
@@ -556,7 +561,9 @@ if(typeof db.enablePersistence === "function"){
   });
 }
 
-let currentUser = localStorage.getItem("textFishingCurrentUser") || null;
+// 새로 열 때는 반드시 로그인 화면부터 시작합니다. 이전 브라우저의 로컬
+// 사용자 표식만으로는 절대 게임을 열지 않습니다.
+let currentUser = null;
 let cloudSaveTimer = null;
 let cloudSaveRetryTimer = null;
 let cloudSaveRetryAttempt = 0;
@@ -604,8 +611,8 @@ function getSessionTokenMap(userData){
 
 function isSessionHashValid(userData,sessionHash){
   if(!sessionHash||!userData)return false;
-  const deviceHash=getSessionTokenMap(userData)[getCloudDeviceId()];
-  return deviceHash===sessionHash||userData.sessionTokenHash===sessionHash;
+  return userData.activeSessionDeviceId===getCloudDeviceId()
+    && userData.activeSessionTokenHash===sessionHash;
 }
 
 async function startUserSession(nickname){
@@ -630,6 +637,94 @@ async function getCurrentSessionHash(){
 async function hasValidSession(userData){
   const sessionHash = await getCurrentSessionHash();
   return isSessionHashValid(userData,sessionHash);
+}
+
+function sessionTimestampMillis(value){
+  if(value&&typeof value.toMillis==="function")return value.toMillis();
+  return Math.max(0,Number(value||0));
+}
+
+function isOtherDeviceSessionActive(sessionData){
+  if(!sessionData||!sessionData.deviceId)return false;
+  if(sessionData.deviceId===getCloudDeviceId())return false;
+  const seen=sessionTimestampMillis(sessionData.updatedAt)||Number(sessionData.updatedAtMillis||0);
+  return seen>0&&Date.now()-seen<ACCOUNT_SESSION_TTL_MS;
+}
+
+async function refreshAccountSession(){
+  if(!currentUser)return false;
+  const sessionHash=await getCurrentSessionHash();
+  if(!sessionHash)return false;
+  const username=currentUser,ref=db.collection("accountSessions").doc(username);
+  try{
+    await db.runTransaction(async tx=>{
+      const snap=await tx.get(ref),data=snap.exists?(snap.data()||{}):{};
+      if(data.tokenHash&&data.tokenHash!==sessionHash)throw new Error("SESSION_REPLACED");
+      if(data.deviceId&&data.deviceId!==getCloudDeviceId())throw new Error("SESSION_REPLACED");
+      tx.set(ref,{
+        nickname:username,
+        deviceId:getCloudDeviceId(),
+        tokenHash:sessionHash,
+        updatedAtMillis:Date.now(),
+        updatedAt:firebase.firestore.FieldValue.serverTimestamp()
+      });
+    });
+    return true;
+  }catch(error){
+    console.error(error);
+    if(error?.message==="SESSION_REPLACED")forceSessionLogout("이 계정은 다른 기기에서 접속했습니다.");
+    return false;
+  }
+}
+
+function stopAccountSessionHeartbeat(){
+  if(accountSessionHeartbeatTimer){clearInterval(accountSessionHeartbeatTimer);accountSessionHeartbeatTimer=null;}
+  if(accountSessionUnsubscribe){accountSessionUnsubscribe();accountSessionUnsubscribe=null;}
+}
+
+function startAccountSessionHeartbeat(){
+  stopAccountSessionHeartbeat();
+  if(!currentUser)return;
+  const username=currentUser;
+  refreshAccountSession();
+  accountSessionHeartbeatTimer=setInterval(()=>{if(!document.hidden)refreshAccountSession();},ACCOUNT_SESSION_HEARTBEAT_MS);
+  accountSessionUnsubscribe=db.collection("accountSessions").doc(username).onSnapshot(async snap=>{
+    if(!currentUser||currentUser!==username)return;
+    if(!snap.exists){forceSessionLogout("로그인 연결이 끝났습니다. 다시 로그인해주세요.");return;}
+    const sessionHash=await getCurrentSessionHash(),data=snap.data()||{};
+    if(!sessionHash||data.tokenHash!==sessionHash||data.deviceId!==getCloudDeviceId())forceSessionLogout("이 계정은 다른 기기에서 접속했습니다.");
+  },error=>console.error(error));
+}
+
+async function releaseAccountSession(username=currentUser){
+  if(!username)return;
+  const sessionHash=await getCurrentSessionHash();
+  stopAccountSessionHeartbeat();
+  if(!sessionHash)return;
+  const ref=db.collection("accountSessions").doc(username);
+  try{
+    await db.runTransaction(async tx=>{
+      const snap=await tx.get(ref);
+      if(!snap.exists)return;
+      const data=snap.data()||{};
+      if(data.tokenHash===sessionHash&&data.deviceId===getCloudDeviceId())tx.delete(ref);
+    });
+  }catch(error){console.error(error);}
+}
+
+function forceSessionLogout(message="로그인이 끝났습니다. 다시 로그인해주세요."){
+  if(!currentUser)return;
+  cancelActiveFishing();
+  stopServerAlertListener();
+  stopOnlinePresence();
+  stopAccountSessionHeartbeat();
+  currentUser=null;
+  localStorage.removeItem("textFishingCurrentUser");
+  clearUserSession();
+  resetGameData();
+  updateWallet();
+  setCloudSyncStatus("offline",message);
+  if(typeof globalThis.openFishingLifeLogin==="function")setTimeout(()=>globalThis.openFishingLifeLogin(message),0);
 }
 
 function cancelActiveFishing(){
@@ -668,6 +763,7 @@ function getTodayFishingCount(){
 function getGameState(){
   return {
     saveSchemaVersion:USER_WRITE_SCHEMA_VERSION,
+    accountResetVersion:ACCOUNT_RESET_VERSION,
     money,
     totalEarned,
     rodLevel,
@@ -722,6 +818,54 @@ function normalizeProfileCosmetics(value){
     background:String(source.background||""),
     attackEffect:String(source.attackEffect||"")
   };
+}
+
+function createFreshAccountState(){
+  return {
+    saveSchemaVersion:USER_WRITE_SCHEMA_VERSION,
+    accountResetVersion:ACCOUNT_RESET_VERSION,
+    money:0,
+    totalEarned:0,
+    rodLevel:1,
+    bucket:[],
+    collection:{},
+    ranking:[],
+    totalFishingCount:0,
+    dailyFishing:{date:getLocalDateKey(),count:0},
+    gradeCounts:{},
+    completedAchievements:[],
+    marketHour:null,
+    marketRates:{},
+    notifications:[],
+    messages:[],
+    researchLevels:{fishing:0,appraisal:0},
+    trainingLevels:{attack:0,hp:0,critDamage:0},
+    unlockedTitles:[],
+    equippedTitle:"",
+    profileCosmetics:{border:"",aura:"",background:"",attackEffect:""},
+    battleHistory:{boss:[],pvp:[]},
+    seenUpdateNoticeIds:[],
+    bossProgress:{defeated:{},difficultyClears:{},hp:{},materials:{},selectedDifficulty:"normal",cooldownUntil:0,cooldowns:{}},
+    pvpPrepIndexes:[],
+    partyPresets:{boss:[],pvp:[]},
+    fusionMainFishId:"",
+    fusionMainFishIds:{}
+  };
+}
+
+function clearOldAccountData(username){
+  const account=cleanNickname(username);
+  if(account){
+    [
+      "textFishingCloudRecovery:"+account,
+      "textFishingCloudBase:"+account,
+      "textFishingCloudDirty:"+account,
+      "textFishingEmergencyRecovery:"+account
+    ].forEach(key=>localStorage.removeItem(key));
+  }
+  localStorage.removeItem("textFishingSpeciesSizeSave");
+  localStorage.removeItem("textFishingEmergencyRecovery:__unassigned__");
+  startupEmergencySnapshot=null;
 }
 
 function compactBattleReplayFrames(frames,maxFrames=180){
@@ -1052,6 +1196,7 @@ function stageAccountBackup(tx,ref,existingData,reason,force=false){
 
 function protectedUserState(existingData,patch){
   const existing=existingData&&typeof existingData==="object"?existingData:{};
+  const resetting=Number((patch||{}).accountResetVersion||0)>Number(existing.accountResetVersion||0);
   const source=Object.prototype.hasOwnProperty.call(patch,"gameState")?patch.gameState:existing.gameState;
   const state=cloneCloudState(source&&typeof source==="object"?source:{})||{};
   const hasPatchMoney=Object.prototype.hasOwnProperty.call(patch,"money");
@@ -1061,9 +1206,10 @@ function protectedUserState(existingData,patch){
   const rodValue=hasPatchRod?patch.rodLevel:Math.max(1,Number(state.rodLevel||1),Number(existing.rodLevel||1));
   state.money=normalizeMoney(moneyValue);
   state.rodLevel=Math.max(1,Math.floor(Number(rodValue||1)));
-  state.totalFishingCount=Math.max(0,Math.floor(Number(state.totalFishingCount||0)),Math.floor(Number(existing.totalFishingCount||0)));
-  state.totalEarned=normalizeMoney(Math.max(Number(state.totalEarned||0),Number(existing.totalEarned||0)));
+  state.totalFishingCount=resetting?Math.max(0,Math.floor(Number(state.totalFishingCount||0))):Math.max(0,Math.floor(Number(state.totalFishingCount||0)),Math.floor(Number(existing.totalFishingCount||0)));
+  state.totalEarned=resetting?normalizeMoney(state.totalEarned||0):normalizeMoney(Math.max(Number(state.totalEarned||0),Number(existing.totalEarned||0)));
   state.saveSchemaVersion=USER_WRITE_SCHEMA_VERSION;
+  state.accountResetVersion=ACCOUNT_RESET_VERSION;
   return state;
 }
 
@@ -1094,7 +1240,7 @@ function txSetProtectedUser(tx,ref,existingData,patch,reason="user_write",option
   if(!create&&!existingData)throw new Error("ACCOUNT_NOT_FOUND");
   const state=protectedUserState(existingData,patch||{});
   assertCloudStateSize(state);
-  assertNoProgressRegression(existingData,state);
+  if(options.allowAccountReset!==true)assertNoProgressRegression(existingData,state);
   const expectedRevision=create?0:Number(existingData.cloudRevision||0)+1;
   if(Object.prototype.hasOwnProperty.call(patch||{},"cloudRevision")&&Number(patch.cloudRevision)!==expectedRevision)throw new Error("REVISION_MISMATCH");
   const backupMeta=create||options.backup===false?{}:stageAccountBackup(tx,ref,existingData,reason,options.forceBackup===true);
@@ -1115,6 +1261,7 @@ function txSetProtectedUser(tx,ref,existingData,patch,reason="user_write",option
     writeProtocolSeq:create?1:Number(existingData.writeProtocolSeq||0)+1,
     writeClientVersion:GAME_VERSION,
     writeReason:String(reason||"user_write"),
+    accountResetVersion:ACCOUNT_RESET_VERSION,
     writeGuardAt:serverTime,
     updatedAt:serverTime
   };
@@ -1271,7 +1418,9 @@ function readCloudSyncBase(username){
   if(!username)return null;
   try{
     const value=JSON.parse(localStorage.getItem(cloudBaseKey(username))||"null");
-    return value&&value.state&&typeof value.state==="object"?value:null;
+    if(!value||!value.state||typeof value.state!=="object")return null;
+    if(Number(value.state.accountResetVersion||0)!==ACCOUNT_RESET_VERSION){localStorage.removeItem(cloudBaseKey(username));return null;}
+    return value;
   }catch(error){console.error(error);return null;}
 }
 
@@ -1306,7 +1455,11 @@ function peekCloudRecovery(username){
   if(!username)return null;
   const key="textFishingCloudRecovery:"+username,raw=localStorage.getItem(key);
   if(!raw)return null;
-  try{return JSON.parse(raw);}catch(e){console.error(e);return null;}
+  try{
+    const value=JSON.parse(raw);
+    if(Number(value?.localState?.accountResetVersion||0)!==ACCOUNT_RESET_VERSION){localStorage.removeItem(key);return null;}
+    return value;
+  }catch(e){console.error(e);return null;}
 }
 
 function takeCloudRecovery(username){return peekCloudRecovery(username);}
@@ -1336,6 +1489,7 @@ function emergencyRecoverySignature(state){
 
 function isMeaningfulEmergencyState(state){
   if(!state||typeof state!=="object")return false;
+  if(Number(state.accountResetVersion||0)!==ACCOUNT_RESET_VERSION)return false;
   return Number(state.rodLevel||1)>1||normalizeMoney(state.money||0)>0||Number(state.totalFishingCount||0)>0||(Array.isArray(state.bucket)&&state.bucket.length>0);
 }
 
@@ -1744,16 +1898,7 @@ async function saveCloudDataNow(){
   }catch(e){
     console.error(e);
     if(e.message === "SESSION_INVALID"){
-      storeCloudRecovery(userAtStart,localState,baseState,true);
-      cancelActiveFishing();
-      stopServerAlertListener();
-      stopOnlinePresence();
-      currentUser = null;
-      localStorage.removeItem("textFishingCurrentUser");
-      clearUserSession();
-      updateWallet();
-      setCloudSyncStatus("error","저장되지 않은 데이터는 이 기기에 복구용으로 보관했습니다.");
-      print("로그인 세션이 만료되었습니다. 저장되지 않은 데이터는 이 기기에 안전하게 보관했으니 같은 계정으로 다시 로그인해주세요.");
+      forceSessionLogout("이 계정의 접속이 끝났습니다. 다시 로그인해주세요.");
     }else if(e.message === "ACCOUNT_NOT_FOUND"){
       setCloudSyncStatus("error","Firebase 계정을 찾을 수 없습니다.");
     }else if(e.message === "PROGRESS_REGRESSION_BLOCKED"){
@@ -1808,15 +1953,7 @@ async function refreshMyCloudData(force=false){
   }catch(e){
     console.error(e);
     if(e.message === "SESSION_INVALID"){
-      cancelActiveFishing();
-      stopServerAlertListener();
-      stopOnlinePresence();
-      currentUser = null;
-      localStorage.removeItem("textFishingCurrentUser");
-      clearUserSession();
-      resetGameData();
-      updateWallet();
-      print("로그인 세션이 만료되었습니다. 다시 로그인해주세요.");
+      forceSessionLogout("이 계정의 접속이 끝났습니다. 다시 로그인해주세요.");
     }
     return false;
   }
@@ -1883,48 +2020,50 @@ async function removeRealtimeNotification(matchText){
   }
 }
 
-async function registerUser(){
+async function registerUser(providedNickname,providedPassword){
   if(currentUser) return print("먼저 로그아웃한 뒤 새 계정을 만들어주세요.");
-  if(!(await checkGameVersion())) return;
-  const nickname = cleanNickname(prompt("닉네임을 입력하세요."));
-  if(!nickname) return print("회원가입이 취소되었습니다.");
-
-  const password = prompt("비밀번호를 입력하세요.");
-  if(!password) return print("비밀번호를 입력해야 합니다.");
+  if(!(await checkGameVersion())) return {ok:false};
+  const formRegister=typeof providedNickname==="string"||typeof providedPassword==="string";
+  const nickname=cleanNickname(formRegister?providedNickname:prompt("닉네임을 입력하세요."));
+  const password=String(formRegister?providedPassword:(nickname?prompt("비밀번호를 입력하세요."):"")||"");
+  const setLoginProgress=(message,kind="loading")=>{if(typeof globalThis.updateFishingLifeLoginStatus==="function")globalThis.updateFishingLifeLoginStatus(message,kind);};
+  if(!nickname){setLoginProgress("닉네임을 입력해주세요.","error");return {ok:false};}
+  if(password.length<4){setLoginProgress("비밀번호는 4자 이상 입력해주세요.","error");return {ok:false};}
 
   try{
     const ref = db.collection("users").doc(nickname);
-    const snap = await ref.get();
-
-    if(snap.exists){
-      return print("이미 사용 중인 닉네임입니다.");
-    }
-
     const passwordHash = await hashPassword(password);
     const sessionTokenHash = await startUserSession(nickname);
-    const sessionTokens = {[getCloudDeviceId()]:sessionTokenHash};
-
+    const sessionRef=db.collection("accountSessions").doc(nickname);
     resetGameData();
-
     await db.runTransaction(async tx => {
       const latest = await tx.get(ref);
       if(latest.exists) throw new Error("NICKNAME_TAKEN");
+      const freshState=createFreshAccountState(),serverTime=firebase.firestore.FieldValue.serverTimestamp();
       txSetProtectedUser(tx,ref,null,{
         nickname,
         passwordHash,
         sessionTokenHash,
-        sessionTokens,
+        sessionTokens:{},
+        activeSessionDeviceId:getCloudDeviceId(),
+        activeSessionTokenHash:sessionTokenHash,
+        activeSessionSeenAt:serverTime,
+        accountResetVersion:ACCOUNT_RESET_VERSION,
         cloudRevision: 0,
         money: 0,
         rodLevel: 1,
         title: "",
-        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-        gameState: getGameState()
+        createdAt: serverTime,
+        gameState:freshState
       },"register",{create:true,backup:false});
+      tx.set(sessionRef,{nickname,deviceId:getCloudDeviceId(),tokenHash:sessionTokenHash,updatedAtMillis:Date.now(),updatedAt:serverTime});
     });
 
     currentUser = nickname;
     localStorage.setItem("textFishingCurrentUser", currentUser);
+    localStorage.setItem("textFishingLastLoginNickname",currentUser);
+    clearOldAccountData(currentUser);
+    applyGameState(createFreshAccountState());
     lastCloudSyncedState=cloneCloudState(getGameState());
     persistCloudSyncBase(currentUser,lastCloudSyncedState,cloudRevision);
     clearPersistentCloudDirty(currentUser);
@@ -1933,14 +2072,18 @@ async function registerUser(){
     updateWallet();
     startServerAlertListener();
     startOnlinePresence();
-    print(nickname + " 님 회원가입 완료.\n새 계정은 0원부터 시작합니다.");
+    startAccountSessionHeartbeat();
+    setLoginProgress("새 계정을 만들었습니다!","success");
+    if(typeof globalThis.completeFishingLifeLogin==="function")globalThis.completeFishingLifeLogin(nickname);
+    print(nickname + " 님 회원가입 완료.\nLv.1부터 새로 시작합니다.");
+    return {ok:true};
   }catch(e){
     console.error(e);
     clearUserSession();
-    if(e.message === "NICKNAME_TAKEN") print("이미 사용 중인 닉네임입니다.");
-    else if(e.message==="USER_STATE_TOO_LARGE")print("새 계정 데이터의 저장 크기를 확인하지 못했습니다.");
-    else if(handleProtectedWriteError(e,nickname,getGameState(),null))print("최신 FishingLife 파일로 다시 접속한 뒤 회원가입해주세요.");
-    else print("회원가입 중 오류가 발생했습니다.");
+    const message=e.message==="NICKNAME_TAKEN"?"이미 사용 중인 닉네임입니다.":e.message==="USER_STATE_TOO_LARGE"?"새 계정 저장 공간을 확인하지 못했습니다.":"계정을 만들지 못했습니다. 잠시 후 다시 시도해주세요.";
+    setLoginProgress(message,"error");
+    if(!formRegister)print(message);
+    return {ok:false,error:e.message};
   }
 }
 
@@ -1956,19 +2099,38 @@ async function loginUser(providedNickname,providedPassword){
 
   setLoginProgress("Firebase에서 계정을 확인하고 있습니다.");
   const ref=db.collection("users").doc(nickname);
+  const sessionRef=db.collection("accountSessions").doc(nickname);
   const passwordHash=await hashPassword(password);
   const sessionTokenHash=await startUserSession(nickname);
   let loginData=null,nextRevision=0;
-  let recoveredLocalState=false;
+  let accountWasReset=false;
 
   try{
     await db.runTransaction(async tx=>{
       const latestSnap=await tx.get(ref);
       if(!latestSnap.exists)throw new Error("ACCOUNT_NOT_FOUND");
+      const sessionSnap=await tx.get(sessionRef);
       const latest=latestSnap.data()||{};
       if(latest.passwordHash!==passwordHash)throw new Error("WRONG_PASSWORD");
-      const sessionTokens={...getSessionTokenMap(latest),[getCloudDeviceId()]:sessionTokenHash};
-      const write=txSetProtectedUser(tx,ref,latest,{sessionTokenHash,sessionTokens,cloudRevision:Number(latest.cloudRevision||0)+1},"login");
+      const activeSession=sessionSnap.exists?(sessionSnap.data()||{}):null;
+      if(isOtherDeviceSessionActive(activeSession))throw new Error("SESSION_IN_USE");
+      accountWasReset=Number(latest.accountResetVersion||0)<ACCOUNT_RESET_VERSION;
+      const nextState=accountWasReset?createFreshAccountState():cloneCloudState(latest.gameState||createFreshAccountState());
+      const serverTime=firebase.firestore.FieldValue.serverTimestamp();
+      const write=txSetProtectedUser(tx,ref,latest,{
+        sessionTokenHash,
+        sessionTokens:{},
+        activeSessionDeviceId:getCloudDeviceId(),
+        activeSessionTokenHash:sessionTokenHash,
+        activeSessionSeenAt:serverTime,
+        accountResetVersion:ACCOUNT_RESET_VERSION,
+        cloudRevision:Number(latest.cloudRevision||0)+1,
+        money:Number(nextState.money||0),
+        rodLevel:Number(nextState.rodLevel||1),
+        title:String(nextState.equippedTitle||""),
+        gameState:nextState
+      },accountWasReset?"full_account_reset":"login",{allowAccountReset:accountWasReset,backup:!accountWasReset});
+      tx.set(sessionRef,{nickname,deviceId:getCloudDeviceId(),tokenHash:sessionTokenHash,updatedAtMillis:Date.now(),updatedAt:serverTime});
       nextRevision=write.cloudRevision;
       loginData={...latest,money:write.money,rodLevel:write.rodLevel,title:write.title,gameState:cloneCloudState(write.gameState)};
     });
@@ -1977,7 +2139,7 @@ async function loginUser(providedNickname,providedPassword){
     clearUserSession();
     const pendingRecovery=peekCloudRecovery(nickname);
     const protectedWriteBlocked=handleProtectedWriteError(e,nickname,pendingRecovery?.localState||null,pendingRecovery?.baseState||null);
-    const message=e.message==="ACCOUNT_NOT_FOUND"?"존재하지 않는 닉네임입니다.":e.message==="WRONG_PASSWORD"?"비밀번호가 틀렸습니다.":protectedWriteBlocked?"최신 FishingLife 파일로 다시 접속해주세요.":e.message==="PROGRESS_REGRESSION_BLOCKED"?"서버 진행도보다 낮은 데이터가 감지되어 로그인을 중단했습니다.":e.message==="USER_STATE_TOO_LARGE"?"계정 데이터가 커서 안전 저장 업데이트가 필요합니다.":"네트워크가 불안정합니다. 잠시 후 다시 시도해주세요.";
+    const message=e.message==="ACCOUNT_NOT_FOUND"?"존재하지 않는 닉네임입니다.":e.message==="WRONG_PASSWORD"?"비밀번호가 틀렸습니다.":e.message==="SESSION_IN_USE"?"이미 다른 기기에서 접속 중입니다. 그 기기에서 로그아웃한 뒤 다시 시도해주세요.":protectedWriteBlocked?"최신 FishingLife 파일로 다시 접속해주세요.":e.message==="USER_STATE_TOO_LARGE"?"계정 데이터가 커서 초기화를 완료하지 못했습니다.":"네트워크가 불안정합니다. 잠시 후 다시 시도해주세요.";
     setLoginProgress(message,"error");
     if(!formLogin)print(message);
     return {ok:false,error:e.message};
@@ -1987,19 +2149,17 @@ async function loginUser(providedNickname,providedPassword){
     isLoginPostProcessing=true;
     currentUser=nickname;
     localStorage.setItem("textFishingCurrentUser",currentUser);
-    const recovery=peekCloudRecovery(nickname);
-    if(recovery?.localState)captureStartupEmergencySnapshot(nickname,recovery.localState,"이전 세션에서 보존한 로컬 복구본",recovery.baseState||null);
-    const trustedRecovery=!!recovery?.localState&&!!recovery?.baseState&&typeof recovery.baseState==="object"&&(recovery.dirty===true||hasPersistentCloudDirty(nickname));
-    const loginState=trustedRecovery?mergeCloudGameStates(recovery.localState,loginData.gameState,recovery.baseState):recovery?.localState?mergeSafeProgressRecovery(recovery.localState,loginData.gameState):loginData.gameState;
-    recoveredLocalState=!sameCloudValue(loginState,loginData.gameState);
-    applyGameState(loginState);
+    localStorage.setItem("textFishingLastLoginNickname",currentUser);
+    if(accountWasReset)clearOldAccountData(nickname);
+    applyGameState(loginData.gameState);
     cloudRevision=nextRevision;
     cloudSyncedSeq=localSaveSeq;
     lastCloudSyncedState=cloneCloudState(loginData.gameState);
     persistCloudSyncBase(nickname,loginData.gameState,nextRevision);
     updateWallet();
-    setCloudSyncStatus(recoveredLocalState?"saving":"saved",trustedRecovery?"이 기기의 확인된 미저장 데이터를 복구해 Firebase에 저장합니다.":recoveredLocalState?"낮아진 진행도를 안전하게 복원해 저장합니다.":"Firebase 데이터를 그대로 불러왔습니다.");
-    setLoginProgress("로그인 완료! 게임 화면을 여는 중입니다.","success");
+    clearPersistentCloudDirty(nickname);
+    setCloudSyncStatus("saved",accountWasReset?"계정을 Lv.1로 초기화했습니다.":"계정 데이터를 불러왔습니다.");
+    setLoginProgress(accountWasReset?"초기화 완료! Lv.1부터 시작합니다.":"로그인 완료! 게임을 시작합니다.","success");
     if(typeof globalThis.completeFishingLifeLogin==="function")globalThis.completeFishingLifeLogin(nickname);
     print(nickname+" 님 로그인 완료.\n게임을 시작할 수 있습니다.");
   }catch(e){
@@ -2016,10 +2176,11 @@ async function loginUser(providedNickname,providedPassword){
     await yieldLoginWork();
     startServerAlertListener();
     startOnlinePresence();
+    startAccountSessionHeartbeat();
     const mobile=typeof matchMedia==="function"&&matchMedia("(max-width: 850px)").matches;
     const combatChanged=await migrateCombatStatsToCurrentVersionAsync(mobile?35:100,false);
     const titlesChanged=checkSpecialTitles();
-    if(combatChanged||titlesChanged.length||recoveredLocalState)saveGame();
+    if(combatChanged||titlesChanged.length)saveGame();
     updateWallet();
   }catch(e){
     console.error(e);
@@ -2033,7 +2194,6 @@ async function loginUser(providedNickname,providedPassword){
       await showUpdateNoticeIfNeeded();
       await showNewNotifications();
       await showNewMessages();
-      if(typeof globalThis.offerFishingLifeEmergencyRecovery==="function")globalThis.offerFishingLifeEmergencyRecovery();
     }
     catch(e){console.error(e);}
   },50);
@@ -2051,6 +2211,7 @@ async function logoutUser(){
   }
   stopServerAlertListener();
   stopOnlinePresence();
+  await releaseAccountSession(old);
   currentUser = null;
   localStorage.removeItem("textFishingCurrentUser");
   clearUserSession();
@@ -2060,12 +2221,42 @@ async function logoutUser(){
   if(typeof globalThis.openFishingLifeLogin==="function")setTimeout(()=>globalThis.openFishingLifeLogin(),50);
 }
 
-async function deleteAccount(){
-  if(!currentUser)return print("로그인 상태가 아닙니다.");
-  const detail="계정 오삭제와 백업 손실을 막기 위해 게임 안의 즉시 탈퇴를 잠시 중단했습니다. 관리자 확인 후 백업까지 함께 정리하는 방식으로만 처리할 수 있습니다.";
-  if(typeof globalThis.showFishingLifeNotice==="function")globalThis.showFishingLifeNotice({title:"안전한 계정 삭제 필요",detail,kind:"info",icon:"🛡️",duration:8000});
-  print("계정 삭제 보호\n\n"+detail);
-  return false;
+async function deleteAccount(password=""){
+  if(!currentUser)return {ok:false,message:"로그인 상태가 아닙니다."};
+  if(isOnlineActionRunning)return {ok:false,message:"진행 중인 전송이 끝난 뒤 다시 시도해주세요."};
+  const username=currentUser,sessionHash=await getCurrentSessionHash();
+  if(!sessionHash)return {ok:false,message:"로그인 정보가 만료되었습니다. 다시 로그인해주세요."};
+  const passwordHash=await hashPassword(String(password||""));
+  try{
+    const userRef=db.collection("users").doc(username),sessionRef=db.collection("accountSessions").doc(username);
+    await db.runTransaction(async tx=>{
+      const userSnap=await tx.get(userRef);
+      if(!userSnap.exists)throw new Error("ACCOUNT_NOT_FOUND");
+      const sessionSnap=await tx.get(sessionRef);
+      const data=userSnap.data()||{},session=sessionSnap.exists?(sessionSnap.data()||{}):{};
+      if(data.passwordHash!==passwordHash)throw new Error("WRONG_PASSWORD");
+      if(!isSessionHashValid(data,sessionHash)||session.tokenHash!==sessionHash)throw new Error("SESSION_INVALID");
+      for(let slot=0;slot<ACCOUNT_BACKUP_SLOT_COUNT;slot++)tx.delete(userRef.collection("backups").doc("slot"+slot));
+      tx.delete(userRef);
+      if(sessionSnap.exists)tx.delete(sessionRef);
+    });
+    stopServerAlertListener();
+    stopOnlinePresence();
+    stopAccountSessionHeartbeat();
+    clearOldAccountData(username);
+    localStorage.removeItem("textFishingCurrentUser");
+    if(localStorage.getItem("textFishingLastLoginNickname")===username)localStorage.removeItem("textFishingLastLoginNickname");
+    currentUser=null;
+    clearUserSession();
+    resetGameData();
+    updateWallet();
+    if(typeof globalThis.requestFishingLifeRender==="function")globalThis.requestFishingLifeRender(true);
+    return {ok:true,username};
+  }catch(error){
+    console.error(error);
+    const message=error?.message==="WRONG_PASSWORD"?"비밀번호가 틀렸습니다.":error?.message==="SESSION_INVALID"?"로그인 정보가 만료되었습니다. 다시 로그인해주세요.":error?.message==="ACCOUNT_NOT_FOUND"?"이미 삭제된 계정입니다.":"계정을 삭제하지 못했습니다. 네트워크를 확인해주세요.";
+    return {ok:false,message,error:error?.message||"DELETE_FAILED"};
+  }
 }
 
 
@@ -2523,6 +2714,10 @@ function openModal(title, content){
   document.getElementById("modalOverlay").style.display = "block";
 }
 function closeModal(force=false){
+  if(!force&&!currentUser){
+    if(typeof globalThis.openFishingLifeLogin==="function")globalThis.openFishingLifeLogin("로그인해야 게임을 시작할 수 있습니다.");
+    return;
+  }
   if(!force&&emergencyRestoreRunning){
     if(typeof globalThis.showFishingLifeNotice==="function")globalThis.showFishingLifeNotice({title:"계정 복구 저장 중",detail:"Firebase 저장이 끝날 때까지 잠시 기다려주세요.",kind:"info",icon:"🛟"});
     return;
@@ -2961,7 +3156,8 @@ function unequipTitle(){
 }
 
 function saveGame(){
-  if(!shouldProtectEmergencyOriginalLocalSave())localStorage.setItem("textFishingSpeciesSizeSave", JSON.stringify({money,totalEarned,rodLevel,bucket,collection,ranking,totalFishingCount,dailyFishing,gradeCounts,completedAchievements,marketHour,marketRates,notifications,messages,researchLevels,trainingLevels,unlockedTitles,equippedTitle,profileCosmetics,battleHistory,seenUpdateNoticeIds,bossProgress,pvpPrepIndexes,partyPresets,fusionMainFishId,fusionMainFishIds}));
+  if(!currentUser)return;
+  if(!shouldProtectEmergencyOriginalLocalSave())localStorage.setItem("textFishingSpeciesSizeSave",JSON.stringify(getGameState()));
   syncCloudSoon();
 }
 function loadGame(){

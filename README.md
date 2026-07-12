@@ -2,9 +2,17 @@
 
 기존 텍스트 낚시게임의 저장 데이터와 게임 규칙을 유지하면서 화면과 파일 구조를 개편한 버전입니다.
 
+## v24.9 전체 초기화·한 기기 접속
+
+- Firestore를 비운 뒤 만들어지는 모든 계정은 Lv.1, 0원, 빈 양동이로 시작합니다.
+- 브라우저를 새로 열면 이전 로그인과 로컬 게임 기록을 자동으로 불러오지 않습니다. 로그인 성공 전에는 낚시와 모든 게임 메뉴가 잠깁니다.
+- 한 계정은 한 기기에서만 접속할 수 있습니다. 다른 기기에서 접속 중이면 로그인이 거부되며, 비정상 종료된 접속 잠금은 90초 뒤 풀립니다.
+- 탈퇴는 경고 화면, 비밀번호 확인, 최종 확인을 거친 뒤 계정과 세션 및 백업 3칸을 함께 삭제합니다.
+- 복구 화면은 `서버 기록`과 `이 기기 기록` 중 하나를 고르는 쉬운 화면으로 정리했습니다.
+
 ## v24.8 구버전 덮어쓰기 차단
 
-- 모든 `users/{닉네임}` 쓰기는 `writeSchemaVersion: 248`, `writeProtocol: 2`, 증가하는 `writeProtocolSeq`, 매 요청의 `writeGuardAt: serverTimestamp()`를 함께 기록합니다.
+- 모든 `users/{닉네임}` 쓰기는 `writeSchemaVersion: 249`, `writeProtocol: 3`, 증가하는 `writeProtocolSeq`, 매 요청의 `writeGuardAt: serverTimestamp()`를 함께 기록합니다.
 - `firestore.rules`는 새 표식을 이번 요청에서 실제로 갱신하지 않은 쓰기를 거부합니다. 구버전이 문서에 남은 버전 숫자를 그대로 물려받아도 통과할 수 없습니다.
 - 낚싯대 레벨·총 낚시 횟수·누적 수익이 현재 서버 기록보다 낮아지는 저장은 클라이언트와 Firestore 규칙 양쪽에서 차단합니다. 돈과 양동이는 정상 소비·판매·전송이 있어 감소 금지 대상에서 제외합니다.
 - 각 계정의 서버 쓰기 전 `gameState`를 `users/{닉네임}/backups/slot0~2`에 순환 저장합니다. 최초 v24.8 저장, UTC 날짜별 첫 저장, 전체 복구 직전, 송금·물고기 전송 직전에 생성됩니다.
@@ -15,21 +23,21 @@
 - 안전 버전 확인에 실패하면 전면 보호 화면으로 게임 진행을 잠그고, 재확인에 성공한 뒤 서버 데이터를 다시 불러옵니다.
 - `gameState` 직렬화 크기가 850KB를 넘으면 Firestore 1MiB 제한에 닿기 전에 저장을 중단하고 로컬 복구본을 유지합니다. 장기적으로 양동이를 하위 컬렉션으로 분리해야 합니다.
 - 실행 가능했던 구버전 `original.html`은 Firebase 코드를 전부 제거한 최신 게임 이동 페이지만 남겼으며, `validation/`은 배포 산출물에서 제외합니다.
-- 백업 하위 컬렉션까지 안전하게 정리할 서버 관리자 경로가 생기기 전까지 게임 안의 즉시 계정 삭제는 차단합니다.
+- 탈퇴 시 비밀번호를 다시 확인하고 계정 문서, 접속 잠금, 백업 3칸을 한 번에 삭제합니다.
 
 > 이 보호막은 예전 브라우저 파일의 **우발적인 덮어쓰기와 진행도 하락**을 막습니다. 현재 게임은 Firebase Authentication 없이 공개 클라이언트가 `users` 문서를 직접 다루는 구조라, 코드를 고의로 변조한 공격까지 막는 인증 장치는 아닙니다. 계정 소유권·치팅 방지는 Firebase Auth와 서버 함수로 송금·물고기 전송·복구를 옮기는 다음 마이그레이션이 필요합니다.
 
 ### 반드시 지킬 배포 순서
 
-1. v24.8의 `index.html`, `css/`, `js/`, 구버전 차단용 `original.html`을 먼저 정적 호스팅에 배포합니다. Firebase Hosting이면 패키지 루트에서 `firebase deploy --only hosting --project fishinggame-1c8ac`만 실행합니다.
-2. 새 화면에서 테스트 계정 로그인·저장이 정상 동작하는지 확인합니다.
-3. Firebase Console의 Firestore 규칙 탭에 `firestore.rules`를 게시하거나 `firebase deploy --only firestore:rules --project fishinggame-1c8ac`를 실행합니다. **규칙을 먼저 게시하면 v24.7도 즉시 저장할 수 없으므로 순서를 바꾸면 안 됩니다.**
-4. `config/game` 문서에 숫자 `minimumBuild: 248`, 숫자 `minSaveSchemaVersion: 248`, 숫자 `minimumWriteProtocol: 2`, 불리언 `maintenance: false`를 추가합니다.
-5. 구버전 쓰기가 거부되고 `users/{테스트계정}/backups/slot0`이 만들어지는 것을 확인한 뒤 실제 계정 복구를 진행합니다.
+1. 현재처럼 Firestore를 완전히 비운 상태에서는 Firebase Console의 Firestore 규칙 탭에 새 `firestore.rules`를 **먼저 게시**합니다. CLI라면 `firebase deploy --only firestore:rules --project fishinggame-1c8ac`입니다.
+2. 바로 이어서 v24.9의 `index.html`, `css/`, `js/`, `original.html`을 호스팅에 배포합니다. Firebase Hosting이면 `firebase deploy --only hosting --project fishinggame-1c8ac`입니다.
+3. 새 화면에서 테스트 계정을 회원가입하고 Lv.1, 0원, 빈 양동이로 생성되는지 확인합니다.
+4. 같은 계정을 다른 기기에서 로그인해 `이미 다른 기기에서 접속 중입니다`가 표시되는지 확인합니다.
+5. `config/game` 문서를 다시 만들 경우 숫자 `minimumBuild: 249`, 숫자 `minSaveSchemaVersion: 249`, 숫자 `minimumWriteProtocol: 3`, 불리언 `maintenance: false`를 추가합니다. 문서가 없어도 v24.9 회원가입과 로그인은 동작합니다.
 
-`firebase.json`에는 Hosting과 Firestore 규칙이 함께 정의되어 있습니다. **검증 전 `firebase deploy`를 단독으로 실행하지 마세요.** 위의 두 `--only` 명령을 순서대로 사용해야 합니다. 1단계와 3단계 사이에는 아직 구버전 쓰기가 가능하므로, 로컬 검증을 마친 뒤 Hosting과 규칙 배포를 가능한 한 연속해서 끝내야 완전 차단됩니다.
+`firebase.json`에는 Hosting과 Firestore 규칙이 함께 정의되어 있습니다. **이번 전체 초기화 배포에서는 `firebase deploy`를 단독으로 실행하지 말고**, 위의 두 `--only` 명령을 규칙 → Hosting 순서로 연속해서 실행하세요.
 
-규칙 게시 직후 이미 열려 있던 v24.7·텍스트 게임 탭은 저장이 거부되지만 화면에는 계속 진행되는 것처럼 보일 수 있습니다. 모든 이용자에게 **기존 탭을 닫고 v24.8 주소를 새로 열도록** 공지해야 하며, 규칙 게시 뒤 새로 한 테스트 낚시가 다른 브라우저에서도 보이는지 확인하세요.
+규칙 게시 직후 이미 열려 있던 구버전 탭은 저장이 거부되지만 화면에는 계속 진행되는 것처럼 보일 수 있습니다. 모든 이용자에게 **기존 탭을 닫고 v24.9 주소를 새로 열도록** 공지해야 하며, 새 계정이 Lv.1로 생성되는지 확인하세요.
 
 ## v24.7 차희승 계정 긴급 복구
 

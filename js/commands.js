@@ -14,6 +14,11 @@
 
   print("> "+escapeHtml(cmd));
 
+  if(!currentUser && !requireLoginForCommand(cmd)){
+    if(typeof globalThis.openFishingLifeLogin==="function")globalThis.openFishingLifeLogin("로그인해야 게임을 시작할 수 있습니다.");
+    return;
+  }
+
   if(cmd.startsWith("대전 ") && cmd.split(/\s+/).length === 2) return requestPvp(cmd.split(/\s+/)[1]);
   if(cmd.startsWith("대전준비 ")) return preparePvpFish(cmd.split(/\s+/)[1]);
   if(cmd.startsWith("대전해제 ")) return unpreparePvpFish(cmd.split(/\s+/)[1]);
@@ -22,11 +27,6 @@
   if(cmd === "대전수락") return acceptLatestPvpRequest();
   if(cmd === "대전거절") return rejectLatestPvpRequest();
   if(cmd === "대전취소") return cancelPvpRequest();
-
-
-  if(!currentUser && !requireLoginForCommand(cmd)){
-    return print("로그인 후 이용 가능합니다.\n\n회원가입 또는 로그인 을 입력하세요.");
-  }
 
   if(!isAllowedInBossMenu(cmd)){
     return blockedBossCommand();
@@ -84,7 +84,7 @@
   else if(cmd==="회원가입") return registerUser();
   else if(cmd==="로그인") return loginUser();
   else if(cmd==="로그아웃") return logoutUser();
-  else if(cmd==="탈퇴") deleteAccount();
+  else if(cmd==="탈퇴") { if(typeof globalThis.openFishingLifeDeleteAccount==="function")globalThis.openFishingLifeDeleteAccount(); }
   else if(cmd.startsWith("송금 ")){ const p=cmd.split(" "); sendMoney(p[1], p[2]); }
   else if(cmd.startsWith("전송 ")){ const p=cmd.split(" "); sendFish(p[1], p[2]); }
   else if(cmd==="강화") upgradeOne();
@@ -116,134 +116,12 @@ document.addEventListener("visibilitychange",()=>{
   if(document.visibilityState==="hidden"&&currentUser&&hasPendingLocalCloudChanges())saveCloudData();
 });
 
-loadGame();
-const startupCloudBase=currentUser?readCloudSyncBase(currentUser):null;
-if(currentUser&&hasPersistentCloudDirty(currentUser))storeCloudRecovery(currentUser,getGameState(),startupCloudBase?.state||null,true);
-if(currentUser)captureStartupEmergencySnapshot(currentUser,getGameState(),"브라우저 시작 시 보존본",startupCloudBase?.state||null);
-else captureStartupEmergencySnapshot("",getGameState(),"계정 표시가 사라지기 전 남아 있던 브라우저 기록");
-const startupLocalProgressSnapshot=startupEmergencySnapshot?.username===currentUser?cloneCloudState(startupEmergencySnapshot.state):null;
-if(currentUser)isLoginPostProcessing=true;
-
-if(!currentUser){
-  clearUserSession();
-  resetGameData();
-  refreshMarketIfNeeded();
-  saveGame();
-  updateWallet();
-  setCloudSyncStatus("offline");
-  print("로그인이 필요합니다.\n\n처음이라면 회원가입 을 입력하세요.\n이미 계정이 있다면 로그인 을 입력하세요.");
-  checkGameVersion();
-} else {
-  updateWallet();
-  print(currentUser + " 님으로 접속 중입니다.\n클라우드 데이터를 불러오는 중입니다.");
-
-  (async function(){
-    let startupAchievements = [];
-
-    try{
-      if(!(await checkGameVersion())){
-        isLoginPostProcessing=false;
-        updateWallet();
-        return;
-      }
-      const snap = await db.collection("users").doc(currentUser).get({source:"server"});
-
-      if(!snap.exists){
-        currentUser = null;
-        localStorage.removeItem("textFishingCurrentUser");
-        clearUserSession();
-        resetGameData();
-        updateWallet();
-        print("저장된 계정을 찾을 수 없습니다.\n다시 로그인해주세요.");
-        isLoginPostProcessing=false;
-        if(typeof globalThis.openFishingLifeLogin==="function")setTimeout(()=>globalThis.openFishingLifeLogin(),50);
-        return;
-      }
-
-      const data = snap.data();
-      if(!(await hasValidSession(data))){
-        const expiredUser=currentUser;
-        const expiredDirty=hasPersistentCloudDirty(expiredUser),expiredBase=readCloudSyncBase(expiredUser)?.state||null;
-        storeCloudRecovery(expiredUser,getGameState(),expiredDirty?expiredBase:data.gameState,expiredDirty);
-        currentUser = null;
-        localStorage.removeItem("textFishingCurrentUser");
-        clearUserSession();
-        resetGameData();
-        updateWallet();
-        print("로그인 세션이 없거나 만료되었습니다. 다시 로그인해주세요.");
-        isLoginPostProcessing=false;
-        if(typeof globalThis.openFishingLifeLogin==="function")setTimeout(()=>globalThis.openFishingLifeLogin(),50);
-        return;
-      }
-      const startupState=startupLocalProgressSnapshot?mergeSafeProgressRecovery(startupLocalProgressSnapshot,data.gameState):data.gameState;
-      const restoredStartupProgress=!sameCloudValue(startupState,data.gameState);
-      applyGameState(startupState);
-      cloudRevision = Number(data.cloudRevision || 0);
-      cloudSyncedSeq = localSaveSeq;
-      lastCloudSyncedState=cloneCloudState(data.gameState);
-      persistCloudSyncBase(currentUser,data.gameState,cloudRevision);
-      updateWallet();
-      setCloudSyncStatus(restoredStartupProgress?"saving":"saved",restoredStartupProgress?"이 기기에 남아 있던 더 높은 진행도를 안전하게 복원합니다.":"Firebase 데이터를 불러왔습니다.");
-
-      print(currentUser + " 님 데이터 불러오기 완료.");
-      await yieldLoginWork();
-      const mobile=typeof matchMedia==="function"&&matchMedia("(max-width: 850px)").matches;
-      await migrateCombatStatsToCurrentVersionAsync(mobile?35:100,false);
-      isLoginPostProcessing=false;
-      if(typeof globalThis.requestFishingLifeRender==="function")globalThis.requestFishingLifeRender(true);
-    }catch(e){
-      console.error(e);
-      isLoginPostProcessing=false;
-      setCloudSyncStatus("error","클라우드 데이터를 불러오지 못했습니다.");
-      print("클라우드 데이터를 불러오지 못했습니다.\n네트워크 상태를 확인한 뒤 다시 로그인해주세요.");
-      return;
-    }
-
-    try{
-      refreshMarketIfNeeded();
-    }catch(e){
-      console.error(e);
-    }
-
-    try{
-      startupAchievements = updateAchievements();
-      checkSpecialTitles();
-      saveGame();
-      updateWallet();
-      printAchievementRewards(startupAchievements);
-    }catch(e){
-      console.error(e);
-    }
-
-    try{
-      startServerAlertListener();
-      startOnlinePresence();
-    }catch(e){
-      console.error(e);
-    }
-
-    try{
-      await showUpdateNoticeIfNeeded();
-    }catch(e){
-      console.error(e);
-    }
-
-    try{
-      await showNewNotifications();
-    }catch(e){
-      console.error(e);
-    }
-
-    try{
-      await showNewMessages();
-    }catch(e){
-      console.error(e);
-    }
-
-    try{
-      if(typeof globalThis.offerFishingLifeEmergencyRecovery==="function")globalThis.offerFishingLifeEmergencyRecovery();
-    }catch(e){
-      console.error(e);
-    }
-  })();
-}
+// 브라우저를 새로 열면 이전 로그인 표식과 로컬 게임 기록을 사용하지 않습니다.
+// 서버 로그인이 성공하기 전까지는 항상 빈 Lv.1 화면을 로그인 창 뒤에 둡니다.
+localStorage.removeItem("textFishingCurrentUser");
+clearUserSession();
+resetGameData();
+refreshMarketIfNeeded();
+updateWallet();
+setCloudSyncStatus("offline");
+checkGameVersion();
