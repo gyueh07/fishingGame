@@ -31,7 +31,7 @@
   const profileAuraTierClasses=[1,2,3,4,5].map(tier=>`profile-aura-tier-${tier}`);
   const gradeAttackClasses=Object.values(cosmeticGrades).map(config=>"grade-attack-"+config.slug);
   const gradeAttackTriggerClasses=["grade-attack-trigger-a","grade-attack-trigger-b"];
-  const feedbackSettings=(()=>{try{const saved=JSON.parse(localStorage.getItem("fishingLifeFeedbackSettings")||"{}");return {sound:saved.sound!==false,vibration:saved.vibration!==false};}catch{return {sound:true,vibration:true};}})();
+  const feedbackSettings=(()=>{try{const saved=JSON.parse(localStorage.getItem("fishingLifeFeedbackSettings")||"{}");return {sound:saved.sound!==false,vibration:saved.vibration!==false,timeBackground:saved.timeBackground!==false};}catch{return {sound:true,vibration:true,timeBackground:true};}})();
   let gameAudioContext=null;
 
   const state = {
@@ -41,7 +41,7 @@
     battleReplayToken:0, battleReplaySpeed:1, battleReplaySkip:false, battleReplayRunning:false,lastBattleReplay:null, bossPartySortOrder:"전투력", catchCelebrationTimer:0,
     pvpReplayToken:0,pvpReplaySpeed:1,pvpReplaySkip:false,pvpReplayRunning:false,lastPvpReplay:null,pvpReplayDom:null,pvpPartySortOrder:"전투력",pvpVisibleCount:30,pendingPvpRequest:null,
     fusionMaterialIds:[],fusionAnimationResolve:null,presetEditorType:"boss",presetEditorIds:[],
-    renderQueued:false,renderForce:false,bucketRenderToken:0,replayDom:null,replaySummonKey:"",replaySummonIds:new Set(),lastActionHtml:"",bossPartyVisibleCount:30,soundAt:{},gradeAttackPulse:0,transferFishIds:[],transferTarget:"",transferVisibleCount:30,rankingSections:null,authMode:"login"
+    renderQueued:false,renderForce:false,bucketRenderToken:0,replayDom:null,replaySummonKey:"",replaySummonIds:new Set(),lastActionHtml:"",bossPartyVisibleCount:30,soundAt:{},gradeAttackPulse:0,transferFishIds:[],transferTarget:"",transferVisibleCount:30,rankingSections:null,authMode:"login",fishingTimeKey:"",aquariumEdit:false,aquariumVisibleCount:30
   };
   globalThis.isFishingLifeBattleLocked=()=>!!(state.battleReplayRunning||state.pvpReplayRunning);
   globalThis.showFishingLifeBattleLockNotice=()=>showToast("전투가 끝난 뒤 나갈 수 있습니다. 빠르게 보려면 건너뛰기를 눌러주세요.");
@@ -915,9 +915,28 @@
     state.catchCelebrationTimer=setTimeout(()=>layer.classList.remove("show","escaped"),2450);
   }
 
+  function getFishingTimeTheme(now=new Date()){
+    const hour=now.getHours();
+    if(hour>=5&&hour<8)return {key:"dawn",icon:"🌅",label:"새벽"};
+    if(hour>=8&&hour<17)return {key:"day",icon:"☀️",label:"낮"};
+    if(hour>=17&&hour<20)return {key:"sunset",icon:"🌇",label:"노을"};
+    return {key:"night",icon:"🌙",label:"밤"};
+  }
+
+  function applyFishingTimeTheme(force=false){
+    const scene=$("#fishingScene"),badge=$("#sceneTimeBadge");if(!scene)return;
+    const now=new Date(),theme=getFishingTimeTheme(now),clock=`${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`,key=`${feedbackSettings.timeBackground?theme.key:"static"}|${clock}`;
+    if(!force&&state.fishingTimeKey===key)return;
+    state.fishingTimeKey=key;
+    scene.classList.remove("time-dawn","time-day","time-sunset","time-night","time-static");
+    scene.classList.add(feedbackSettings.timeBackground?`time-${theme.key}`:"time-static");
+    if(badge){badge.classList.toggle("disabled",!feedbackSettings.timeBackground);badge.querySelector("span").textContent=feedbackSettings.timeBackground?theme.icon:"🎨";badge.querySelector("b").textContent=feedbackSettings.timeBackground?theme.label:"기본 배경";badge.querySelector("em").textContent=clock;}
+  }
+
   function renderFishing() {
     const scene = $("#fishingScene");
     const castButton = $("#castButton");
+    applyFishingTimeTheme();
     scene.classList.toggle("is-fishing", Boolean(isFishing));
     castButton.disabled = Boolean(isFishing || state.timingActive);
     $("#fishingStateTag").textContent = isFishing ? "입질을 기다리는 중" : state.timingActive ? "타이밍 도전" : "잔잔한 물결";
@@ -1018,14 +1037,15 @@
   function openSaleConfirmation(displayNumber){
     const idx=getBucketIndexByDisplayNumber(Number(displayNumber)),fish=bucket[idx];if(!fish)return showToast("물고기를 찾을 수 없습니다.");
     if(fish.locked)return showToast("잠금된 물고기는 판매할 수 없습니다.");
+    if(isAquariumFish(fish))return showToast("수족관에 전시 중인 물고기는 전시 해제 후 판매할 수 있습니다.");
     const finalPrice=applyMarketPrice(fish);
     openUiModal("판매 확인",`<div class="game-dialog confirm-sale-dialog"><div class="dialog-summary ${gradeClass(fish.grade)}"><div><small>SELL FISH</small><b>${safe(fish.name)}</b><p>${safe(fish.grade)} · 판매 금액 ${safe(formatMoney(finalPrice))}</p></div><span>${fishIcon(fish)}</span></div><div class="confirm-danger"><b>정말 판매할까요?</b><p>판매한 물고기는 되돌릴 수 없습니다.${isFishInPartyPreset(fish)?" 파티 프리셋에서도 제거됩니다.":""}</p></div><div class="dialog-actions"><button class="danger" data-confirm-sell="${Number(displayNumber)}">${safe(formatMoney(finalPrice))}에 판매</button><button onclick="closeModal()">취소</button></div></div>`);
   }
 
   function openBulkSaleConfirmation(){
-    const sellable=bucket.filter(f=>!f.locked),total=sellable.reduce((sum,f)=>sum+applyMarketPrice(f),0),protectedCount=bucket.length-sellable.length;
+    const sellable=bucket.filter(f=>!f.locked&&!isAquariumFish(f)),total=sellable.reduce((sum,f)=>sum+applyMarketPrice(f),0),protectedCount=bucket.length-sellable.length,aquariumProtected=bucket.filter(isAquariumFish).length;
     if(!sellable.length)return showToast(bucket.length?"판매 가능한 물고기가 없습니다.":"양동이가 비어 있습니다.");
-    openUiModal("일괄판매 확인",`<div class="game-dialog confirm-sale-dialog"><div class="dialog-summary"><div><small>BULK SELL</small><b>${sellable.length.toLocaleString()}마리 일괄판매</b><p>잠금 물고기 ${protectedCount.toLocaleString()}마리는 안전하게 제외됩니다.</p></div><span>🪙</span></div><div class="confirm-danger"><b>정말 모두 판매할까요?</b><p>판매 대상에 포함된 프리셋 물고기도 함께 제거되며 되돌릴 수 없습니다.</p></div><div class="sale-total-preview"><small>예상 판매 금액</small><strong>${safe(formatMoney(total))}</strong></div><div class="dialog-actions"><button class="danger" data-confirm-bulk-sell>${safe(formatMoney(total))}에 일괄판매</button><button onclick="closeModal()">취소</button></div></div>`);
+    openUiModal("일괄판매 확인",`<div class="game-dialog confirm-sale-dialog"><div class="dialog-summary"><div><small>BULK SELL</small><b>${sellable.length.toLocaleString()}마리 일괄판매</b><p>보호된 물고기 ${protectedCount.toLocaleString()}마리${aquariumProtected?` · 수족관 ${aquariumProtected.toLocaleString()}마리 포함`:""}는 제외됩니다.</p></div><span>🪙</span></div><div class="confirm-danger"><b>정말 모두 판매할까요?</b><p>판매 대상에 포함된 프리셋 물고기도 함께 제거되며 되돌릴 수 없습니다.</p></div><div class="sale-total-preview"><small>예상 판매 금액</small><strong>${safe(formatMoney(total))}</strong></div><div class="dialog-actions"><button class="danger" data-confirm-bulk-sell>${safe(formatMoney(total))}에 일괄판매</button><button onclick="closeModal()">취소</button></div></div>`);
   }
 
   function showSaleResult({count=1,total=0,fish=null}={}){
@@ -1034,17 +1054,17 @@
   globalThis.showFishingLifeSaleResult=showSaleResult;
 
   function bucketRenderKey() {
-    return `${bucket.length}|${bucketSortOrder}|${fusionMainFishId}|${Object.values(fusionMainFishIds||{}).join(",")}|${bucket[0]?.id||""}|${bucket[bucket.length-1]?.id||""}`;
+    return `${bucket.length}|${bucketSortOrder}|${fusionMainFishId}|${Object.values(fusionMainFishIds||{}).join(",")}|${normalizeAquariumFishIds(aquariumFishIds).join(",")}|${bucket[0]?.id||""}|${bucket[bucket.length-1]?.id||""}`;
   }
   function fishCardHtml(entry,index){
     const fish=entry.fish;if(fish&&fish.grade!=="쓰레기")updateRecoveringFishHp(fish);
     const combat=ensureCombatStats(fish),no=index+1,healthPercent=Math.floor(hpPercent(combat.hp,combat.maxHp)),recoveryLeft=Math.max(0,Number(combat.stunUntil||0)-Date.now()),knockedOut=!!combat.knockedOut||combat.status==="기절"||combat.hp<=0;
-    const isFusionMain=isFusionMainFish(fish),stage=getFishEvolutionStage(fish),fusionCount=getFishFusionCount(fish);
-    return `<article class="fish-card ${gradeClass(fish.grade)} ${fishEvolutionClass(fish)} ${isFusionMain?"fusion-main":""}">
-      <div class="fish-card-top"><span class="fish-card-icon">${fishIcon(fish)}</span><span class="fish-card-index">NO.${no}${fish.locked?" · 🔒":""}${isFusionMain?" · 🧬 본체":""}</span></div>
+    const isFusionMain=isFusionMainFish(fish),isDisplayed=isAquariumFish(fish),stage=getFishEvolutionStage(fish),fusionCount=getFishFusionCount(fish);
+    return `<article class="fish-card ${gradeClass(fish.grade)} ${fishEvolutionClass(fish)} ${isFusionMain?"fusion-main":""} ${isDisplayed?"aquarium-displayed":""}">
+      <div class="fish-card-top"><span class="fish-card-icon">${fishIcon(fish)}</span><span class="fish-card-index">NO.${no}${fish.locked?" · 🔒":""}${isFusionMain?" · 🧬 본체":""}${isDisplayed?" · 🫧 전시":""}</span></div>
       <span class="fish-card-grade">${safe(fish.grade)}${stage?` · ${safe(getFishEvolutionLabel(fish))}`:""}</span><h3>${safe(fish.name)} ${fishEvolutionBadge(fish)}${fish.isNewCatch?` <i class="new-catch-badge">NEW</i>`:""}</h3><p>${fish.size===null?"특별 개체":`${formatSize(fish.size)}cm`}${fusionCount?` · 합성 ${fusionCount}회`:""}</p>
       <div class="fish-stats"><div><small>공격력 ${combatStars(combat,"attack")}</small><b>${compactNumber(combat.attack)}</b></div><div><small>체력 ${combatStars(combat,"hp")} · ${healthPercent}%</small><b>${compactNumber(combat.hp)} / ${compactNumber(combat.maxHp)}</b><span class="bucket-hp-track"><i style="width:${healthPercent}%"></i></span>${recoveryLeft>0?`<em class="bucket-recovery ${knockedOut?"knocked-out":""}" data-recovery-until="${Number(combat.stunUntil||0)}" data-recovery-kind="${knockedOut?"knockout":"recovery"}">${knockedOut?"💫 기절":"❤️‍🩹 회복"} ${safe(formatRemain(recoveryLeft))}</em>`:""}</div></div>
-      <div class="fish-actions"><button data-fish-action="info" data-number="${no}" data-tooltip="능력치와 특성을 확인합니다">상세</button>${fish.grade!=="쓰레기"?`<button data-fish-action="fusion" data-number="${no}" data-tooltip="합성·진화 화면을 엽니다">합성/진화</button>`:""}<button data-fish-action="lock" data-number="${no}" data-tooltip="${fish.locked?"잠금을 해제합니다":"판매되지 않도록 잠급니다"}">${fish.locked?"잠금 해제":"잠금"}</button><button class="sell" data-fish-action="sell" data-number="${no}" data-tooltip="현재 시세로 판매합니다" ${fish.locked?"disabled":""}>판매</button></div>
+      <div class="fish-actions"><button data-fish-action="info" data-number="${no}" data-tooltip="능력치와 특성을 확인합니다">상세</button>${fish.grade!=="쓰레기"?`<button data-fish-action="fusion" data-number="${no}" data-tooltip="합성 본체·진화 화면을 엽니다">합성/진화</button>`:""}<button data-fish-action="lock" data-number="${no}" data-tooltip="${fish.locked?"잠금을 해제합니다":"판매되지 않도록 잠급니다"}">${fish.locked?"잠금 해제":"잠금"}</button><button class="sell" data-fish-action="sell" data-number="${no}" data-tooltip="${isDisplayed?"수족관 전시 해제 후 판매할 수 있습니다.":"현재 시세로 판매합니다"}" ${fish.locked||isDisplayed?"disabled":""}>${isDisplayed?"전시 중":"판매"}</button></div>
     </article>`;
   }
   function scheduleBucketChunk(list,start,token){
@@ -1088,7 +1108,7 @@
     const wasNew=!!fish.isNewCatch;
     openUiModal(fish.name, `<div class="game-dialog"><div class="dialog-summary fish-detail-summary ${gradeClass(fish.grade)} ${fishEvolutionClass(fish)}"><div><small>${safe(fish.grade)} · 양동이 ${displayNumber}번${stage?` · ${safe(getFishEvolutionLabel(fish))}`:""}</small><b>${safe(fish.name)} ${fishEvolutionBadge(fish)}${wasNew?` <i class="new-catch-badge">NEW</i>`:""}</b>${fish.grade!=="쓰레기"?`<p>합성 ${fusionCount}회 · 공격력/체력 20% 고정 전이</p>`:""}</div><span>${fishIcon(fish)}</span></div>
       <div class="dialog-card-grid"><article class="dialog-card"><small>공격력 ${combatStars(c,"attack")}</small><strong>${Number(c.attack).toLocaleString()}</strong></article><article class="dialog-card"><small>체력 ${combatStars(c,"hp")}</small><strong>${Number(c.hp).toLocaleString()} / ${Number(c.maxHp).toLocaleString()}</strong></article><article class="dialog-card"><small>회피율 ${combatStars(c,"dodge")}</small><strong>${Number(c.dodge).toFixed(1)}%</strong></article><article class="dialog-card"><small>치명타 확률 ${combatStars(c,"critRate")}</small><strong>${Number(c.critRate).toFixed(1)}%</strong></article><article class="dialog-card"><small>치명타 피해 ${combatStars(c,"critDamage")}</small><strong>${Number(c.critDamage).toFixed(0)}%</strong></article></div>
-      ${trait ? `<article class="dialog-card ${gradeClass(fish.grade)}"><small>고유 특성</small><h3>${safe(trait.name)}</h3><p>${safe(trait.desc)}</p></article>` : ""}${fish.grade!=="쓰레기"?`<div class="dialog-actions"><button class="primary" ${isFusionMainFish(fish)?"data-fusion-clear-main=\""+safe(fish.id)+"\"":"data-fusion-main-id=\""+safe(fish.id)+"\""}>${isFusionMainFish(fish)?"합성 본체 해제":"합성 본체로 설정"}</button><button data-fusion-open-name="${safe(fish.name)}">합성·진화 열기</button></div>`:""}</div>`);
+      ${trait ? `<article class="dialog-card ${gradeClass(fish.grade)}"><small>고유 특성</small><h3>${safe(trait.name)}</h3><p>${safe(trait.desc)}</p></article>` : ""}${isAquariumFish(fish)?'<div class="aquarium-detail-note">🫧 현재 나만의 수족관에 전시 중입니다. 전투·본체·진화 사용 가능</div>':""}${fish.grade!=="쓰레기"?`<div class="dialog-actions"><button class="primary" ${isFusionMainFish(fish)?"data-fusion-clear-main=\""+safe(fish.id)+"\"":"data-fusion-main-id=\""+safe(fish.id)+"\""}>${isFusionMainFish(fish)?"합성 본체 해제":"합성 본체로 설정"}</button><button data-fusion-open-name="${safe(fish.name)}">합성·진화 열기</button>${isAquariumFish(fish)?'<button data-ui-action="aquarium">수족관으로 돌아가기</button>':""}</div>`:""}</div>`);
     if(wasNew){fish.isNewCatch=false;saveGame();state.bucketKey="";}
   }
   function openFishDetail(displayNumber) {
@@ -1268,8 +1288,27 @@
     }
   }
 
+  function aquariumFishButton(fish,index){
+    if(!fish)return `<button class="aquarium-fish empty slot-${index+1}" data-aquarium-edit aria-label="빈 전시칸"><span>＋</span><small>전시칸 ${index+1}</small></button>`;
+    const combat=ensureCombatStats(fish),stage=getFishEvolutionStage(fish);
+    return `<button class="aquarium-fish slot-${index+1} aquarium-grade-${gradeClass(fish.grade)} ${fishEvolutionClass(fish)}" data-aquarium-detail-id="${safe(fish.id)}" aria-label="${safe(fish.name)} 상세정보 보기"><i class="aquarium-aura"></i><span>${fishIcon(fish)}</span><div><small>${safe(fish.grade)}${stage?` · ${safe(getFishEvolutionLabel(fish))}`:""}</small><b>${safe(fish.name)}</b><em>⚔ ${compactNumber(combat.attack)} · ❤️ ${compactNumber(combat.maxHp)}</em></div></button>`;
+  }
+
+  function openAquarium(edit=state.aquariumEdit){
+    ensureAllFishIds();state.aquariumEdit=!!edit;
+    const displayed=getAquariumFishes(),slots=Array.from({length:5},(_,index)=>aquariumFishButton(displayed[index],index)).join("");
+    let editor="";
+    if(state.aquariumEdit){
+      const list=sortedBucketList(),selected=new Set(normalizeAquariumFishIds(aquariumFishIds)),visible=list.slice(0,state.aquariumVisibleCount);
+      const cards=visible.map(entry=>{const fish=entry.fish,active=selected.has(String(fish.id)),full=!active&&selected.size>=5,combat=ensureCombatStats(fish);return `<button type="button" class="aquarium-choice ${gradeClass(fish.grade)} ${active?"selected":""}" data-aquarium-select-id="${safe(fish.id)}" ${full?"disabled":""}><span>${fishIcon(fish)}</span><div><small>${safe(fish.grade)} · ${fish.size===null?"특별 개체":`${formatSize(fish.size)}cm`}</small><b>${safe(fish.name)}</b><em>⚔ ${compactNumber(combat.attack)} · ❤️ ${compactNumber(combat.maxHp)}</em></div><strong>${active?"전시 중":full?"5칸 사용 중":"전시"}</strong></button>`;}).join("");
+      const more=visible.length<list.length?`<button class="boss-party-more" data-aquarium-more>물고기 더 보기 · ${visible.length.toLocaleString()} / ${list.length.toLocaleString()}</button>`:"";
+      editor=`<section class="aquarium-editor"><header><div><small>BUCKET DISPLAY</small><h3>전시할 물고기 선택</h3></div><b>${selected.size} / 5</b></header><p>전투·합성 본체·진화에는 사용할 수 있고, 판매·전송·합성 재료로 소모되는 행동은 보호됩니다.</p><div class="aquarium-choice-list">${cards||'<div class="fusion-empty">전시할 물고기가 없습니다.</div>'}</div>${more}<div class="dialog-actions"><button class="primary" data-aquarium-finish>전시 완료</button><button data-aquarium-clear ${selected.size?"":"disabled"}>모두 전시 해제</button></div></section>`;
+    }
+    openUiModal("나만의 수족관",`<div class="game-dialog aquarium-dialog"><section class="aquarium-hero"><div><small>MY AQUARIUM · ${displayed.length}/5</small><h2>${displayed.length?"나만의 물고기를 감상하세요":"첫 물고기를 전시해보세요"}</h2><p>물고기를 누르면 크기·별·능력치·특성을 확인할 수 있습니다.</p></div><button data-aquarium-edit>${state.aquariumEdit?"선택 계속하기":"전시 편집"}</button></section><div class="aquarium-tank"><div class="aquarium-light"></div><div class="aquarium-bubbles"><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="aquarium-floor"><i></i><i></i><i></i></div>${slots}</div>${editor}</div>`);
+  }
+
   function openSettings(){
-    openUiModal("설정",`<div class="game-dialog settings-dialog"><div class="dialog-summary"><div><small>GAME SETTINGS</small><b>효과음과 진동</b><p>설정은 이 기기에 저장됩니다.</p></div><span>⚙️</span></div><article class="setting-row"><div><span>🔊</span><div><h3>효과음</h3><p>캐스팅·판정·획득·보스 공격·치명타·승리 효과음</p></div></div><button data-feedback-toggle="sound" class="${feedbackSettings.sound?"on":"off"}">${feedbackSettings.sound?"켜짐":"꺼짐"}</button></article><article class="setting-row"><div><span>📳</span><div><h3>모바일 진동</h3><p>입질과 치명타 순간의 진동 피드백</p></div></div><button data-feedback-toggle="vibration" class="${feedbackSettings.vibration?"on":"off"}">${feedbackSettings.vibration?"켜짐":"꺼짐"}</button></article></div>`);
+    openUiModal("설정",`<div class="game-dialog settings-dialog"><div class="dialog-summary"><div><small>GAME SETTINGS</small><b>게임 환경 설정</b><p>설정은 이 기기에 저장됩니다.</p></div><span>⚙️</span></div><article class="setting-row"><div><span>🌅</span><div><h3>실제 시간 낚시터</h3><p>현재 시간에 맞춰 해·노을·달·별과 바다 색상이 바뀝니다.</p></div></div><button data-feedback-toggle="timeBackground" class="${feedbackSettings.timeBackground?"on":"off"}">${feedbackSettings.timeBackground?"켜짐":"꺼짐"}</button></article><article class="setting-row"><div><span>🔊</span><div><h3>효과음</h3><p>캐스팅·판정·획득·보스 공격·치명타·승리 효과음</p></div></div><button data-feedback-toggle="sound" class="${feedbackSettings.sound?"on":"off"}">${feedbackSettings.sound?"켜짐":"꺼짐"}</button></article><article class="setting-row"><div><span>📳</span><div><h3>모바일 진동</h3><p>입질과 치명타 순간의 진동 피드백</p></div></div><button data-feedback-toggle="vibration" class="${feedbackSettings.vibration?"on":"off"}">${feedbackSettings.vibration?"켜짐":"꺼짐"}</button></article></div>`);
   }
 
   function openRecoveryBattleConfirm(fishes=getPreparedRecoveryFishes()){
@@ -1284,7 +1323,7 @@
     const fishPower=fish=>{const c=ensureCombatStats(fish);return Math.floor(c.attack*(1+Number(c.critRate||0)/100*Math.max(0,Number(c.critDamage||150)/100-1))+c.maxHp*.2);},combatTeam=bucket.filter(f=>f&&f.grade!=="쓰레기").sort((a,b)=>fishPower(b)-fishPower(a)).slice(0,3),combatPower=combatTeam.reduce((sum,fish)=>sum+fishPower(fish),0),teamHtml=combatTeam.map(f=>`<article class="my-info-team-fish ${gradeClass(f.grade)}"><span>${fishIcon(f)}</span><div><small>${safe(f.grade)}</small><b>${safe(f.name)}</b><em>전투력 ${compactNumber(fishPower(f))}</em></div></article>`).join("");
     const chances=getCurrentGradeChances(),chanceHtml=chances.map(item=>`<article class="my-info-chance ${gradeClass(item.name)}"><div><span>${safe(item.name)}</span><b>${item.chance.toFixed(["영원","공허"].includes(item.name)?2:1)}%</b></div><i><em style="width:${Math.max(item.chance>0?2:0,Math.min(100,item.chance))}%"></em></i></article>`).join("");
     const maxRod=getCurrentPlayableMaxRod(),atRodCap=rodLevel>=maxRod,upgradeLabel=rodLevel>=MAX_ROD?"최대 레벨":atRodCap?"보스 처치 후 해금":`${getUpgradeSuccessRate(rodLevel).toFixed(1)}% · ${formatMoney(getUpgradeCost(rodLevel))}`;
-    openUiModal("내정보",`<div class="game-dialog my-info-dialog"><section class="my-info-profile"><div class="${visual.classes}" style="${visual.style}" data-aura-symbol="${safe(visual.aura)}"><span>${visual.avatar}</span></div><div><small>MY CAPTAIN</small><h2>${safe(currentUser)}</h2><p>${safe(getCurrentTitle()?`[${getCurrentTitle()}] 장착 중`:"장착 칭호 없음")}</p></div><strong>${formatMoney(money)}</strong></section><div class="my-info-grid"><article><small>낚싯대</small><b>Lv.${Number(rodLevel||1).toLocaleString()} / ${MAX_ROD.toLocaleString()}</b></article><article><small>총 수익</small><b>${formatMoney(totalEarned)}</b></article><article><small>총 낚시</small><b>${Number(totalFishingCount||0).toLocaleString()}회</b></article><article><small>보유 물고기</small><b>${bucket.length.toLocaleString()}마리</b></article><article><small>도감</small><b>${collectionCount.toLocaleString()} / ${collectionTotal.toLocaleString()}</b></article><article><small>보스·업적</small><b>${bossClears.toLocaleString()}회 · ${achievementCount.toLocaleString()}개</b></article></div><section class="my-info-dashboard"><article class="my-info-panel"><header><div><small>PVP POWER</small><h3>최강 물고기 3마리</h3></div><strong>${compactNumber(combatPower)}</strong></header><div class="my-info-team">${teamHtml||'<div class="fusion-empty">전투 가능한 물고기가 없습니다.</div>'}</div></article><article class="my-info-panel"><header><div><small>ROD UPGRADE</small><h3>다음 강화</h3></div><strong>Lv.${Math.min(MAX_ROD,rodLevel+1).toLocaleString()}</strong></header><div class="my-info-upgrade"><i><em style="width:${Math.min(100,rodLevel/MAX_ROD*100)}%"></em></i><b>${upgradeLabel}</b><small>현재 해금 한도 Lv.${maxRod.toLocaleString()}</small></div></article></section><section class="my-info-growth"><h3>연구·훈련 현황</h3><div><span>🎣 낚시 연구 Lv.${Number(researchLevels?.fishing||0)} · 시간 -${getFishingTimeReduction()}%</span><span>💰 감정 연구 Lv.${Number(researchLevels?.appraisal||0)} · 판매 +${getAppraisalBonus()}%</span><span>⚔ 공격 훈련 Lv.${Number(trainingLevels?.attack||0)} · +${getTrainingAttackBonus()}%</span><span>❤️ 체력 훈련 Lv.${Number(trainingLevels?.hp||0)} · +${getTrainingHpBonus()}%</span><span>💥 치명타 피해 Lv.${Number(trainingLevels?.critDamage||0)} · +${getTrainingCritDamageBonus()}%</span><span>💨 일반~신화 도주 ${getEscapeChance().toFixed(1)}%</span></div></section><section class="my-info-panel my-info-chances"><header><div><small>FISHING RATE</small><h3>현재 등급 등장 확률</h3></div><strong>Lv.${rodLevel.toLocaleString()}</strong></header><div>${chanceHtml}</div></section><div class="dialog-actions my-info-actions"><button data-ui-action="cosmetics">프로필 꾸미기</button><button data-ui-action="titles">칭호 설정</button><button data-ui-action="settings">환경 설정</button></div></div>`);
+    openUiModal("내정보",`<div class="game-dialog my-info-dialog"><section class="my-info-profile"><div class="${visual.classes}" style="${visual.style}" data-aura-symbol="${safe(visual.aura)}"><span>${visual.avatar}</span></div><div><small>MY CAPTAIN</small><h2>${safe(currentUser)}</h2><p>${safe(getCurrentTitle()?`[${getCurrentTitle()}] 장착 중`:"장착 칭호 없음")}</p></div><strong>${formatMoney(money)}</strong></section><div class="my-info-grid"><article><small>낚싯대</small><b>Lv.${Number(rodLevel||1).toLocaleString()} / ${MAX_ROD.toLocaleString()}</b></article><article><small>총 수익</small><b>${formatMoney(totalEarned)}</b></article><article><small>총 낚시</small><b>${Number(totalFishingCount||0).toLocaleString()}회</b></article><article><small>보유 물고기</small><b>${bucket.length.toLocaleString()}마리</b></article><article><small>도감</small><b>${collectionCount.toLocaleString()} / ${collectionTotal.toLocaleString()}</b></article><article><small>보스·업적</small><b>${bossClears.toLocaleString()}회 · ${achievementCount.toLocaleString()}개</b></article></div><section class="my-info-dashboard"><article class="my-info-panel"><header><div><small>PVP POWER</small><h3>최강 물고기 3마리</h3></div><strong>${compactNumber(combatPower)}</strong></header><div class="my-info-team">${teamHtml||'<div class="fusion-empty">전투 가능한 물고기가 없습니다.</div>'}</div></article><article class="my-info-panel"><header><div><small>ROD UPGRADE</small><h3>다음 강화</h3></div><strong>Lv.${Math.min(MAX_ROD,rodLevel+1).toLocaleString()}</strong></header><div class="my-info-upgrade"><i><em style="width:${Math.min(100,rodLevel/MAX_ROD*100)}%"></em></i><b>${upgradeLabel}</b><small>현재 해금 한도 Lv.${maxRod.toLocaleString()}</small></div></article></section><section class="my-info-growth"><h3>연구·훈련 현황</h3><div><span>🎣 낚시 연구 Lv.${Number(researchLevels?.fishing||0)} · 시간 -${getFishingTimeReduction()}%</span><span>💰 감정 연구 Lv.${Number(researchLevels?.appraisal||0)} · 판매 +${getAppraisalBonus()}%</span><span>⚔ 공격 훈련 Lv.${Number(trainingLevels?.attack||0)} · +${getTrainingAttackBonus()}%</span><span>❤️ 체력 훈련 Lv.${Number(trainingLevels?.hp||0)} · +${getTrainingHpBonus()}%</span><span>💥 치명타 피해 Lv.${Number(trainingLevels?.critDamage||0)} · +${getTrainingCritDamageBonus()}%</span><span>💨 일반~신화 도주 ${getEscapeChance().toFixed(1)}%</span></div></section><section class="my-info-panel my-info-chances"><header><div><small>FISHING RATE</small><h3>현재 등급 등장 확률</h3></div><strong>Lv.${rodLevel.toLocaleString()}</strong></header><div>${chanceHtml}</div></section><div class="dialog-actions my-info-actions"><button data-ui-action="aquarium">나만의 수족관</button><button data-ui-action="cosmetics">프로필 꾸미기</button><button data-ui-action="titles">칭호 설정</button><button data-ui-action="settings">환경 설정</button></div></div>`);
   }
   globalThis.openFishingLifeMyInfo=openMyInfo;
 
@@ -1447,9 +1486,9 @@
     if(!currentUser)return openUiModal("송금·물고기 전송",`<div class="game-dialog"><div class="dialog-summary"><div><small>SAFE TRANSFER</small><b>로그인이 필요합니다.</b><p>로그인 후 다른 선장에게 골드나 물고기를 보낼 수 있습니다.</p></div><span>🎁</span></div></div>`);
     const tabs=`<div class="transfer-tabs"><button data-transfer-tab="money" class="${type==="money"?"active":""}">💰 송금</button><button data-transfer-tab="fish" class="${type==="fish"?"active":""}">🐟 물고기 전송</button></div>`;
     if(type==="money")return openUiModal("송금·물고기 전송",`<div class="game-dialog transfer-dialog"><div class="dialog-summary"><div><small>SAFE MONEY TRANSFER</small><b>보유 골드 ${safe(formatMoney(money))}</b><p>서버에서 받는 사람과 잔액을 다시 확인한 뒤 한 번에 처리합니다.</p></div><span>💸</span></div>${tabs}<div class="dialog-form transfer-form"><label for="transferNickname">받는 사람 닉네임</label><input id="transferNickname" maxlength="16" autocomplete="off" placeholder="닉네임"><label for="transferAmount">송금할 금액</label><input id="transferAmount" inputmode="numeric" autocomplete="off" placeholder="1 이상의 정수"><p class="transfer-warning">거래가 완료되면 직접 되돌릴 수 없습니다. 닉네임과 금액을 확인해주세요.</p><button data-money-transfer>송금하기</button></div></div>`);
-    const eligible=sortedBucketList().filter(entry=>!entry.fish.locked&&!isFusionMainFish(entry.fish)),eligibleIds=new Set(eligible.map(entry=>String(entry.fish.id)));state.transferFishIds=state.transferFishIds.filter(id=>eligibleIds.has(String(id)));
+    const eligible=sortedBucketList().filter(entry=>!entry.fish.locked&&!isFusionMainFish(entry.fish)&&!isAquariumFish(entry.fish)),eligibleIds=new Set(eligible.map(entry=>String(entry.fish.id)));state.transferFishIds=state.transferFishIds.filter(id=>eligibleIds.has(String(id)));
     const visible=eligible.slice(0,state.transferVisibleCount),cards=visible.map(entry=>{const fish=entry.fish,selected=state.transferFishIds.includes(String(fish.id)),c=ensureCombatStats(fish);return `<button type="button" class="transfer-fish-choice ${gradeClass(fish.grade)} ${selected?"selected":""}" data-transfer-fish-id="${safe(fish.id)}"><span>${fishIcon(fish)}</span><div><b>${safe(fish.name)}</b><small>${safe(fish.grade)} · ⚔ ${compactNumber(c.attack)} · ❤️ ${compactNumber(c.maxHp)}</small></div><em>${selected?"선택됨":"선택"}</em></button>`;}).join(""),more=visible.length<eligible.length?`<button type="button" class="boss-party-more" data-transfer-fish-more>물고기 더 보기 · ${visible.length.toLocaleString()} / ${eligible.length.toLocaleString()}</button>`:"";
-    return openUiModal("송금·물고기 전송",`<div class="game-dialog transfer-dialog"><div class="dialog-summary"><div><small>SAFE FISH TRANSFER</small><b>다중 선택 ${state.transferFishIds.length.toLocaleString()}마리</b><p>잠금 물고기와 합성 본체는 보호를 위해 목록에서 제외됩니다.</p></div><span>🐟</span></div>${tabs}<div class="dialog-form transfer-form"><label for="fishTransferNickname">받는 사람 닉네임</label><input id="fishTransferNickname" maxlength="16" autocomplete="off" placeholder="닉네임" value="${safe(state.transferTarget)}"><div class="transfer-fish-heading"><label>전송할 물고기</label><b>${state.transferFishIds.length.toLocaleString()}마리 선택</b></div><div class="transfer-fish-list">${cards||`<div class="fusion-empty">전송 가능한 물고기가 없습니다.</div>`}</div>${more}<p class="transfer-warning">능력치·진화·합성·현재 체력은 유지됩니다. 선물받은 물고기는 양동이에만 들어오며 도감에는 등록되지 않습니다.</p><button data-fish-transfer ${state.transferFishIds.length?"":"disabled"}>선택한 ${state.transferFishIds.length.toLocaleString()}마리 전송하기</button></div></div>`);
+    return openUiModal("송금·물고기 전송",`<div class="game-dialog transfer-dialog"><div class="dialog-summary"><div><small>SAFE FISH TRANSFER</small><b>다중 선택 ${state.transferFishIds.length.toLocaleString()}마리</b><p>잠금·합성 본체·수족관 전시 물고기는 보호를 위해 목록에서 제외됩니다.</p></div><span>🐟</span></div>${tabs}<div class="dialog-form transfer-form"><label for="fishTransferNickname">받는 사람 닉네임</label><input id="fishTransferNickname" maxlength="16" autocomplete="off" placeholder="닉네임" value="${safe(state.transferTarget)}"><div class="transfer-fish-heading"><label>전송할 물고기</label><b>${state.transferFishIds.length.toLocaleString()}마리 선택</b></div><div class="transfer-fish-list">${cards||`<div class="fusion-empty">전송 가능한 물고기가 없습니다.</div>`}</div>${more}<p class="transfer-warning">능력치·진화·합성·현재 체력은 유지됩니다. 선물받은 물고기는 양동이에만 들어오며 도감에는 등록되지 않습니다.</p><button data-fish-transfer ${state.transferFishIds.length?"":"disabled"}>선택한 ${state.transferFishIds.length.toLocaleString()}마리 전송하기</button></div></div>`);
   }
   async function submitMoneyTransfer(button){
     if(button.disabled)return;
@@ -1546,7 +1585,7 @@
 
   function handleUiAction(action) {
     if(!currentUser){openLoginGate("로그인해야 게임 메뉴를 이용할 수 있습니다.");return;}
-    const map = {market:openMarket,fishCollection:openFishCollection,coreCollection:openCoreCollection,bossParty:()=>openBossParty(),ranking:openRanking,myInfo:openMyInfo,battleHistory:()=>openBattleHistory(),wallet:openWallet,achievements:openAchievements,titles:openTitles,cosmetics:openCosmetics,settings:openSettings,pvp:openPvpPanel,presets:openPresets,fusion:openFusionLab,transfer:()=>openTransferHub(),inbox:openInbox,message:openMessageForm,deleteAccount:openDeleteAccountWarning};
+    const map = {market:openMarket,fishCollection:openFishCollection,coreCollection:openCoreCollection,bossParty:()=>openBossParty(),ranking:openRanking,myInfo:openMyInfo,aquarium:()=>openAquarium(false),battleHistory:()=>openBattleHistory(),wallet:openWallet,achievements:openAchievements,titles:openTitles,cosmetics:openCosmetics,settings:openSettings,pvp:openPvpPanel,presets:openPresets,fusion:openFusionLab,transfer:()=>openTransferHub(),inbox:openInbox,message:openMessageForm,deleteAccount:openDeleteAccountWarning};
     map[action]?.();
   }
 
@@ -1637,8 +1676,16 @@
     if(event.target.closest("[data-transfer-fish-more]")){state.transferTarget=$("#fishTransferNickname")?.value||state.transferTarget;state.transferVisibleCount+=30;return openTransferHub("fish");}
     const moneyTransferButton=event.target.closest("[data-money-transfer]");if(moneyTransferButton)return submitMoneyTransfer(moneyTransferButton);
     const fishTransferButton=event.target.closest("[data-fish-transfer]");if(fishTransferButton)return submitFishTransfer(fishTransferButton);
+    const aquariumDetail=event.target.closest("[data-aquarium-detail-id]");
+    if(aquariumDetail){const index=bucket.findIndex(f=>f&&String(f.id)===String(aquariumDetail.dataset.aquariumDetailId));return openFishDetailByBucketIndex(index);}
+    if(event.target.closest("[data-aquarium-edit]")){state.aquariumVisibleCount=30;return openAquarium(true);}
+    if(event.target.closest("[data-aquarium-finish]"))return openAquarium(false);
+    if(event.target.closest("[data-aquarium-clear]")){clearAquarium();state.bucketKey="";showToast("수족관 전시를 모두 해제했습니다.");return openAquarium(true);}
+    if(event.target.closest("[data-aquarium-more]")){state.aquariumVisibleCount+=30;return openAquarium(true);}
+    const aquariumSelect=event.target.closest("[data-aquarium-select-id]");
+    if(aquariumSelect&&!aquariumSelect.disabled){const id=String(aquariumSelect.dataset.aquariumSelectId),ids=normalizeAquariumFishIds(aquariumFishIds),position=ids.indexOf(id);if(position>=0)ids.splice(position,1);else if(ids.length>=5)return showToast("수족관에는 최대 5마리까지 전시할 수 있습니다.");else ids.push(id);saveAquariumFishIds(ids);state.bucketKey="";return openAquarium(true);}
     const feedbackToggle=event.target.closest("[data-feedback-toggle]");
-    if(feedbackToggle){const key=feedbackToggle.dataset.feedbackToggle;if(key==="sound"||key==="vibration"){feedbackSettings[key]=!feedbackSettings[key];saveFeedbackSettings();if(key==="sound"&&feedbackSettings.sound)playGameSound("timing","PERFECT");openSettings();}return;}
+    if(feedbackToggle){const key=feedbackToggle.dataset.feedbackToggle;if(["sound","vibration","timeBackground"].includes(key)){feedbackSettings[key]=!feedbackSettings[key];saveFeedbackSettings();if(key==="sound"&&feedbackSettings.sound)playGameSound("timing","PERFECT");if(key==="timeBackground"){state.fishingTimeKey="";applyFishingTimeTheme(true);}openSettings();}return;}
     const cosmeticButton=event.target.closest("[data-cosmetic-type]");
     if(cosmeticButton&&!cosmeticButton.disabled){const type=cosmeticButton.dataset.cosmeticType,id=cosmeticButton.dataset.cosmeticId||"";if(equipProfileCosmetic(type,id)){renderProfileCosmetics();showToast("꾸미기 설정이 변경되었습니다.");openCosmetics();}return;}
     const rankingTypeButton=event.target.closest("[data-ranking-type]");

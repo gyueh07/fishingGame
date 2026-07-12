@@ -19,6 +19,7 @@ let pvpPrepIndexes=[];
 let partyPresets={boss:[],pvp:[]};
 let fusionMainFishId="";
 let fusionMainFishIds={};
+let aquariumFishIds=[];
 let pendingPresetSaleId="";
 let pendingPresetSellAll=false;
 let onlinePresenceTimer=null;
@@ -34,7 +35,7 @@ let accountSessionUnsubscribe=null;
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
-const GAME_VERSION = "2026-07-12-fishinglife-pending-save-v24-9-4";
+const GAME_VERSION = "2026-07-12-fishinglife-aquarium-time-v25-0-0";
 const USER_WRITE_SCHEMA_VERSION = 249;
 const USER_WRITE_PROTOCOL_VERSION = 3;
 const ACCOUNT_RESET_VERSION = 1;
@@ -45,6 +46,17 @@ const GAME_VERSION_CHECK_TTL_MS = 5*60*1000;
 const MAX_SAFE_GAME_STATE_BYTES = 850000;
 const UPDATE_NOTICE_TITLE = "📢 업데이트 안내";
 const UPDATE_NOTICES = [
+  {
+    id:"2026-07-12-fishinglife-aquarium-time-25-0",
+    title:"실제 시간 낚시터·나만의 수족관",
+    lines:[
+      "기기의 실제 시간에 맞춰 낚시터가 새벽·낮·노을·밤으로 자연스럽게 바뀝니다.",
+      "양동이 물고기 중 최대 5마리를 수족관에 전시하고 클릭해 상세 능력치를 확인할 수 있습니다.",
+      "전시 중인 물고기는 판매·일괄판매·전송·합성 재료에서 보호되며 보스전·PVP·합성 본체·진화에는 사용할 수 있습니다.",
+      "수족관 물고기는 등급별 광륜과 입자가 표시되며 영원·공허가 가장 화려합니다.",
+      "실제 시간 배경은 설정에서 끌 수 있으며 낚시 확률과 전투 능력치에는 영향을 주지 않습니다."
+    ]
+  },
   {
     id:"2026-07-12-fishinglife-write-guard-24-8",
     title:"구버전 덮어쓰기 차단·계정 안전 백업",
@@ -819,7 +831,8 @@ function getGameState(){
     pvpPrepIndexes,
     partyPresets,
     fusionMainFishId,
-    fusionMainFishIds
+    fusionMainFishIds,
+    aquariumFishIds
   };
 }
 
@@ -879,7 +892,8 @@ function createFreshAccountState(){
     pvpPrepIndexes:[],
     partyPresets:{boss:[],pvp:[]},
     fusionMainFishId:"",
-    fusionMainFishIds:{}
+    fusionMainFishIds:{},
+    aquariumFishIds:[]
   };
 }
 
@@ -1017,6 +1031,10 @@ function normalizePartyPresets(value){
   };
 }
 
+function normalizeAquariumFishIds(value){
+  return Array.isArray(value)?[...new Set(value.map(String).filter(Boolean))].slice(0,5):[];
+}
+
 function makeFishId(){
   return "fish_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2,10);
 }
@@ -1040,6 +1058,7 @@ function ensureAllFishIds(){
   if(active&&active.grade!=="쓰레기")cleaned[active.name]=active.id;
   else fusionMainFishId="";
   fusionMainFishIds=cleaned;
+  aquariumFishIds=normalizeAquariumFishIds(aquariumFishIds).filter(id=>ownedById.has(id));
 }
 
 function applyGameState(s){
@@ -1070,6 +1089,7 @@ function applyGameState(s){
   partyPresets=normalizePartyPresets(s.partyPresets??partyPresets);
   fusionMainFishId=String(s.fusionMainFishId??fusionMainFishId??"");
   fusionMainFishIds=s.fusionMainFishIds&&typeof s.fusionMainFishIds==="object"?{...s.fusionMainFishIds}:{};
+  aquariumFishIds=normalizeAquariumFishIds(s.aquariumFishIds??aquariumFishIds);
   ensureAllFishIds();
 }
 
@@ -1842,6 +1862,7 @@ function resetGameData(){
   partyPresets = {boss:[],pvp:[]};
   fusionMainFishId = "";
   fusionMainFishIds = {};
+  aquariumFishIds = [];
   pendingPresetSaleId = "";
   pendingPresetSellAll = false;
   cloudRevision = 0;
@@ -3254,6 +3275,7 @@ function loadGame(){
     partyPresets=normalizePartyPresets(s.partyPresets);
     fusionMainFishId=String(s.fusionMainFishId||"");
     fusionMainFishIds=s.fusionMainFishIds&&typeof s.fusionMainFishIds==="object"?{...s.fusionMainFishIds}:{};
+    aquariumFishIds=normalizeAquariumFishIds(s.aquariumFishIds);
     ensureAllFishIds();
   } catch(e) {}
 }

@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#071b2d">
   <meta name="description" content="낚시하고 성장하며 보스와 대전하는 온라인 낚시 RPG">
   <title>FishingLife</title>
-  <link rel="stylesheet" href="./css/legacy.css?v=4.9.4">
-  <link rel="stylesheet" href="./css/game-ui.css?v=4.9.4">
+  <link rel="stylesheet" href="./css/legacy.css?v=5.0.0">
+  <link rel="stylesheet" href="./css/game-ui.css?v=5.0.0">
 </head>
 <body>
   <div class="ambient-bg" aria-hidden="true">
@@ -64,11 +64,13 @@
             <section id="fishingScene" class="fishing-scene" aria-label="낚시터 풍경">
               <div class="scene-sky">
                 <div class="scene-sun"></div>
+                <div class="scene-stars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
                 <div class="cloud cloud-one"></div>
                 <div class="cloud cloud-two"></div>
                 <div class="distant-island island-one"></div>
                 <div class="distant-island island-two"></div>
               </div>
+              <div id="sceneTimeBadge" class="scene-time-badge" aria-label="현재 시간 배경"><span>☀️</span><div><small>실제 시간</small><b>낮</b><em>12:00</em></div></div>
               <div class="scene-water">
                 <div class="wave wave-one"></div>
                 <div class="wave wave-two"></div>
@@ -207,6 +209,7 @@
           <div class="community-grid">
             <button class="community-card" data-ui-action="ranking"><span>🏆</span><div><small>시즌 기록</small><h3>랭킹</h3><p>총수익 기준 순위를 확인합니다.</p></div></button>
             <button class="community-card" data-ui-action="myInfo"><span>🪪</span><div><small>선장 상태</small><h3>내정보</h3><p>기존 게임의 성장·수집·전투 정보를 확인합니다.</p></div></button>
+            <button class="community-card aquarium-card" data-ui-action="aquarium"><span>🫧</span><div><small>나만의 전시</small><h3>수족관</h3><p>좋아하는 물고기 5마리를 전시하고 감상합니다.</p></div></button>
             <button class="community-card" data-ui-action="battleHistory"><span>📼</span><div><small>최근 전투</small><h3>전투 기록</h3><p>보스·1대1 최근 5회를 확인하고 다시 봅니다.</p></div></button>
             <button class="community-card" data-ui-action="wallet"><span>💰</span><div><small>내 자산</small><h3>지갑</h3><p>현재 보유 골드와 계정을 확인합니다.</p></div></button>
             <button class="community-card" data-ui-action="achievements"><span>🏅</span><div><small>도전 기록</small><h3>업적</h3><p>달성도와 보상을 확인합니다.</p></div></button>
@@ -255,12 +258,12 @@
 
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="./js/data/fish-data.js?v=4.9.4"></script>
-  <script src="./js/core.js?v=4.9.4"></script>
-  <script src="./js/data/combat-data.js?v=4.9.4"></script>
-  <script src="./js/combat.js?v=4.9.4"></script>
-  <script src="./js/gameplay.js?v=4.9.4"></script>
-  <script src="./js/commands.js?v=4.9.4"></script>
-  <script src="./js/ui.js?v=4.9.4"></script>
+  <script src="./js/data/fish-data.js?v=5.0.0"></script>
+  <script src="./js/core.js?v=5.0.0"></script>
+  <script src="./js/data/combat-data.js?v=5.0.0"></script>
+  <script src="./js/combat.js?v=5.0.0"></script>
+  <script src="./js/gameplay.js?v=5.0.0"></script>
+  <script src="./js/commands.js?v=5.0.0"></script>
+  <script src="./js/ui.js?v=5.0.0"></script>
 </body>
 </html>

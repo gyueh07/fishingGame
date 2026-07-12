@@ -474,6 +474,25 @@ function isFusionMainFish(f){
   return !!(f&&f.id&&fusionMainFishIds&&fusionMainFishIds[f.name]===f.id);
 }
 
+function getAquariumFishes(){
+  ensureAllFishIds();
+  return normalizeAquariumFishIds(aquariumFishIds).map(id=>bucket.find(f=>f&&String(f.id)===id)).filter(Boolean).slice(0,5);
+}
+
+function isAquariumFish(f){
+  return !!(f?.id&&normalizeAquariumFishIds(aquariumFishIds).includes(String(f.id)));
+}
+
+function saveAquariumFishIds(ids){
+  ensureAllFishIds();
+  const owned=new Set(bucket.filter(Boolean).map(f=>String(f.id||"")));
+  aquariumFishIds=normalizeAquariumFishIds(ids).filter(id=>owned.has(id)).slice(0,5);
+  saveGame();
+  return {ok:true,ids:[...aquariumFishIds],fishes:getAquariumFishes()};
+}
+
+function clearAquarium(){return saveAquariumFishIds([]);}
+
 function getFishEvolutionStage(f){
   const stage=Math.max(0,Math.min(3,Math.floor(Number(f?.fusion?.evolutionStage||0))));
   if(stage>0&&Number(f?.fusion?.evolutionScaleVersion||0)<EVOLUTION_SCALE_VERSION)ensureFishFusionState(f);
@@ -587,6 +606,7 @@ function getFusionMaterialBlockReason(main,fish){
   if(fish.name!==main.name)return "이름이 같은 물고기만 합성할 수 있습니다.";
   if(fish.grade==="쓰레기")return "쓰레기 등급은 합성할 수 없습니다.";
   if(fish.locked)return "잠금된 물고기입니다.";
+  if(isAquariumFish(fish))return "수족관에 전시 중인 물고기는 합성 재료로 사용할 수 없습니다.";
   if(isFishInPartyPreset(fish))return "파티 프리셋에 저장된 물고기입니다.";
   const idx=bucket.indexOf(fish);
   if(bossPrepIndexes.includes(idx)||pvpPrepIndexes.includes(idx))return "현재 전투 파티에 편성된 물고기입니다.";
@@ -660,6 +680,7 @@ function performFishFusion(mainId,materialIds){
   money=normalizeMoney(money-preview.cost);main.locked=true;
   removeFishIdsFromPresets([...materialIdsSet]);
   bucket=bucket.filter(f=>!f||!materialIdsSet.has(f.id));
+  aquariumFishIds=normalizeAquariumFishIds(aquariumFishIds).filter(id=>!materialIdsSet.has(id));
   rebuildPreparedIndexesFromIds(bossIds,pvpIds);
   syncFishFusionCombat(main);
   fusionMainFishIds[main.name]=main.id;
@@ -825,6 +846,7 @@ function sellOne(n,confirmed=false){
   const idx=getBucketIndexByDisplayNumber(n);
   if(idx < 0 || !bucket[idx]) return print("존재하지 않는 번호입니다.");
   if(bucket[idx].locked) return print("잠금된 물고기는 판매할 수 없습니다.");
+  if(isAquariumFish(bucket[idx])) return print("수족관에 전시 중인 물고기는 전시 해제 후 판매할 수 있습니다.");
   if(!confirmed){
     pendingPresetSaleId = bucket[idx].id;
     pendingPresetSellAll = false;
@@ -861,9 +883,9 @@ function confirmPresetSale(){
 
 function sellAll(confirmed=false){
   if(bucket.length===0) return print("팔 물고기가 없습니다.");
-  const sell=bucket.filter(f=>!f.locked);
-  const keep=bucket.filter(f=>f.locked);
-  if(sell.length===0) return print("판매할 수 있는 물고기가 없습니다. 전부 잠금 상태입니다.");
+  const sell=bucket.filter(f=>!f.locked&&!isAquariumFish(f));
+  const keep=bucket.filter(f=>f.locked||isAquariumFish(f));
+  if(sell.length===0) return print("판매할 수 있는 물고기가 없습니다. 잠금 또는 수족관 전시 상태입니다.");
   const presetFishes = sell.filter(isFishInPartyPreset);
   if(!confirmed){
     pendingPresetSellAll = true;
@@ -2362,6 +2384,7 @@ function finishOnlineTransferState(nextState,nextRevision,context={}){
     finalState.partyPresets=presets;
     if(removedFishIds.has(String(finalState.fusionMainFishId||"")))finalState.fusionMainFishId="";
     if(finalState.fusionMainFishIds&&typeof finalState.fusionMainFishIds==="object")Object.keys(finalState.fusionMainFishIds).forEach(key=>{if(removedFishIds.has(String(finalState.fusionMainFishIds[key]||"")))delete finalState.fusionMainFishIds[key];});
+    finalState.aquariumFishIds=normalizeAquariumFishIds(finalState.aquariumFishIds).filter(id=>!removedFishIds.has(String(id)));
   }
   applyGameState(finalState);
   cloudRevision=Number(nextRevision||cloudRevision);
@@ -2469,6 +2492,7 @@ async function sendFish(targetNickname,displayNumber){
       if(!displayItem||!myBucket[displayItem.originalIndex])throw new Error("FISH_NOT_FOUND");
       const sourceFish=myBucket[displayItem.originalIndex];
       if(sourceFish.locked)throw new Error("FISH_LOCKED");
+      if(normalizeAquariumFishIds(myState.aquariumFishIds).includes(String(sourceFish.id||"")))throw new Error("FISH_IN_AQUARIUM");
       const mainIds=new Set([String(myState.fusionMainFishId||""),...Object.values(myState.fusionMainFishIds&&typeof myState.fusionMainFishIds==="object"?myState.fusionMainFishIds:{}).map(String)]);
       if(mainIds.has(String(sourceFish.id||"")))throw new Error("FISH_IS_MAIN");
       myBucket.splice(displayItem.originalIndex,1);
@@ -2501,6 +2525,7 @@ async function sendFish(targetNickname,displayNumber){
     if(e.message==="TARGET_NOT_FOUND")return transferFailure("존재하지 않는 닉네임입니다.");
     if(e.message==="FISH_NOT_FOUND")return transferFailure("존재하지 않는 번호입니다.");
     if(e.message==="FISH_LOCKED")return transferFailure("잠금된 물고기는 전송할 수 없습니다.");
+    if(e.message==="FISH_IN_AQUARIUM")return transferFailure("수족관에 전시 중인 물고기는 전시 해제 후 전송할 수 있습니다.");
     if(e.message==="FISH_IS_MAIN")return transferFailure("합성 본체는 해제한 뒤 전송할 수 있습니다.");
     if(e.message==="MY_ACCOUNT_NOT_FOUND")return transferFailure("현재 계정을 찾을 수 없습니다. 다시 로그인해주세요.");
     if(e.message==="SYNC_REQUIRED")return transferFailure("최신 데이터를 저장하지 못했습니다. 네트워크를 확인한 뒤 다시 시도해주세요.");
@@ -2531,7 +2556,8 @@ async function sendFishBatch(targetNickname,fishIds){
       const selected=myBucket.filter(f=>f&&fishIds.includes(String(f.id||"")));if(selected.length!==fishIds.length)throw new Error("FISH_NOT_FOUND");
       transferContext.removedFishIds=selected.map(f=>String(f.id||""));
       const mainIds=new Set([String(myState.fusionMainFishId||""),...Object.values(myState.fusionMainFishIds&&typeof myState.fusionMainFishIds==="object"?myState.fusionMainFishIds:{}).map(String)]);
-      if(selected.some(f=>f.locked))throw new Error("FISH_LOCKED");if(selected.some(f=>mainIds.has(String(f.id||""))))throw new Error("FISH_IS_MAIN");
+      const aquariumIds=new Set(normalizeAquariumFishIds(myState.aquariumFishIds));
+      if(selected.some(f=>f.locked))throw new Error("FISH_LOCKED");if(selected.some(f=>aquariumIds.has(String(f.id||""))))throw new Error("FISH_IN_AQUARIUM");if(selected.some(f=>mainIds.has(String(f.id||""))))throw new Error("FISH_IS_MAIN");
       const selectedIds=new Set(selected.map(f=>String(f.id||""))),targetIds=new Set(targetBucket.map(f=>String(f?.id||"")));moved=selected.map(source=>{let id=String(source.id||makeFishId());if(targetIds.has(id))id=makeFishId();targetIds.add(id);return {...source,id,locked:false,isNewCatch:false,time:`${new Date().toLocaleString()} · ${senderName}에게 받은 선물`,transferredFrom:senderName,transferredAtMillis:Date.now()};});
       const nextBucket=myBucket.filter(f=>!selectedIds.has(String(f?.id||"")));targetBucket.push(...moved);
       const myPresets=normalizePartyPresets(myState.partyPresets);myPresets.boss=myPresets.boss.filter(id=>!selectedIds.has(String(id)));myPresets.pvp=myPresets.pvp.filter(id=>!selectedIds.has(String(id)));
@@ -2544,7 +2570,7 @@ async function sendFishBatch(targetNickname,fishIds){
     if(!committed||!moved.length)throw new Error("TRANSFER_NOT_COMMITTED");finishOnlineTransferState(committed.state,committed.revision,transferContext);
     db.collection("serverAlerts").add({type:"fishTransfer",from:senderName,fromTitle:senderTitle,to:targetNickname,fishName:moved[0].name,fishGrade:moved[0].grade,fishSize:moved[0].size,fishCount:moved.length,createdAt:firebase.firestore.FieldValue.serverTimestamp(),createdAtMillis:Date.now()}).catch(console.error);
     return {ok:true,targetNickname,fishes:moved,count:moved.length,message:`${targetNickname} 님에게 물고기 ${moved.length}마리를 전송했습니다.`};
-  }catch(e){console.error(e);if(e.message==="TARGET_NOT_FOUND")return transferFailure("존재하지 않는 닉네임입니다.");if(e.message==="FISH_NOT_FOUND")return transferFailure("선택한 물고기를 찾을 수 없습니다.");if(e.message==="FISH_LOCKED")return transferFailure("잠금된 물고기는 전송할 수 없습니다.");if(e.message==="FISH_IS_MAIN")return transferFailure("합성 본체는 해제한 뒤 전송할 수 있습니다.");if(e.message==="SYNC_REQUIRED")return transferFailure("최신 데이터를 저장하지 못했습니다. 네트워크를 확인해주세요.");if(e.message==="PROGRESS_REGRESSION_BLOCKED")return transferFailure("진행도가 낮아지는 계정 저장을 차단했습니다. 관리자 확인이 필요합니다.");if(e.message==="USER_STATE_TOO_LARGE")return transferFailure("계정 데이터가 너무 커서 안전하게 전송할 수 없습니다. 양동이 분리 저장 업데이트가 필요합니다.");if(await handleOnlineActionWriteError(e,currentUser,getGameState(),lastCloudSyncedState))return transferFailure(e.message==="UPDATE_REQUIRED"?"최신 FishingLife 파일로 다시 접속해주세요.":"상대 계정 데이터가 안전 저장 형식과 맞지 않아 전송을 중단했습니다.");return transferFailure("물고기 전송 중 오류가 발생했습니다.");}
+  }catch(e){console.error(e);if(e.message==="TARGET_NOT_FOUND")return transferFailure("존재하지 않는 닉네임입니다.");if(e.message==="FISH_NOT_FOUND")return transferFailure("선택한 물고기를 찾을 수 없습니다.");if(e.message==="FISH_LOCKED")return transferFailure("잠금된 물고기는 전송할 수 없습니다.");if(e.message==="FISH_IN_AQUARIUM")return transferFailure("수족관에 전시 중인 물고기는 전시 해제 후 전송할 수 있습니다.");if(e.message==="FISH_IS_MAIN")return transferFailure("합성 본체는 해제한 뒤 전송할 수 있습니다.");if(e.message==="SYNC_REQUIRED")return transferFailure("최신 데이터를 저장하지 못했습니다. 네트워크를 확인해주세요.");if(e.message==="PROGRESS_REGRESSION_BLOCKED")return transferFailure("진행도가 낮아지는 계정 저장을 차단했습니다. 관리자 확인이 필요합니다.");if(e.message==="USER_STATE_TOO_LARGE")return transferFailure("계정 데이터가 너무 커서 안전하게 전송할 수 없습니다. 양동이 분리 저장 업데이트가 필요합니다.");if(await handleOnlineActionWriteError(e,currentUser,getGameState(),lastCloudSyncedState))return transferFailure(e.message==="UPDATE_REQUIRED"?"최신 FishingLife 파일로 다시 접속해주세요.":"상대 계정 데이터가 안전 저장 형식과 맞지 않아 전송을 중단했습니다.");return transferFailure("물고기 전송 중 오류가 발생했습니다.");}
   finally{isOnlineActionRunning=false;}
 }
 
