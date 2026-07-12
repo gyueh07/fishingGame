@@ -41,7 +41,7 @@
     battleReplayToken:0, battleReplaySpeed:1, battleReplaySkip:false, battleReplayRunning:false,lastBattleReplay:null, bossPartySortOrder:"전투력", catchCelebrationTimer:0,
     pvpReplayToken:0,pvpReplaySpeed:1,pvpReplaySkip:false,pvpReplayRunning:false,lastPvpReplay:null,pvpReplayDom:null,pvpPartySortOrder:"전투력",pvpVisibleCount:30,pendingPvpRequest:null,
     fusionMaterialIds:[],fusionAnimationResolve:null,presetEditorType:"boss",presetEditorIds:[],
-    renderQueued:false,renderForce:false,bucketRenderToken:0,replayDom:null,replaySummonKey:"",replaySummonIds:new Set(),lastActionHtml:"",bossPartyVisibleCount:30,soundAt:{},gradeAttackPulse:0,transferFishIds:[],transferTarget:"",transferVisibleCount:30,rankingSections:null,authMode:"login",fishingTimeKey:"",aquariumEdit:false,aquariumVisibleCount:30
+    renderQueued:false,renderForce:false,bucketRenderToken:0,replayDom:null,replaySummonKey:"",replaySummonIds:new Set(),lastActionHtml:"",bossPartyVisibleCount:30,soundAt:{},gradeAttackPulse:0,transferFishIds:[],transferTarget:"",transferVisibleCount:30,rankingSections:null,authMode:"login",fishingTimeKey:"",aquariumEdit:false,aquariumVisibleCount:30,aquariumGalleryCache:null,aquariumGalleryAt:0,publicAquariumCurrent:null
   };
   globalThis.isFishingLifeBattleLocked=()=>!!(state.battleReplayRunning||state.pvpReplayRunning);
   globalThis.showFishingLifeBattleLockNotice=()=>showToast("전투가 끝난 뒤 나갈 수 있습니다. 빠르게 보려면 건너뛰기를 눌러주세요.");
@@ -193,6 +193,30 @@
     toast.className=`game-toast game-notice ${kind}`;toast.innerHTML=`<span>${safe(icon)}</span><div><small>${safe(eyebrow)}</small><b>${safe(headline)}</b>${detail?`<p>${safe(detail)}</p>`:""}</div>`;requestAnimationFrame(()=>toast.classList.add("show"));clearTimeout(state.toastTimer);state.toastTimer=setTimeout(()=>toast.classList.remove("show"),Math.max(2200,Number(config.duration||3800)));
   }
   globalThis.showFishingLifeNotice=showGameNotice;
+  const achievementUnlockQueue=[];
+  let achievementUnlockRunning=false;
+  async function runAchievementUnlockQueue(){
+    if(achievementUnlockRunning)return;
+    achievementUnlockRunning=true;
+    const host=$("#achievementFeed");
+    while(achievementUnlockQueue.length){
+      const achievement=achievementUnlockQueue.shift();
+      if(!host)break;
+      host.innerHTML=`<article class="achievement-unlock-card"><span>🏆</span><div><small>ACHIEVEMENT UNLOCKED</small><b>${safe(achievement.name||"업적 달성")}</b><p>${safe(achievement.desc||"새로운 업적을 달성했습니다.")}</p><strong>${Number(achievement.reward||0)>0?`+${safe(formatMoney(achievement.reward))}`:"칭호 업적 달성"}</strong></div></article>`;
+      const card=host.firstElementChild;
+      requestAnimationFrame(()=>card?.classList.add("show"));
+      playGameSound("victory");gameVibrate("victory");
+      await sleep(4300);
+      card?.classList.remove("show");
+      await sleep(260);
+      host.replaceChildren();
+    }
+    achievementUnlockRunning=false;
+  }
+  globalThis.showFishingLifeAchievementUnlocks=list=>{
+    (Array.isArray(list)?list:[list]).filter(Boolean).forEach(item=>achievementUnlockQueue.push(item));
+    runAchievementUnlockQueue();
+  };
   function showWorldCatchAlert({nickname="다른 선장",fishName="희귀한 물고기",fishGrade="영원"}={}){
     const host=$("#worldCatchFeed");if(!host)return;
     const card=document.createElement("article");
@@ -886,9 +910,10 @@
 
   function showCatchCelebration(fish) {
     const layer = $("#catchCelebration");
+    const newDiscovery=!!fish.isNewCatch;
     layer.classList.remove("escaped");
-    layer.classList.toggle("new-discovery",!!fish.isNewCatch);
-    $("#celebrationKicker").textContent=fish.isNewCatch?"NEW DISCOVERY":"FISH CAUGHT";
+    layer.classList.toggle("new-discovery",newDiscovery);
+    $("#celebrationKicker").textContent=newDiscovery?"NEW DISCOVERY":"FISH CAUGHT";
     $("#celebrationIcon").textContent = fishIcon(fish);
     $("#celebrationName").textContent = fish.name;
     $("#celebrationMeta").textContent = `[${fish.grade}] ${fish.size === null ? "특별 개체" : `${formatSize(fish.size)}cm`} · ${formatMoney(fish.price || 0)}`;
@@ -898,6 +923,7 @@
     clearTimeout(state.catchCelebrationTimer);
     state.catchCelebrationTimer=setTimeout(()=>layer.classList.remove("show"),2450);
     playGameSound("catch",fish.grade);
+    if(newDiscovery){fish.isNewCatch=false;saveGame();state.bucketKey="";}
   }
 
   function showEscapeCelebration(result){
@@ -930,7 +956,7 @@
     state.fishingTimeKey=key;
     scene.classList.remove("time-dawn","time-day","time-sunset","time-night","time-static");
     scene.classList.add(feedbackSettings.timeBackground?`time-${theme.key}`:"time-static");
-    if(badge){badge.classList.toggle("disabled",!feedbackSettings.timeBackground);badge.querySelector("span").textContent=feedbackSettings.timeBackground?theme.icon:"🎨";badge.querySelector("b").textContent=feedbackSettings.timeBackground?theme.label:"기본 배경";badge.querySelector("em").textContent=clock;}
+    if(badge){badge.classList.toggle("disabled",!feedbackSettings.timeBackground);badge.querySelector("b").textContent=clock;}
   }
 
   function renderFishing() {
@@ -953,7 +979,7 @@
     const latest = bucket[bucket.length - 1];
     if (latest) {
       $("#catchIcon").textContent = fishIcon(latest);
-      $("#catchGrade").textContent = `[${latest.grade}] ${latest.isNewCatch?"NEW · ":""}최근 획득`;
+      $("#catchGrade").textContent = `[${latest.grade}] 최근 획득`;
       $("#catchGrade").style.color = grades.find(item => item.name === latest.grade)?.color || "";
       $("#catchName").textContent = latest.name;
       $("#catchMeta").textContent = `${latest.size === null ? "특별 개체" : `${formatSize(latest.size)}cm`} · ${formatMoney(latest.price || 0)}`;
@@ -1025,12 +1051,12 @@
     $("#recentCatchGrid").hidden = recent.length === 0;
     $("#recentCatchGrid").innerHTML = recent.map(({fish, originalIndex}, index) => `
       <button type="button" class="recent-catch-item ${gradeClass(fish.grade)} ${fishEvolutionClass(fish)}" data-recent-bucket-index="${originalIndex}" data-tooltip="${safe(fish.time || "최근 획득")}" aria-label="${safe(fish.name)} 상세정보 보기">
-        <span>${fishIcon(fish)}</span><div><b>${safe(fish.name)}${fish.isNewCatch?` <i class="new-catch-badge">NEW</i>`:""}</b><small>${safe(fish.grade)} · 상세정보 보기</small></div><em>${index + 1}회 전</em>
+        <span>${fishIcon(fish)}</span><div><b>${safe(fish.name)}</b><small>${safe(fish.grade)} · 상세정보 보기</small></div><em>${index + 1}회 전</em>
       </button>`).join("");
   }
 
   function openRecentCatches(){
-    const recent=bucket.map((fish,originalIndex)=>({fish,originalIndex})).slice(-10).reverse(),cards=recent.map(({fish,originalIndex},index)=>`<button type="button" class="recent-catch-item ${gradeClass(fish.grade)} ${fishEvolutionClass(fish)}" data-recent-bucket-index="${originalIndex}"><span>${fishIcon(fish)}</span><div><b>${safe(fish.name)}${fish.isNewCatch?` <i class="new-catch-badge">NEW</i>`:""}</b><small>${safe(fish.grade)} · ${safe(fish.time||"최근 획득")}</small></div><em>${index+1}회 전</em></button>`).join("");
+    const recent=bucket.map((fish,originalIndex)=>({fish,originalIndex})).slice(-10).reverse(),cards=recent.map(({fish,originalIndex},index)=>`<button type="button" class="recent-catch-item ${gradeClass(fish.grade)} ${fishEvolutionClass(fish)}" data-recent-bucket-index="${originalIndex}"><span>${fishIcon(fish)}</span><div><b>${safe(fish.name)}</b><small>${safe(fish.grade)} · ${safe(fish.time||"최근 획득")}</small></div><em>${index+1}회 전</em></button>`).join("");
     openUiModal("최근 잡은 물고기",`<div class="game-dialog recent-catch-dialog"><div class="dialog-summary"><div><small>RECENT CATCH</small><b>최근 기록 ${recent.length} / 10</b><p>물고기를 누르면 상세 능력치를 확인할 수 있습니다.</p></div><span>🎣</span></div><div class="recent-catch-grid">${cards||`<div class="recent-catch-empty">최근 낚시 기록이 없습니다.</div>`}</div></div>`);
   }
 
@@ -1062,7 +1088,7 @@
     const isFusionMain=isFusionMainFish(fish),isDisplayed=isAquariumFish(fish),stage=getFishEvolutionStage(fish),fusionCount=getFishFusionCount(fish);
     return `<article class="fish-card ${gradeClass(fish.grade)} ${fishEvolutionClass(fish)} ${isFusionMain?"fusion-main":""} ${isDisplayed?"aquarium-displayed":""}">
       <div class="fish-card-top"><span class="fish-card-icon">${fishIcon(fish)}</span><span class="fish-card-index">NO.${no}${fish.locked?" · 🔒":""}${isFusionMain?" · 🧬 본체":""}${isDisplayed?" · 🫧 전시":""}</span></div>
-      <span class="fish-card-grade">${safe(fish.grade)}${stage?` · ${safe(getFishEvolutionLabel(fish))}`:""}</span><h3>${safe(fish.name)} ${fishEvolutionBadge(fish)}${fish.isNewCatch?` <i class="new-catch-badge">NEW</i>`:""}</h3><p>${fish.size===null?"특별 개체":`${formatSize(fish.size)}cm`}${fusionCount?` · 합성 ${fusionCount}회`:""}</p>
+      <span class="fish-card-grade">${safe(fish.grade)}${stage?` · ${safe(getFishEvolutionLabel(fish))}`:""}</span><h3>${safe(fish.name)} ${fishEvolutionBadge(fish)}</h3><p>${fish.size===null?"특별 개체":`${formatSize(fish.size)}cm`}${fusionCount?` · 합성 ${fusionCount}회`:""}</p>
       <div class="fish-stats"><div><small>공격력 ${combatStars(combat,"attack")}</small><b>${compactNumber(combat.attack)}</b></div><div><small>체력 ${combatStars(combat,"hp")} · ${healthPercent}%</small><b>${compactNumber(combat.hp)} / ${compactNumber(combat.maxHp)}</b><span class="bucket-hp-track"><i style="width:${healthPercent}%"></i></span>${recoveryLeft>0?`<em class="bucket-recovery ${knockedOut?"knocked-out":""}" data-recovery-until="${Number(combat.stunUntil||0)}" data-recovery-kind="${knockedOut?"knockout":"recovery"}">${knockedOut?"💫 기절":"❤️‍🩹 회복"} ${safe(formatRemain(recoveryLeft))}</em>`:""}</div></div>
       <div class="fish-actions"><button data-fish-action="info" data-number="${no}" data-tooltip="능력치와 특성을 확인합니다">상세</button>${fish.grade!=="쓰레기"?`<button data-fish-action="fusion" data-number="${no}" data-tooltip="합성 본체·진화 화면을 엽니다">합성/진화</button>`:""}<button data-fish-action="lock" data-number="${no}" data-tooltip="${fish.locked?"잠금을 해제합니다":"판매되지 않도록 잠급니다"}">${fish.locked?"잠금 해제":"잠금"}</button><button class="sell" data-fish-action="sell" data-number="${no}" data-tooltip="${isDisplayed?"수족관 전시 해제 후 판매할 수 있습니다.":"현재 시세로 판매합니다"}" ${fish.locked||isDisplayed?"disabled":""}>${isDisplayed?"전시 중":"판매"}</button></div>
     </article>`;
@@ -1105,11 +1131,9 @@
     const displayNumber = getDisplayNumberByBucketIndex(idx);
     const c = ensureCombatStats(fish), trait = getFishTrait(fish);
     const fusionCount=getFishFusionCount(fish),stage=getFishEvolutionStage(fish);
-    const wasNew=!!fish.isNewCatch;
-    openUiModal(fish.name, `<div class="game-dialog"><div class="dialog-summary fish-detail-summary ${gradeClass(fish.grade)} ${fishEvolutionClass(fish)}"><div><small>${safe(fish.grade)} · 양동이 ${displayNumber}번${stage?` · ${safe(getFishEvolutionLabel(fish))}`:""}</small><b>${safe(fish.name)} ${fishEvolutionBadge(fish)}${wasNew?` <i class="new-catch-badge">NEW</i>`:""}</b>${fish.grade!=="쓰레기"?`<p>합성 ${fusionCount}회 · 공격력/체력 20% 고정 전이</p>`:""}</div><span>${fishIcon(fish)}</span></div>
+    openUiModal(fish.name, `<div class="game-dialog"><div class="dialog-summary fish-detail-summary ${gradeClass(fish.grade)} ${fishEvolutionClass(fish)}"><div><small>${safe(fish.grade)} · 양동이 ${displayNumber}번${stage?` · ${safe(getFishEvolutionLabel(fish))}`:""}</small><b>${safe(fish.name)} ${fishEvolutionBadge(fish)}</b>${fish.grade!=="쓰레기"?`<p>합성 ${fusionCount}회 · 공격력/체력 20% 고정 전이</p>`:""}</div><span>${fishIcon(fish)}</span></div>
       <div class="dialog-card-grid"><article class="dialog-card"><small>공격력 ${combatStars(c,"attack")}</small><strong>${Number(c.attack).toLocaleString()}</strong></article><article class="dialog-card"><small>체력 ${combatStars(c,"hp")}</small><strong>${Number(c.hp).toLocaleString()} / ${Number(c.maxHp).toLocaleString()}</strong></article><article class="dialog-card"><small>회피율 ${combatStars(c,"dodge")}</small><strong>${Number(c.dodge).toFixed(1)}%</strong></article><article class="dialog-card"><small>치명타 확률 ${combatStars(c,"critRate")}</small><strong>${Number(c.critRate).toFixed(1)}%</strong></article><article class="dialog-card"><small>치명타 피해 ${combatStars(c,"critDamage")}</small><strong>${Number(c.critDamage).toFixed(0)}%</strong></article></div>
       ${trait ? `<article class="dialog-card ${gradeClass(fish.grade)}"><small>고유 특성</small><h3>${safe(trait.name)}</h3><p>${safe(trait.desc)}</p></article>` : ""}${isAquariumFish(fish)?'<div class="aquarium-detail-note">🫧 현재 나만의 수족관에 전시 중입니다. 전투·본체·진화 사용 가능</div>':""}${fish.grade!=="쓰레기"?`<div class="dialog-actions"><button class="primary" ${isFusionMainFish(fish)?"data-fusion-clear-main=\""+safe(fish.id)+"\"":"data-fusion-main-id=\""+safe(fish.id)+"\""}>${isFusionMainFish(fish)?"합성 본체 해제":"합성 본체로 설정"}</button><button data-fusion-open-name="${safe(fish.name)}">합성·진화 열기</button>${isAquariumFish(fish)?'<button data-ui-action="aquarium">수족관으로 돌아가기</button>':""}</div>`:""}</div>`);
-    if(wasNew){fish.isNewCatch=false;saveGame();state.bucketKey="";}
   }
   function openFishDetail(displayNumber) {
     openFishDetailByBucketIndex(getBucketIndexByDisplayNumber(Number(displayNumber)));
@@ -1288,10 +1312,12 @@
     }
   }
 
-  function aquariumFishButton(fish,index){
-    if(!fish)return `<button class="aquarium-fish empty slot-${index+1}" data-aquarium-edit aria-label="빈 전시칸"><span>＋</span><small>전시칸 ${index+1}</small></button>`;
+  function aquariumFishButton(fish,index,owner=""){
+    if(!fish)return owner?`<div class="aquarium-fish empty slot-${index+1}"><span>·</span><small>빈 전시칸</small></div>`:`<button class="aquarium-fish empty slot-${index+1}" data-aquarium-edit aria-label="빈 전시칸"><span>＋</span><small>전시칸 ${index+1}</small></button>`;
     const combat=ensureCombatStats(fish),stage=getFishEvolutionStage(fish);
-    return `<button class="aquarium-fish slot-${index+1} aquarium-grade-${gradeClass(fish.grade)} ${fishEvolutionClass(fish)}" data-aquarium-detail-id="${safe(fish.id)}" aria-label="${safe(fish.name)} 상세정보 보기"><i class="aquarium-aura"></i><span>${fishIcon(fish)}</span><div><small>${safe(fish.grade)}${stage?` · ${safe(getFishEvolutionLabel(fish))}`:""}</small><b>${safe(fish.name)}</b><em>⚔ ${compactNumber(combat.attack)} · ❤️ ${compactNumber(combat.maxHp)}</em></div></button>`;
+    const data=owner?`data-public-aquarium-owner="${safe(owner)}" data-public-aquarium-fish-id="${safe(fish.id)}"`:`data-aquarium-detail-id="${safe(fish.id)}"`;
+    const aquariumGrade=gradeClasses[fish.grade]||"normal";
+    return `<button class="aquarium-fish slot-${index+1} aquarium-grade-${aquariumGrade} ${fishEvolutionClass(fish)}" ${data} aria-label="${safe(fish.name)} 상세정보 보기"><i class="aquarium-aura"></i><span>${fishIcon(fish)}</span><div><small>${safe(fish.grade)}${stage?` · ${safe(getFishEvolutionLabel(fish))}`:""}</small><b>${safe(fish.name)}</b><em>⚔ ${compactNumber(combat.attack)} · ❤️ ${compactNumber(combat.maxHp)}</em></div></button>`;
   }
 
   function openAquarium(edit=state.aquariumEdit){
@@ -1304,7 +1330,51 @@
       const more=visible.length<list.length?`<button class="boss-party-more" data-aquarium-more>물고기 더 보기 · ${visible.length.toLocaleString()} / ${list.length.toLocaleString()}</button>`:"";
       editor=`<section class="aquarium-editor"><header><div><small>BUCKET DISPLAY</small><h3>전시할 물고기 선택</h3></div><b>${selected.size} / 5</b></header><p>전투·합성 본체·진화에는 사용할 수 있고, 판매·전송·합성 재료로 소모되는 행동은 보호됩니다.</p><div class="aquarium-choice-list">${cards||'<div class="fusion-empty">전시할 물고기가 없습니다.</div>'}</div>${more}<div class="dialog-actions"><button class="primary" data-aquarium-finish>전시 완료</button><button data-aquarium-clear ${selected.size?"":"disabled"}>모두 전시 해제</button></div></section>`;
     }
-    openUiModal("나만의 수족관",`<div class="game-dialog aquarium-dialog"><section class="aquarium-hero"><div><small>MY AQUARIUM · ${displayed.length}/5</small><h2>${displayed.length?"나만의 물고기를 감상하세요":"첫 물고기를 전시해보세요"}</h2><p>물고기를 누르면 크기·별·능력치·특성을 확인할 수 있습니다.</p></div><button data-aquarium-edit>${state.aquariumEdit?"선택 계속하기":"전시 편집"}</button></section><div class="aquarium-tank"><div class="aquarium-light"></div><div class="aquarium-bubbles"><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="aquarium-floor"><i></i><i></i><i></i></div>${slots}</div>${editor}</div>`);
+    openUiModal("나만의 수족관",`<div class="game-dialog aquarium-dialog"><section class="aquarium-hero"><div><small>MY AQUARIUM · ${displayed.length}/5</small><h2>${displayed.length?"나만의 물고기를 감상하세요":"첫 물고기를 전시해보세요"}</h2><p>물고기를 누르면 크기·별·능력치·특성을 확인할 수 있습니다.</p></div><div class="aquarium-hero-actions"><button data-aquarium-gallery>수족관 광장</button><button data-aquarium-edit>${state.aquariumEdit?"선택 계속하기":"전시 편집"}</button></div></section><div class="aquarium-tank"><div class="aquarium-light"></div><div class="aquarium-bubbles"><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="aquarium-floor"><i></i><i></i><i></i></div>${slots}</div>${editor}</div>`);
+  }
+
+  function publicAquariumEntry(data,id=""){
+    const user=data&&typeof data==="object"?data:{},game=user.gameState&&typeof user.gameState==="object"?user.gameState:{},owned=Array.isArray(game.bucket)?game.bucket.filter(Boolean):[],ids=normalizeAquariumFishIds(game.aquariumFishIds),fishes=ids.map(fishId=>owned.find(f=>String(f.id||"")===fishId)).filter(Boolean).slice(0,5);
+    return {owner:cleanNickname(user.nickname||id),title:String(user.title||game.equippedTitle||""),cosmetics:normalizeProfileCosmetics(game.profileCosmetics),fishes};
+  }
+
+  function aquariumGalleryCard(entry){
+    const visual=pvpProfileVisual(entry.cosmetics),fishPreview=entry.fishes.map(f=>`<span class="${gradeClass(f.grade)}" title="${safe(f.name)}"><i>${fishIcon(f)}</i><em>${safe(f.grade)}</em></span>`).join("");
+    return `<article class="aquarium-gallery-card"><div class="${visual.classes}" style="${visual.style}" data-aura-symbol="${safe(visual.aura)}"><span>${visual.avatar}</span></div><div class="aquarium-gallery-user"><small>${safe(entry.title?`[${entry.title}]`:"칭호 없음")}</small><b>${safe(entry.owner)}</b><div>${fishPreview}</div></div><button data-public-aquarium-owner="${safe(entry.owner)}">구경하기</button></article>`;
+  }
+
+  function renderAquariumGallery(entries=state.aquariumGalleryCache||[],message=""){
+    const list=(entries||[]).filter(entry=>entry.owner&&entry.owner!==currentUser&&entry.fishes.length).slice(0,30),cards=list.map(aquariumGalleryCard).join("");
+    openUiModal("수족관 광장",`<div class="game-dialog aquarium-gallery-dialog"><div class="dialog-summary"><div><small>PUBLIC AQUARIUM</small><b>다른 선장의 수족관을 구경하세요</b><p>전시 물고기는 읽기 전용이며 능력치와 진화 정보를 확인할 수 있습니다.</p></div><span>🫧</span></div><form id="aquariumSearchForm" class="aquarium-search"><input id="aquariumSearchNickname" maxlength="16" autocomplete="off" placeholder="닉네임으로 수족관 찾기"><button type="submit">검색</button></form>${message?`<div class="aquarium-gallery-message">${safe(message)}</div>`:""}<div class="aquarium-gallery-list">${cards||'<div class="fusion-empty">아직 공개된 다른 수족관이 없습니다.</div>'}</div><div class="dialog-actions"><button class="primary" data-ui-action="aquarium">내 수족관으로</button><button data-aquarium-gallery-refresh>새로고침</button></div></div>`);
+  }
+
+  async function openAquariumGallery(force=false){
+    if(!force&&Array.isArray(state.aquariumGalleryCache)&&Date.now()-state.aquariumGalleryAt<60000)return renderAquariumGallery();
+    openUiModal("수족관 광장",`<div class="game-dialog"><div class="dialog-summary"><div><small>PUBLIC AQUARIUM</small><b>수족관을 불러오는 중...</b><p>전시 중인 선장만 목록에 표시합니다.</p></div><span>🫧</span></div></div>`);
+    try{
+      if(currentUser&&hasPendingLocalCloudChanges())await saveCloudData();
+      const snapshot=await db.collection("users").limit(60).get(),entries=snapshot.docs.map(doc=>publicAquariumEntry(doc.data(),doc.id)).filter(entry=>entry.owner&&entry.fishes.length).sort((a,b)=>b.fishes.length-a.fishes.length||a.owner.localeCompare(b.owner,"ko"));
+      state.aquariumGalleryCache=entries;state.aquariumGalleryAt=Date.now();renderAquariumGallery(entries);
+    }catch(error){console.error(error);renderAquariumGallery([],"수족관 목록을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.");}
+  }
+
+  async function openPublicAquarium(owner){
+    owner=cleanNickname(owner);if(!owner)return showToast("닉네임을 입력해주세요.");
+    let entry=(state.aquariumGalleryCache||[]).find(item=>item.owner===owner)||null;
+    if(!entry){
+      openUiModal("수족관 찾기",`<div class="game-dialog"><div class="dialog-summary"><div><small>AQUARIUM SEARCH</small><b>${safe(owner)} 수족관을 찾는 중...</b></div><span>🔎</span></div></div>`);
+      try{const snap=await db.collection("users").doc(owner).get();if(!snap.exists)return renderAquariumGallery(state.aquariumGalleryCache||[],"존재하지 않는 닉네임입니다.");entry=publicAquariumEntry(snap.data(),owner);}catch(error){console.error(error);return renderAquariumGallery(state.aquariumGalleryCache||[],"수족관을 불러오지 못했습니다.");}
+    }
+    if(!entry.fishes.length)return renderAquariumGallery(state.aquariumGalleryCache||[],`${owner} 님은 아직 물고기를 전시하지 않았습니다.`);
+    state.publicAquariumCurrent=entry;
+    const slots=Array.from({length:5},(_,index)=>aquariumFishButton(entry.fishes[index],index,entry.owner)).join(""),visual=pvpProfileVisual(entry.cosmetics);
+    openUiModal(`${entry.owner}의 수족관`,`<div class="game-dialog aquarium-dialog public-aquarium"><section class="aquarium-hero"><div class="aquarium-owner-head"><div class="${visual.classes}" style="${visual.style}" data-aura-symbol="${safe(visual.aura)}"><span>${visual.avatar}</span></div><div><small>CAPTAIN AQUARIUM · ${entry.fishes.length}/5</small><h2>${safe(entry.owner)}${entry.owner===currentUser?" · 나":""}</h2><p>${safe(entry.title?`[${entry.title}]`:"장착 칭호 없음")} · 물고기를 눌러 상세정보 보기</p></div></div><button data-aquarium-gallery>광장으로</button></section><div class="aquarium-tank"><div class="aquarium-light"></div><div class="aquarium-bubbles"><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="aquarium-floor"><i></i><i></i><i></i></div>${slots}</div></div>`);
+  }
+
+  function openPublicAquariumFishDetail(owner,fishId){
+    const entry=state.publicAquariumCurrent?.owner===owner?state.publicAquariumCurrent:(state.aquariumGalleryCache||[]).find(item=>item.owner===owner),fish=entry?.fishes.find(f=>String(f.id||"")===String(fishId));if(!fish)return showToast("전시 물고기를 찾을 수 없습니다.");
+    const combat=ensureCombatStats(fish),trait=getFishTrait(fish),stage=getFishEvolutionStage(fish),fusionCount=getFishFusionCount(fish);
+    openUiModal(`${owner}의 ${fish.name}`,`<div class="game-dialog public-fish-detail"><div class="dialog-summary fish-detail-summary ${gradeClass(fish.grade)} ${fishEvolutionClass(fish)}"><div><small>${safe(owner)}의 수족관 · ${safe(fish.grade)}${stage?` · ${safe(getFishEvolutionLabel(fish))}`:""}</small><b>${safe(fish.name)} ${fishEvolutionBadge(fish)}</b><p>${fish.size===null?"특별 개체":`${formatSize(fish.size)}cm`} · 합성 ${fusionCount}회</p></div><span>${fishIcon(fish)}</span></div><div class="dialog-card-grid"><article class="dialog-card"><small>공격력 ${combatStars(combat,"attack")}</small><strong>${Number(combat.attack).toLocaleString()}</strong></article><article class="dialog-card"><small>체력 ${combatStars(combat,"hp")}</small><strong>${Number(combat.hp).toLocaleString()} / ${Number(combat.maxHp).toLocaleString()}</strong></article><article class="dialog-card"><small>회피율</small><strong>${Number(combat.dodge).toFixed(1)}%</strong></article><article class="dialog-card"><small>치명타 확률</small><strong>${Number(combat.critRate).toFixed(1)}%</strong></article><article class="dialog-card"><small>치명타 피해</small><strong>${Number(combat.critDamage).toFixed(0)}%</strong></article></div>${trait?`<article class="dialog-card ${gradeClass(fish.grade)}"><small>고유 특성</small><h3>${safe(trait.name)}</h3><p>${safe(trait.desc)}</p></article>`:""}<div class="dialog-actions"><button class="primary" data-public-aquarium-owner="${safe(owner)}">수족관으로 돌아가기</button><button data-aquarium-gallery>수족관 광장</button></div></div>`);
   }
 
   function openSettings(){
@@ -1678,6 +1748,12 @@
     const fishTransferButton=event.target.closest("[data-fish-transfer]");if(fishTransferButton)return submitFishTransfer(fishTransferButton);
     const aquariumDetail=event.target.closest("[data-aquarium-detail-id]");
     if(aquariumDetail){const index=bucket.findIndex(f=>f&&String(f.id)===String(aquariumDetail.dataset.aquariumDetailId));return openFishDetailByBucketIndex(index);}
+    const publicAquariumFish=event.target.closest("[data-public-aquarium-fish-id]");
+    if(publicAquariumFish)return openPublicAquariumFishDetail(publicAquariumFish.dataset.publicAquariumOwner,publicAquariumFish.dataset.publicAquariumFishId);
+    const publicAquariumOwner=event.target.closest("[data-public-aquarium-owner]");
+    if(publicAquariumOwner)return openPublicAquarium(publicAquariumOwner.dataset.publicAquariumOwner);
+    if(event.target.closest("[data-aquarium-gallery-refresh]"))return openAquariumGallery(true);
+    if(event.target.closest("[data-aquarium-gallery]"))return openAquariumGallery(false);
     if(event.target.closest("[data-aquarium-edit]")){state.aquariumVisibleCount=30;return openAquarium(true);}
     if(event.target.closest("[data-aquarium-finish]"))return openAquarium(false);
     if(event.target.closest("[data-aquarium-clear]")){clearAquarium();state.bucketKey="";showToast("수족관 전시를 모두 해제했습니다.");return openAquarium(true);}
@@ -1751,6 +1827,7 @@
 
   document.addEventListener("submit",event=>{
     if(event.target?.id==="loginGateForm"){event.preventDefault();submitLoginGate();return;}
+    if(event.target?.id==="aquariumSearchForm"){event.preventDefault();openPublicAquarium($("#aquariumSearchNickname")?.value||"");return;}
     if(event.target?.id==="deleteAccountForm"){event.preventDefault();submitDeleteAccount();}
   });
 

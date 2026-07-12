@@ -35,7 +35,7 @@ let accountSessionUnsubscribe=null;
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
-const GAME_VERSION = "2026-07-12-fishinglife-aquarium-time-v25-0-0";
+const GAME_VERSION = "2026-07-12-fishinglife-public-aquarium-v25-0-1";
 const USER_WRITE_SCHEMA_VERSION = 249;
 const USER_WRITE_PROTOCOL_VERSION = 3;
 const ACCOUNT_RESET_VERSION = 1;
@@ -47,13 +47,15 @@ const MAX_SAFE_GAME_STATE_BYTES = 850000;
 const UPDATE_NOTICE_TITLE = "📢 업데이트 안내";
 const UPDATE_NOTICES = [
   {
-    id:"2026-07-12-fishinglife-aquarium-time-25-0",
-    title:"실제 시간 낚시터·나만의 수족관",
+    id:"2026-07-12-fishinglife-public-aquarium-25-0-1",
+    title:"실제 시간 낚시터·수족관 광장",
     lines:[
       "기기의 실제 시간에 맞춰 낚시터가 새벽·낮·노을·밤으로 자연스럽게 바뀝니다.",
       "양동이 물고기 중 최대 5마리를 수족관에 전시하고 클릭해 상세 능력치를 확인할 수 있습니다.",
       "전시 중인 물고기는 판매·일괄판매·전송·합성 재료에서 보호되며 보스전·PVP·합성 본체·진화에는 사용할 수 있습니다.",
       "수족관 물고기는 등급별 광륜과 입자가 표시되며 영원·공허가 가장 화려합니다.",
+      "수족관 광장에서 다른 선장의 전시 물고기를 구경하고 상세 능력치를 확인할 수 있습니다.",
+      "낚시터에는 현재 시각만 표시되며 NEW 표시는 처음 낚은 순간에만 한 번 나타납니다.",
       "실제 시간 배경은 설정에서 끌 수 있으며 낚시 확률과 전투 능력치에는 영향을 주지 않습니다."
     ]
   },
@@ -235,7 +237,7 @@ const UPDATE_NOTICES = [
       "재료의 영구 공격력과 최대 체력 20%가 횟수 제한 없이 고정 전이되며 회피·치명타·별·특성은 전이되지 않습니다.",
       "누적 합성 3회·7회·15회에 골드를 사용해 1차·2차·최종 진화를 진행할 수 있습니다.",
       "영원·공허 낚시 성공은 다른 접속자의 낚시터 우측 하단에 실시간으로 표시됩니다.",
-      "처음 발견한 물고기는 NEW가 표시되고 상세정보를 확인하면 표시가 해제됩니다.",
+      "처음 발견한 물고기의 NEW는 낚은 순간 연출에만 한 번 표시되며 양동이·최근 기록·상세정보에는 남지 않습니다.",
       "레이드 종료 보고서의 마지막 물고기와 하단 버튼까지 스크롤되며 작은 알림의 표 장식 문자가 제거됩니다."
     ]
   },
@@ -3102,6 +3104,9 @@ function updateAchievements(){
     }
   }
 
+  if(newly.length&&typeof globalThis.showFishingLifeAchievementUnlocks==="function"){
+    globalThis.showFishingLifeAchievementUnlocks(newly);
+  }
   return newly;
 }
 

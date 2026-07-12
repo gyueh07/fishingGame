@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#071b2d">
   <meta name="description" content="낚시하고 성장하며 보스와 대전하는 온라인 낚시 RPG">
   <title>FishingLife</title>
-  <link rel="stylesheet" href="./css/legacy.css?v=5.0.0">
-  <link rel="stylesheet" href="./css/game-ui.css?v=5.0.0">
+  <link rel="stylesheet" href="./css/legacy.css?v=5.0.1">
+  <link rel="stylesheet" href="./css/game-ui.css?v=5.0.1">
 </head>
 <body>
   <div class="ambient-bg" aria-hidden="true">
@@ -70,7 +70,7 @@
                 <div class="distant-island island-one"></div>
                 <div class="distant-island island-two"></div>
               </div>
-              <div id="sceneTimeBadge" class="scene-time-badge" aria-label="현재 시간 배경"><span>☀️</span><div><small>실제 시간</small><b>낮</b><em>12:00</em></div></div>
+              <div id="sceneTimeBadge" class="scene-time-badge" aria-label="현재 시간"><b>12:00</b></div>
               <div class="scene-water">
                 <div class="wave wave-one"></div>
                 <div class="wave wave-two"></div>
@@ -254,16 +254,17 @@
     </div>
   </div>
 
+  <div id="achievementFeed" class="achievement-feed" role="status" aria-live="polite"></div>
   <div id="gameToast" class="game-toast" role="status" aria-live="polite"></div>
 
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="./js/data/fish-data.js?v=5.0.0"></script>
-  <script src="./js/core.js?v=5.0.0"></script>
-  <script src="./js/data/combat-data.js?v=5.0.0"></script>
-  <script src="./js/combat.js?v=5.0.0"></script>
-  <script src="./js/gameplay.js?v=5.0.0"></script>
-  <script src="./js/commands.js?v=5.0.0"></script>
-  <script src="./js/ui.js?v=5.0.0"></script>
+  <script src="./js/data/fish-data.js?v=5.0.1"></script>
+  <script src="./js/core.js?v=5.0.1"></script>
+  <script src="./js/data/combat-data.js?v=5.0.1"></script>
+  <script src="./js/combat.js?v=5.0.1"></script>
+  <script src="./js/gameplay.js?v=5.0.1"></script>
+  <script src="./js/commands.js?v=5.0.1"></script>
+  <script src="./js/ui.js?v=5.0.1"></script>
 </body>
 </html>
