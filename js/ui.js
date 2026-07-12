@@ -41,7 +41,7 @@
     battleReplayToken:0, battleReplaySpeed:1, battleReplaySkip:false, battleReplayRunning:false,lastBattleReplay:null, bossPartySortOrder:"전투력", catchCelebrationTimer:0,
     pvpReplayToken:0,pvpReplaySpeed:1,pvpReplaySkip:false,pvpReplayRunning:false,lastPvpReplay:null,pvpReplayDom:null,pvpPartySortOrder:"전투력",pvpVisibleCount:30,pendingPvpRequest:null,
     fusionMaterialIds:[],fusionAnimationResolve:null,presetEditorType:"boss",presetEditorIds:[],
-    renderQueued:false,renderForce:false,bucketRenderToken:0,replayDom:null,replaySummonKey:"",replaySummonIds:new Set(),lastActionHtml:"",bossPartyVisibleCount:30,soundAt:{},gradeAttackPulse:0,transferFishIds:[],transferTarget:"",transferVisibleCount:30,rankingSections:null,authMode:"login",fishingTimeKey:"",aquariumEdit:false,aquariumVisibleCount:30,aquariumGalleryCache:null,aquariumGalleryAt:0,publicAquariumCurrent:null
+    renderQueued:false,renderForce:false,bucketRenderToken:0,replayDom:null,replaySummonKey:"",replaySummonIds:new Set(),lastActionHtml:"",bossPartyVisibleCount:30,soundAt:{},gradeAttackPulse:0,transferFishIds:[],transferTarget:"",transferVisibleCount:30,transferScrollTop:0,rankingSections:null,authMode:"login",fishingTimeKey:"",aquariumEdit:false,aquariumVisibleCount:30,aquariumGalleryCache:null,aquariumGalleryAt:0,publicAquariumCurrent:null
   };
   globalThis.isFishingLifeBattleLocked=()=>!!(state.battleReplayRunning||state.pvpReplayRunning);
   globalThis.showFishingLifeBattleLockNotice=()=>showToast("전투가 끝난 뒤 나갈 수 있습니다. 빠르게 보려면 건너뛰기를 눌러주세요.");
@@ -1045,7 +1045,7 @@
   }
 
   function renderRecentCatches() {
-    const recent = bucket.map((fish, originalIndex) => ({fish, originalIndex})).slice(-10).reverse();
+    const recent = bucket.map((fish, originalIndex) => ({fish, originalIndex})).filter(({fish})=>fish&&!fish.transferredFrom&&!Number(fish.transferredAtMillis||0)&&!String(fish.time||"").includes("받은 선물")).slice(-10).reverse();
     $("#recentCatchCount").textContent = `${recent.length} / 10`;
     $("#recentCatchEmpty").hidden = recent.length > 0;
     $("#recentCatchGrid").hidden = recent.length === 0;
@@ -1056,7 +1056,7 @@
   }
 
   function openRecentCatches(){
-    const recent=bucket.map((fish,originalIndex)=>({fish,originalIndex})).slice(-10).reverse(),cards=recent.map(({fish,originalIndex},index)=>`<button type="button" class="recent-catch-item ${gradeClass(fish.grade)} ${fishEvolutionClass(fish)}" data-recent-bucket-index="${originalIndex}"><span>${fishIcon(fish)}</span><div><b>${safe(fish.name)}</b><small>${safe(fish.grade)} · ${safe(fish.time||"최근 획득")}</small></div><em>${index+1}회 전</em></button>`).join("");
+    const recent=bucket.map((fish,originalIndex)=>({fish,originalIndex})).filter(({fish})=>fish&&!fish.transferredFrom&&!Number(fish.transferredAtMillis||0)&&!String(fish.time||"").includes("받은 선물")).slice(-10).reverse(),cards=recent.map(({fish,originalIndex},index)=>`<button type="button" class="recent-catch-item ${gradeClass(fish.grade)} ${fishEvolutionClass(fish)}" data-recent-bucket-index="${originalIndex}"><span>${fishIcon(fish)}</span><div><b>${safe(fish.name)}</b><small>${safe(fish.grade)} · ${safe(fish.time||"최근 획득")}</small></div><em>${index+1}회 전</em></button>`).join("");
     openUiModal("최근 잡은 물고기",`<div class="game-dialog recent-catch-dialog"><div class="dialog-summary"><div><small>최근 낚시</small><b>최근 기록 ${recent.length} / 10</b><p>물고기를 누르면 상세 능력치를 확인할 수 있습니다.</p></div><span>🎣</span></div><div class="recent-catch-grid">${cards||`<div class="recent-catch-empty">최근 낚시 기록이 없습니다.</div>`}</div></div>`);
   }
 
@@ -1138,6 +1138,41 @@
   function openFishDetail(displayNumber) {
     openFishDetailByBucketIndex(getBucketIndexByDisplayNumber(Number(displayNumber)));
   }
+
+  function receivedFishIndexes(fishIds=[],message=null){
+    const ids=new Set((Array.isArray(fishIds)?fishIds:[]).map(String).filter(Boolean));
+    let indexes=bucket.map((fish,index)=>({fish,index})).filter(({fish})=>fish&&ids.has(String(fish.id||""))).map(item=>item.index);
+    if(indexes.length||!message)return indexes;
+    const names=new Set((Array.isArray(message.fishNames)?message.fishNames:[]).map(String)),sender=String(message.from||""),created=Number(message.createdAtMillis||0),count=Math.max(1,Number(message.count||1));
+    indexes=bucket.map((fish,index)=>({fish,index})).filter(({fish})=>fish&&(!sender||String(fish.transferredFrom||"")===sender)&&(!names.size||names.has(String(fish.name||"")))&&(!created||Math.abs(Number(fish.transferredAtMillis||0)-created)<10*60*1000)).sort((a,b)=>Number(b.fish.transferredAtMillis||0)-Number(a.fish.transferredAtMillis||0)).slice(0,count).map(item=>item.index);
+    return indexes;
+  }
+
+  function markInboxMessageReadQuietly(message){
+    if(!message||message.read===true)return;
+    message.read=true;
+    saveGame();
+    if(currentUser)saveCloudData().catch(console.error);
+    renderInboxBadge();
+  }
+
+  function openReceivedFishDetails(fishIds=[],message=null){
+    const indexes=receivedFishIndexes(fishIds,message);
+    if(!indexes.length)return showToast("받은 물고기를 양동이에서 찾지 못했습니다. 잠시 후 다시 확인해주세요.");
+    markInboxMessageReadQuietly(message);
+    if(indexes.length===1)return openFishDetailByBucketIndex(indexes[0]);
+    const cards=indexes.map(index=>{const fish=bucket[index],c=ensureCombatStats(fish);return `<article class="dialog-card received-fish-card ${gradeClass(fish.grade)}"><small>${safe(fish.grade)} · 선물받은 물고기</small><h3>${safe(fish.name)} ${fishEvolutionBadge(fish)}</h3><p>⚔ 공격력 ${Number(c.attack).toLocaleString()} · ❤️ 체력 ${Number(c.hp).toLocaleString()} / ${Number(c.maxHp).toLocaleString()}</p><button data-received-fish-id="${safe(fish.id)}">전체 능력치 보기</button></article>`;}).join("");
+    openUiModal("선물받은 물고기",`<div class="game-dialog"><div class="dialog-summary"><div><small>선물 도착</small><b>물고기 ${indexes.length.toLocaleString()}마리</b><p>각 물고기를 눌러 별·특성·합성·진화 정보를 확인할 수 있습니다.</p></div><span>🎁</span></div><div class="dialog-card-grid">${cards}</div></div>`);
+  }
+
+  globalThis.showFishingLifeReceivedFishNotice=fishIds=>{
+    const ids=[...new Set((Array.isArray(fishIds)?fishIds:[]).map(String).filter(Boolean))];
+    if(!ids.length)return;
+    showGameNotice({icon:"🎁",eyebrow:"물고기 선물 도착",title:`물고기 ${ids.length.toLocaleString()}마리를 받았습니다`,detail:"능력치를 바로 확인할 수 있습니다.",kind:"success",duration:9000});
+    const toast=$("#gameToast"),holder=toast?.querySelector("div");
+    if(!holder)return;
+    const button=document.createElement("button");button.type="button";button.className="game-notice-action";button.textContent="능력치 보기";button.addEventListener("click",()=>openReceivedFishDetails(ids));holder.appendChild(button);
+  };
 
   function renderCollection(force = false) {
     const discovered = Object.keys(collection || {}).length, total = allFishCount();
@@ -1557,8 +1592,10 @@
     const tabs=`<div class="transfer-tabs"><button data-transfer-tab="money" class="${type==="money"?"active":""}">💰 송금</button><button data-transfer-tab="fish" class="${type==="fish"?"active":""}">🐟 물고기 전송</button></div>`;
     if(type==="money")return openUiModal("송금·물고기 전송",`<div class="game-dialog transfer-dialog"><div class="dialog-summary"><div><small>골드 보내기</small><b>보유 골드 ${safe(formatMoney(money))}</b><p>받는 사람과 보유 골드를 확인한 뒤 송금합니다.</p></div><span>💸</span></div>${tabs}<div class="dialog-form transfer-form"><label for="transferNickname">받는 사람 닉네임</label><input id="transferNickname" maxlength="16" autocomplete="off" placeholder="닉네임"><label for="transferAmount">송금할 금액</label><input id="transferAmount" inputmode="numeric" autocomplete="off" placeholder="1 이상의 정수"><p class="transfer-warning">거래가 완료되면 직접 되돌릴 수 없습니다. 닉네임과 금액을 확인해주세요.</p><button data-money-transfer>송금하기</button></div></div>`);
     const eligible=sortedBucketList().filter(entry=>!entry.fish.locked&&!isFusionMainFish(entry.fish)&&!isAquariumFish(entry.fish)),eligibleIds=new Set(eligible.map(entry=>String(entry.fish.id)));state.transferFishIds=state.transferFishIds.filter(id=>eligibleIds.has(String(id)));
-    const visible=eligible.slice(0,state.transferVisibleCount),cards=visible.map(entry=>{const fish=entry.fish,selected=state.transferFishIds.includes(String(fish.id)),c=ensureCombatStats(fish);return `<button type="button" class="transfer-fish-choice ${gradeClass(fish.grade)} ${selected?"selected":""}" data-transfer-fish-id="${safe(fish.id)}"><span>${fishIcon(fish)}</span><div><b>${safe(fish.name)}</b><small>${safe(fish.grade)} · ⚔ ${compactNumber(c.attack)} · ❤️ ${compactNumber(c.maxHp)}</small></div><em>${selected?"선택됨":"선택"}</em></button>`;}).join(""),more=visible.length<eligible.length?`<button type="button" class="boss-party-more" data-transfer-fish-more>물고기 더 보기 · ${visible.length.toLocaleString()} / ${eligible.length.toLocaleString()}</button>`:"";
-    return openUiModal("송금·물고기 전송",`<div class="game-dialog transfer-dialog"><div class="dialog-summary"><div><small>물고기 보내기</small><b>다중 선택 ${state.transferFishIds.length.toLocaleString()}마리</b><p>잠금·합성 본체·수족관 전시 물고기는 보호를 위해 목록에서 제외됩니다.</p></div><span>🐟</span></div>${tabs}<div class="dialog-form transfer-form"><label for="fishTransferNickname">받는 사람 닉네임</label><input id="fishTransferNickname" maxlength="16" autocomplete="off" placeholder="닉네임" value="${safe(state.transferTarget)}"><div class="transfer-fish-heading"><label>전송할 물고기</label><b>${state.transferFishIds.length.toLocaleString()}마리 선택</b></div><div class="transfer-fish-list">${cards||`<div class="fusion-empty">전송 가능한 물고기가 없습니다.</div>`}</div>${more}<p class="transfer-warning">능력치·진화·합성·현재 체력은 유지됩니다. 선물받은 물고기는 양동이에만 들어오며 도감에는 등록되지 않습니다.</p><button data-fish-transfer ${state.transferFishIds.length?"":"disabled"}>선택한 ${state.transferFishIds.length.toLocaleString()}마리 전송하기</button></div></div>`);
+    const visible=eligible.slice(0,state.transferVisibleCount),cards=visible.map(entry=>{const fish=entry.fish,selected=state.transferFishIds.includes(String(fish.id)),c=ensureCombatStats(fish);return `<button type="button" class="transfer-fish-choice ${gradeClass(fish.grade)} ${selected?"selected":""}" data-transfer-fish-id="${safe(fish.id)}" aria-pressed="${selected}"><span>${fishIcon(fish)}</span><div><b>${safe(fish.name)}</b><small>${safe(fish.grade)} · ⚔ ${compactNumber(c.attack)} · ❤️ ${compactNumber(c.maxHp)}</small></div><em>${selected?"✓ 선택됨":"선택"}</em></button>`;}).join(""),more=visible.length<eligible.length?`<button type="button" class="boss-party-more" data-transfer-fish-more>물고기 더 보기 · ${visible.length.toLocaleString()} / ${eligible.length.toLocaleString()}</button>`:"";
+    const opened=openUiModal("송금·물고기 전송",`<div class="game-dialog transfer-dialog"><div class="dialog-summary"><div><small>물고기 보내기</small><b>다중 선택 ${state.transferFishIds.length.toLocaleString()}마리</b><p>잠금·합성 본체·수족관 전시 물고기는 보호를 위해 목록에서 제외됩니다.</p></div><span>🐟</span></div>${tabs}<div class="dialog-form transfer-form"><label for="fishTransferNickname">받는 사람 닉네임</label><input id="fishTransferNickname" maxlength="16" autocomplete="off" placeholder="닉네임" value="${safe(state.transferTarget)}"><div class="transfer-fish-heading"><label>전송할 물고기</label><b>${state.transferFishIds.length.toLocaleString()}마리 선택</b></div><div class="transfer-fish-list">${cards||`<div class="fusion-empty">전송 가능한 물고기가 없습니다.</div>`}</div>${more}<p class="transfer-warning">능력치·진화·합성·현재 체력은 유지됩니다. 선물받은 물고기는 양동이에만 들어오며 도감에는 등록되지 않습니다.</p><button data-fish-transfer ${state.transferFishIds.length?"":"disabled"}>선택한 ${state.transferFishIds.length.toLocaleString()}마리 전송하기</button></div></div>`);
+    requestAnimationFrame(()=>{const list=$(".transfer-fish-list");if(list)list.scrollTop=Math.max(0,Number(state.transferScrollTop||0));});
+    return opened;
   }
   async function submitMoneyTransfer(button){
     if(button.disabled)return;
@@ -1587,7 +1624,7 @@
   function openInbox(){
     if(!currentUser)return openUiModal("받은 소식",`<div class="game-dialog"><div class="dialog-summary"><div><small>INBOX</small><b>로그인이 필요합니다.</b></div><span>📬</span></div></div>`);
     const list=[...(messages||[])].sort((a,b)=>Number(b.createdAtMillis||0)-Number(a.createdAtMillis||0)),unread=list.filter(item=>item.read!==true).length;
-    const cards=list.map(item=>{const sender=formatUserName(item.from||"알 수 없음",item.fromTitle||""),icon=item.type==="money"?"💰":item.type==="fish"?"🐟":"💌";return `<article class="inbox-message ${item.read===true?"read":"unread"}"><span>${icon}</span><div><small>${safe(formatDateTime(item.createdAtMillis||Date.now()))}</small><h3>${safe(sender)}</h3><p>${safe(inboxMessageText(item)).replace(/\n/g,"<br>")}</p></div><button data-inbox-read="${safe(item.id||"")}" ${item.read===true?"disabled":""}>${item.read===true?"확인함":"확인"}</button></article>`;}).join("");
+    const cards=list.map(item=>{const sender=formatUserName(item.from||"알 수 없음",item.fromTitle||""),icon=item.type==="money"?"💰":item.type==="fish"?"🐟":"💌",fishButton=item.type==="fish"?`<button data-inbox-fish-details="${safe(item.id||"")}">능력치 보기</button>`:"";return `<article class="inbox-message ${item.read===true?"read":"unread"}"><span>${icon}</span><div><small>${safe(formatDateTime(item.createdAtMillis||Date.now()))}</small><h3>${safe(sender)}</h3><p>${safe(inboxMessageText(item)).replace(/\n/g,"<br>")}</p></div><div class="inbox-message-actions">${fishButton}<button data-inbox-read="${safe(item.id||"")}" ${item.read===true?"disabled":""}>${item.read===true?"확인함":"확인"}</button></div></article>`;}).join("");
     openUiModal("받은 소식",`<div class="game-dialog inbox-dialog"><div class="dialog-summary"><div><small>받은 소식</small><b>읽지 않은 소식 ${unread.toLocaleString()}개</b><p>메시지·송금·물고기 선물 기록은 직접 확인할 때까지 남아 있습니다.</p></div><span>📬</span></div><div class="inbox-actions"><button data-inbox-read-all ${unread?"":"disabled"}>모두 확인</button></div><div class="inbox-list">${cards||`<div class="fusion-empty">도착한 소식이 없습니다.</div>`}</div></div>`);
   }
   function markInboxRead(id=""){
@@ -1742,8 +1779,8 @@
     const quickPresetButton=event.target.closest("[data-party-preset-load]");
     if(quickPresetButton&&!quickPresetButton.disabled){const type=quickPresetButton.dataset.partyPresetLoad,result=applyPartyPreset(type);if(!result.ok)return showToast(result.message);showToast(`${type==="boss"?"보스":"PVP"} 파티 ${result.count}마리를 불러왔습니다.${result.skipped?` 기절·HP 0 ${result.skipped}마리 제외`:""}`);return type==="boss"?openBossParty():openPvpPanel();}
     const transferTab=event.target.closest("[data-transfer-tab]");if(transferTab)return openTransferHub(transferTab.dataset.transferTab);
-    const transferFishChoice=event.target.closest("[data-transfer-fish-id]");if(transferFishChoice){state.transferTarget=$("#fishTransferNickname")?.value||state.transferTarget;const id=String(transferFishChoice.dataset.transferFishId),pos=state.transferFishIds.indexOf(id);if(pos>=0)state.transferFishIds.splice(pos,1);else state.transferFishIds.push(id);return openTransferHub("fish");}
-    if(event.target.closest("[data-transfer-fish-more]")){state.transferTarget=$("#fishTransferNickname")?.value||state.transferTarget;state.transferVisibleCount+=30;return openTransferHub("fish");}
+    const transferFishChoice=event.target.closest("[data-transfer-fish-id]");if(transferFishChoice){state.transferTarget=$("#fishTransferNickname")?.value||state.transferTarget;state.transferScrollTop=$(".transfer-fish-list")?.scrollTop||0;const id=String(transferFishChoice.dataset.transferFishId),pos=state.transferFishIds.indexOf(id);if(pos>=0)state.transferFishIds.splice(pos,1);else state.transferFishIds.push(id);return openTransferHub("fish");}
+    if(event.target.closest("[data-transfer-fish-more]")){state.transferTarget=$("#fishTransferNickname")?.value||state.transferTarget;state.transferScrollTop=$(".transfer-fish-list")?.scrollTop||0;state.transferVisibleCount+=30;return openTransferHub("fish");}
     const moneyTransferButton=event.target.closest("[data-money-transfer]");if(moneyTransferButton)return submitMoneyTransfer(moneyTransferButton);
     const fishTransferButton=event.target.closest("[data-fish-transfer]");if(fishTransferButton)return submitFishTransfer(fishTransferButton);
     const aquariumDetail=event.target.closest("[data-aquarium-detail-id]");
@@ -1813,6 +1850,8 @@
     if(event.target.closest("[data-boss-confirm]")){ runBossBattle(); return; }
     const titleButton=event.target.closest("[data-title-index]"); if(titleButton){ equipTitle(titleButton.dataset.titleIndex); return openTitles(); }
     if(event.target.closest("[data-message-send]")) return sendDirectMessage($("#messageNickname").value,$("#messageText").value);
+    const receivedFish=event.target.closest("[data-received-fish-id]");if(receivedFish){const index=bucket.findIndex(fish=>fish&&String(fish.id||"")===String(receivedFish.dataset.receivedFishId||""));return openFishDetailByBucketIndex(index);}
+    const inboxFishDetails=event.target.closest("[data-inbox-fish-details]");if(inboxFishDetails){const message=messages.find(item=>item&&String(item.id||"")===String(inboxFishDetails.dataset.inboxFishDetails||""));return openReceivedFishDetails(message?.fishIds||[],message||null);}
     const inboxRead=event.target.closest("[data-inbox-read]");if(inboxRead)return markInboxRead(inboxRead.dataset.inboxRead);
     if(event.target.closest("[data-inbox-read-all]"))return markInboxRead("");
     const pvpPartySort=event.target.closest("[data-pvp-party-sort]");if(pvpPartySort){state.pvpPartySortOrder=pvpPartySort.dataset.pvpPartySort;state.pvpVisibleCount=30;return openPvpPanel();}

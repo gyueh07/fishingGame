@@ -35,7 +35,7 @@ let accountSessionUnsubscribe=null;
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
-const GAME_VERSION = "2026-07-12-fishinglife-scalable-save-v25-1-0";
+const GAME_VERSION = "2026-07-13-fishinglife-transfer-refresh-v25-1-1";
 const USER_WRITE_SCHEMA_VERSION = 250;
 const USER_WRITE_PROTOCOL_VERSION = 4;
 const ACCOUNT_RESET_VERSION = 1;
@@ -2850,6 +2850,19 @@ async function announceEternalCatch(fish){
   }
 }
 
+async function refreshIncomingTransfer(notificationText="",receivedFishIds=[]){
+  const account=currentUser;
+  if(!account)return false;
+  const refreshed=await refreshMyCloudData(true);
+  if(!refreshed||currentUser!==account)return false;
+  updateWallet();
+  if(typeof globalThis.requestFishingLifeRender==="function")globalThis.requestFishingLifeRender(true);
+  const fishIds=[...new Set((Array.isArray(receivedFishIds)?receivedFishIds:[]).map(String).filter(Boolean))];
+  if(fishIds.length&&typeof globalThis.showFishingLifeReceivedFishNotice==="function")globalThis.showFishingLifeReceivedFishNotice(fishIds);
+  if(notificationText)await removeRealtimeNotification(notificationText);
+  return true;
+}
+
 function startServerAlertListener(){
   if(!currentUser) return;
   if(emergencyRestoreRunning||hasPendingEmergencyRecoveryDecision())return;
@@ -2887,7 +2900,7 @@ function startServerAlertListener(){
           const amountText = Number(data.amount || 0).toLocaleString() + "원을 송금했습니다.";
 
           print("📢 알림\n\n" + sender + " 님이 " + amountText);
-          removeRealtimeNotification(amountText);
+          setTimeout(()=>refreshIncomingTransfer(amountText).catch(console.error),150);
           return;
         }
 
@@ -2902,8 +2915,9 @@ function startServerAlertListener(){
           };
           const fishText = lineFish(fish) + objParticle(data.fishName) + " 전송했습니다.";
           const fishCount=Math.max(1,Number(data.fishCount||1));
-          print("📢 알림\n\n" + sender + " 님이 " + (fishCount>1?`물고기 ${fishCount.toLocaleString()}마리를 전송했습니다.`:color(lineFish(fish), fish.grade) + objParticle(data.fishName) + " 전송했습니다."));
-          removeRealtimeNotification(fishText);
+          const receivedText=fishCount>1?`물고기 ${fishCount.toLocaleString()}마리를 전송했습니다.`:fishText;
+          print("📢 알림\n\n" + sender + " 님이 " + (fishCount>1?receivedText:color(lineFish(fish), fish.grade) + objParticle(data.fishName) + " 전송했습니다."));
+          setTimeout(()=>refreshIncomingTransfer(receivedText,data.fishIds).catch(console.error),150);
           return;
         }
 
