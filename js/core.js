@@ -34,7 +34,7 @@ let accountSessionUnsubscribe=null;
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
-const GAME_VERSION = "2026-07-12-fishinglife-session-recovery-v24-9-1";
+const GAME_VERSION = "2026-07-12-fishinglife-single-session-v24-9-2";
 const USER_WRITE_SCHEMA_VERSION = 249;
 const USER_WRITE_PROTOCOL_VERSION = 3;
 const ACCOUNT_RESET_VERSION = 1;
@@ -690,6 +690,9 @@ function startAccountSessionHeartbeat(){
   accountSessionHeartbeatTimer=setInterval(()=>{if(!document.hidden)refreshAccountSession();},ACCOUNT_SESSION_HEARTBEAT_MS);
   accountSessionUnsubscribe=db.collection("accountSessions").doc(username).onSnapshot(async snap=>{
     if(!currentUser||currentUser!==username)return;
+    // 로그인 직후 로컬 Firestore 캐시에 남아 있는 예전 세션을 현재 세션으로
+    // 오인하지 않습니다. 서버에서 확인된 스냅샷만 접속 종료 판정에 사용합니다.
+    if(snap.metadata?.fromCache||snap.metadata?.hasPendingWrites)return;
     if(!snap.exists){forceSessionLogout("로그인 연결이 끝났습니다. 다시 로그인해주세요.");return;}
     const sessionHash=await getCurrentSessionHash(),data=snap.data()||{};
     if(!sessionHash||data.tokenHash!==sessionHash||data.deviceId!==getCloudDeviceId())forceSessionLogout("이 계정은 다른 기기에서 접속했습니다.");
@@ -2087,11 +2090,10 @@ async function registerUser(providedNickname,providedPassword){
   }
 }
 
-async function loginUser(providedNickname,providedPassword,options={}){
+async function loginUser(providedNickname,providedPassword){
   if(currentUser)return print("다른 계정으로 로그인하려면 먼저 로그아웃해주세요.");
   if(!(await checkGameVersion()))return {ok:false};
   const formLogin=typeof providedNickname==="string"||typeof providedPassword==="string";
-  const forceTakeover=options?.forceTakeover===true;
   const nickname=cleanNickname(formLogin?providedNickname:prompt("닉네임을 입력하세요."));
   const password=String(formLogin?providedPassword:(nickname?prompt("비밀번호를 입력하세요."):"")||"");
   const setLoginProgress=(message,kind="loading")=>{if(typeof globalThis.updateFishingLifeLoginStatus==="function")globalThis.updateFishingLifeLoginStatus(message,kind);};
@@ -2104,7 +2106,7 @@ async function loginUser(providedNickname,providedPassword,options={}){
   const passwordHash=await hashPassword(password);
   const sessionTokenHash=await startUserSession(nickname);
   let loginData=null,nextRevision=0;
-  let accountWasReset=false;
+  let accountWasReset=false,replacedExistingSession=false;
 
   try{
     await db.runTransaction(async tx=>{
@@ -2114,7 +2116,7 @@ async function loginUser(providedNickname,providedPassword,options={}){
       const latest=latestSnap.data()||{};
       if(latest.passwordHash!==passwordHash)throw new Error("WRONG_PASSWORD");
       const activeSession=sessionSnap.exists?(sessionSnap.data()||{}):null;
-      if(isOtherDeviceSessionActive(activeSession)&&!forceTakeover)throw new Error("SESSION_IN_USE");
+      replacedExistingSession=isOtherDeviceSessionActive(activeSession);
       accountWasReset=Number(latest.accountResetVersion||0)<ACCOUNT_RESET_VERSION;
       const nextState=accountWasReset?createFreshAccountState():cloneCloudState(latest.gameState||createFreshAccountState());
       const serverTime=firebase.firestore.FieldValue.serverTimestamp();
@@ -2140,7 +2142,7 @@ async function loginUser(providedNickname,providedPassword,options={}){
     clearUserSession();
     const pendingRecovery=peekCloudRecovery(nickname);
     const protectedWriteBlocked=handleProtectedWriteError(e,nickname,pendingRecovery?.localState||null,pendingRecovery?.baseState||null);
-    const message=e.message==="ACCOUNT_NOT_FOUND"?"존재하지 않는 닉네임입니다.":e.message==="WRONG_PASSWORD"?"비밀번호가 틀렸습니다.":e.message==="SESSION_IN_USE"?"다른 기기 또는 종료되지 않은 이전 접속이 남아 있습니다.":protectedWriteBlocked?"최신 FishingLife 파일로 다시 접속해주세요.":e.message==="USER_STATE_TOO_LARGE"?"계정 데이터가 커서 초기화를 완료하지 못했습니다.":"네트워크가 불안정합니다. 잠시 후 다시 시도해주세요.";
+    const message=e.message==="ACCOUNT_NOT_FOUND"?"존재하지 않는 닉네임입니다.":e.message==="WRONG_PASSWORD"?"비밀번호가 틀렸습니다.":protectedWriteBlocked?"최신 FishingLife 파일로 다시 접속해주세요.":e.message==="USER_STATE_TOO_LARGE"?"계정 데이터가 커서 초기화를 완료하지 못했습니다.":"네트워크가 불안정합니다. 잠시 후 다시 시도해주세요.";
     setLoginProgress(message,"error");
     if(!formLogin)print(message);
     return {ok:false,error:e.message};
@@ -2159,8 +2161,8 @@ async function loginUser(providedNickname,providedPassword,options={}){
     persistCloudSyncBase(nickname,loginData.gameState,nextRevision);
     updateWallet();
     clearPersistentCloudDirty(nickname);
-    setCloudSyncStatus("saved",accountWasReset?"계정을 Lv.1로 초기화했습니다.":"계정 데이터를 불러왔습니다.");
-    setLoginProgress(accountWasReset?"초기화 완료! Lv.1부터 시작합니다.":"로그인 완료! 게임을 시작합니다.","success");
+    setCloudSyncStatus("saved",accountWasReset?"계정을 Lv.1로 초기화했습니다.":replacedExistingSession?"이 기기로 접속을 옮겼습니다.":"계정 데이터를 불러왔습니다.");
+    setLoginProgress(accountWasReset?"초기화 완료! Lv.1부터 시작합니다.":replacedExistingSession?"이 기기로 접속을 옮겼습니다!":"로그인 완료! 게임을 시작합니다.","success");
     if(typeof globalThis.completeFishingLifeLogin==="function")globalThis.completeFishingLifeLogin(nickname);
     print(nickname+" 님 로그인 완료.\n게임을 시작할 수 있습니다.");
   }catch(e){
