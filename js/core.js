@@ -35,12 +35,12 @@ let accountSessionUnsubscribe=null;
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
-const GAME_VERSION = "2026-07-13-fishinglife-session-only-login-v25-3-4";
+const GAME_VERSION = "2026-07-13-fishinglife-quota-saver-v25-3-5";
 const USER_WRITE_SCHEMA_VERSION = 250;
 const USER_WRITE_PROTOCOL_VERSION = 4;
 const ACCOUNT_RESET_VERSION = 1;
-const ACCOUNT_SESSION_TTL_MS = 90000;
-const ACCOUNT_SESSION_HEARTBEAT_MS = 20000;
+const ACCOUNT_SESSION_TTL_MS = 5*60*1000;
+const ACCOUNT_SESSION_HEARTBEAT_MS = 2*60*1000;
 const ACCOUNT_BACKUP_SLOT_COUNT = 3;
 const GAME_VERSION_CHECK_TTL_MS = 5*60*1000;
 const MAX_SAFE_GAME_STATE_BYTES = 850000;
@@ -54,6 +54,15 @@ const MAX_CLOUD_BATTLE_FRAME_CHUNK_BYTES = 450000;
 const MAX_CLOUD_BATTLE_FRAME_CHUNK_COUNT = 80;
 const UPDATE_NOTICE_TITLE = "📢 업데이트 안내";
 const UPDATE_NOTICES = [
+  {
+    id:"2026-07-13-fishinglife-quota-saver-25-3-5",
+    title:"Firebase 무료 사용량 절약",
+    lines:[
+      "같은 기기에서는 마지막 정상 저장본을 이용해 로그인할 때 양동이 전체를 반복해서 읽지 않습니다.",
+      "평소 자동 저장은 실제로 바뀐 저장칸만 확인하고 저장합니다.",
+      "접속 확인 횟수를 줄이고 실시간 알림은 접속 이후에 생긴 새 알림만 불러옵니다."
+    ]
+  },
   {
     id:"2026-07-13-fishinglife-session-only-login-25-3-4",
     title:"전투 기록·보스 연출 개선",
@@ -767,13 +776,8 @@ async function handleAccountSessionSnapshot(username,snap){
 function startAccountSessionHeartbeat(){
   stopAccountSessionHeartbeat();
   if(!currentUser)return;
-  const username=currentUser;
-  refreshAccountSession();
+  // 로그인 트랜잭션에서 세션을 이미 갱신하므로 즉시 한 번 더 쓰지 않습니다.
   accountSessionHeartbeatTimer=setInterval(()=>{if(!document.hidden)refreshAccountSession();},ACCOUNT_SESSION_HEARTBEAT_MS);
-  accountSessionUnsubscribe=db.collection("accountSessions").doc(username).onSnapshot(
-    snap=>handleAccountSessionSnapshot(username,snap),
-    error=>console.error(error)
-  );
 }
 
 async function releaseAccountSession(username=currentUser){
@@ -1154,7 +1158,8 @@ async function checkGameVersion(force=false){
       return true;
     }catch(error){
       console.error(error);
-      if(isCloudConnectionError(error))reportCloudVersionGate("업데이트 확인에 실패했습니다. 인터넷 연결을 확인한 뒤 새로고침해주세요.","connection","연결 확인");
+      if(isCloudQuotaError(error))reportCloudVersionGate("Firebase 무료 사용량이 모두 사용되었습니다. 사용량이 초기화된 뒤 다시 접속해주세요.","error","사용량 확인");
+      else if(isCloudConnectionError(error))reportCloudVersionGate("업데이트 확인에 실패했습니다. 인터넷 연결을 확인한 뒤 새로고침해주세요.","connection","연결 확인");
       else if(isPermissionDeniedError(error))reportCloudVersionGate("Firebase 설정을 확인하지 못했습니다. Firestore 규칙을 게시한 뒤 새로고침해주세요.","update","설정 확인");
       else reportCloudVersionGate("업데이트 확인 중 오류가 발생했습니다. 페이지를 새로고침해주세요.","update","업데이트 확인");
       return false;
@@ -1183,6 +1188,16 @@ function isCloudConnectionError(error){
     || message.includes("offline")
     || message.includes("failed to fetch")
     || message.includes("internet disconnected");
+}
+
+function isCloudQuotaError(error){
+  const code=String(error?.code||"").toLowerCase();
+  const message=String(error?.message||"").toLowerCase();
+  return code==="resource-exhausted"
+    || code==="firestore/resource-exhausted"
+    || message.includes("resource-exhausted")
+    || message.includes("resource exhausted")
+    || message.includes("quota exceeded");
 }
 
 function handleProtectedWriteError(error,username=currentUser,localState=getGameState(),baseState=lastCloudSyncedState){
@@ -1860,6 +1875,22 @@ function readCloudSyncBase(username){
   }catch(error){console.error(error);return null;}
 }
 
+function isValidCloudSyncBase(value){
+  return !!value
+    && value.state&&typeof value.state==="object"
+    && Number(value.schemaVersion||0)===USER_WRITE_SCHEMA_VERSION
+    && Number(value.state.accountResetVersion||0)===ACCOUNT_RESET_VERSION
+    && Number.isFinite(Number(value.revision));
+}
+
+async function readCloudSyncBaseAsync(username){
+  const immediate=readCloudSyncBase(username);
+  if(isValidCloudSyncBase(immediate))return immediate;
+  if(!username)return null;
+  const stored=await readLargeLocalRecord(cloudBaseKey(username));
+  return isValidCloudSyncBase(stored)?stored:null;
+}
+
 function markPersistentCloudDirty(username=currentUser){
   if(!username)return;
   try{localStorage.setItem(cloudDirtyKey(username),JSON.stringify({dirty:true,revision:Number(cloudRevision||0),updatedAt:Date.now()}));}catch(e){console.error(e);}
@@ -2335,36 +2366,63 @@ async function saveCloudDataNow(){
   try{
     const ref = db.collection("users").doc(userAtStart);
     const expectedRevision = cloudRevision;
-    const serverSnap=await ref.get();
-    if(!serverSnap.exists)throw new Error("ACCOUNT_NOT_FOUND");
-    const serverData=serverSnap.data()||{};
-    if(!isSessionHashValid(serverData,sessionHash))throw new Error("SESSION_INVALID");
-    const serverRevisionAtRead=Number(serverData.cloudRevision||0),serverState=await loadSplitGameState(userAtStart,serverData);
-    let committedRevision=serverRevisionAtRead;
-    let mergedConflict=serverRevisionAtRead!==expectedRevision;
-    let committedState=mergedConflict?mergeCloudGameStates(localState,serverState,baseState):localState;
+    let committedRevision=expectedRevision;
+    let committedState=localState;
+    let mergedConflict=false;
 
-    await db.runTransaction(async tx => {
-      const snap = await tx.get(ref);
-      if(!snap.exists) throw new Error("ACCOUNT_NOT_FOUND");
+    const commitAgainst=async(previousState,serverRevisionAtRead)=>{
+      let conflictData=null;
+      try{
+        await db.runTransaction(async tx => {
+          const snap = await tx.get(ref);
+          if(!snap.exists) throw new Error("ACCOUNT_NOT_FOUND");
+          const data = snap.data() || {};
+          if(!isSessionHashValid(data,sessionHash)) throw new Error("SESSION_INVALID");
+          const serverRevision = Number(data.cloudRevision || 0);
+          if(serverRevision!==serverRevisionAtRead){
+            conflictData=cloneCloudState(data);
+            throw new Error("REVISION_CONFLICT");
+          }
+          const write=txSetProtectedUser(tx,ref,data,{
+            nickname: userAtStart,
+            money: normalizeMoney(committedState.money),
+            rodLevel:Number(committedState.rodLevel||1),
+            title: normalizeLegacyTitleName(committedState.equippedTitle||""),
+            cloudRevision: serverRevision+1,
+            gameState: committedState
+          },"autosave",{fullStateIncludesSplitData:true,previousState});
+          committedState=cloneCloudState(write.fullGameState||committedState);
+          committedRevision=write.cloudRevision;
+        });
+      }catch(error){
+        if(error?.message==="REVISION_CONFLICT"&&conflictData)error.serverData=conflictData;
+        throw error;
+      }
+    };
 
-      const data = snap.data() || {};
-      if(!isSessionHashValid(data,sessionHash)) throw new Error("SESSION_INVALID");
-      const serverRevision = Number(data.cloudRevision || 0);
-      if(serverRevision!==serverRevisionAtRead)throw new Error("REVISION_CONFLICT");
-      committedRevision=serverRevision+1;
-
-      const write=txSetProtectedUser(tx,ref,data,{
-        nickname: userAtStart,
-        money: normalizeMoney(committedState.money),
-        rodLevel:Number(committedState.rodLevel||1),
-        title: normalizeLegacyTitleName(committedState.equippedTitle||""),
-        cloudRevision: committedRevision,
-        gameState: committedState
-      },"autosave",{fullStateIncludesSplitData:true,previousState:serverState});
-      committedState=cloneCloudState(write.fullGameState||committedState);
-      committedRevision=write.cloudRevision;
-    });
+    if(baseState&&typeof baseState==="object"){
+      try{
+        // 보통 저장은 계정 문서 한 번만 읽고, 로컬 기준본과 달라진 조각만 씁니다.
+        await commitAgainst(baseState,expectedRevision);
+      }catch(error){
+        if(error?.message!=="REVISION_CONFLICT"||!error.serverData)throw error;
+        const serverData=error.serverData;
+        const serverRevision=Number(serverData.cloudRevision||0);
+        const serverState=await loadSplitGameState(userAtStart,serverData);
+        committedState=mergeCloudGameStates(localState,serverState,baseState);
+        mergedConflict=true;
+        await commitAgainst(serverState,serverRevision);
+      }
+    }else{
+      const serverSnap=await ref.get();
+      if(!serverSnap.exists)throw new Error("ACCOUNT_NOT_FOUND");
+      const serverData=serverSnap.data()||{};
+      if(!isSessionHashValid(serverData,sessionHash))throw new Error("SESSION_INVALID");
+      const serverRevision=Number(serverData.cloudRevision||0);
+      const serverState=await loadSplitGameState(userAtStart,serverData);
+      committedState=mergeCloudGameStates(localState,serverState,serverState);
+      await commitAgainst(serverState,serverRevision);
+    }
 
     if(currentUser === userAtStart){
       cloudRevision = committedRevision;
@@ -2391,6 +2449,9 @@ async function saveCloudDataNow(){
       setCloudSyncStatus("error","계정을 찾을 수 없습니다. 다시 로그인해주세요.");
     }else if(e.message === "REVISION_CONFLICT"){
       scheduleCloudSaveRetry(false);
+    }else if(isCloudQuotaError(e)){
+      storeCloudRecovery(userAtStart,localState,baseState,true);
+      setCloudSyncStatus("error","Firebase 무료 사용량이 모두 사용되었습니다. 기록은 이 기기에 보관되어 있습니다.");
     }else if(e.message === "PROGRESS_REGRESSION_BLOCKED"){
       storeCloudRecovery(userAtStart,localState,baseState,true);
       setCloudSyncStatus("error","이 기기의 기록이 클라우드 기록보다 오래되어 저장하지 않았습니다.");
@@ -2594,7 +2655,10 @@ async function loginUser(providedNickname,providedPassword){
   const sessionRef=db.collection("accountSessions").doc(nickname);
   const passwordHash=await hashPassword(password);
   const sessionTokenHash=await startUserSession(nickname);
-  const pendingRecovery=await readCloudRecovery(nickname);
+  const [pendingRecovery,cachedCloudBase]=await Promise.all([
+    readCloudRecovery(nickname),
+    readCloudSyncBaseAsync(nickname)
+  ]);
   let loginData=null,nextRevision=0;
   let accountWasReset=false,replacedExistingSession=false,pendingRecoveryApplied=false;
 
@@ -2603,7 +2667,13 @@ async function loginUser(providedNickname,providedPassword){
     if(!initialSnap.exists)throw new Error("ACCOUNT_NOT_FOUND");
     const initialData=initialSnap.data()||{};
     if(initialData.passwordHash!==passwordHash)throw new Error("WRONG_PASSWORD");
-    const initialRevision=Number(initialData.cloudRevision||0),initialState=await loadSplitGameState(nickname,initialData);
+    const initialRevision=Number(initialData.cloudRevision||0);
+    const cachedStateIsCurrent=Number(initialData.accountResetVersion||0)>=ACCOUNT_RESET_VERSION
+      && Number(cachedCloudBase?.revision)===initialRevision
+      && Number(cachedCloudBase?.state?.accountResetVersion||0)===ACCOUNT_RESET_VERSION;
+    const initialState=cachedStateIsCurrent
+      ?cloneCloudState(cachedCloudBase.state)
+      :await loadSplitGameState(nickname,initialData);
     await db.runTransaction(async tx=>{
       const latestSnap=await tx.get(ref);
       if(!latestSnap.exists)throw new Error("ACCOUNT_NOT_FOUND");
@@ -2651,7 +2721,7 @@ async function loginUser(providedNickname,providedPassword){
     clearUserSession();
     const protectedWriteBlocked=handleProtectedWriteError(e,nickname,pendingRecovery?.localState||null,pendingRecovery?.baseState||null);
     const errorCode=String(e?.code||e?.message||"LOGIN_FAILED").replace(/^firestore\//,"").slice(0,60);
-    const message=e.message==="ACCOUNT_NOT_FOUND"?"존재하지 않는 닉네임입니다.":e.message==="WRONG_PASSWORD"?"비밀번호가 틀렸습니다.":e.message==="LOGIN_RETRY"?"계정 기록이 방금 변경되었습니다. 다시 로그인해주세요.":protectedWriteBlocked?"Firebase 규칙 업데이트가 필요합니다. 규칙을 게시한 뒤 새로고침해주세요.":e.message==="USER_STATE_TOO_LARGE"?"계정 기록이 커서 로그인 저장을 완료하지 못했습니다.":isCloudConnectionError(e)?"인터넷 연결이 불안정합니다. 잠시 후 다시 시도해주세요.":`로그인 처리 중 오류가 발생했습니다. 오류 코드: ${errorCode}`;
+    const message=e.message==="ACCOUNT_NOT_FOUND"?"존재하지 않는 닉네임입니다.":e.message==="WRONG_PASSWORD"?"비밀번호가 틀렸습니다.":e.message==="LOGIN_RETRY"?"계정 기록이 방금 변경되었습니다. 다시 로그인해주세요.":protectedWriteBlocked?"Firebase 규칙 업데이트가 필요합니다. 규칙을 게시한 뒤 새로고침해주세요.":e.message==="USER_STATE_TOO_LARGE"?"계정 기록이 커서 로그인 저장을 완료하지 못했습니다.":isCloudQuotaError(e)?"Firebase 무료 사용량이 모두 사용되었습니다. 사용량이 초기화된 뒤 다시 로그인해주세요.":isCloudConnectionError(e)?"인터넷 연결이 불안정합니다. 잠시 후 다시 시도해주세요.":`로그인 처리 중 오류가 발생했습니다. 오류 코드: ${errorCode}`;
     setLoginProgress(message,"error");
     if(!formLogin)print(message);
     return {ok:false,error:e.message};
@@ -2956,7 +3026,8 @@ function startServerAlertListener(){
   serverAlertStartTime = Date.now();
 
   serverAlertUnsubscribe = db.collection("serverAlerts")
-    .orderBy("createdAtMillis", "desc")
+    .where("createdAtMillis", ">", serverAlertStartTime)
+    .orderBy("createdAtMillis", "asc")
     .limit(50)
     .onSnapshot(snapshot => {
       snapshot.docChanges().forEach(change => {

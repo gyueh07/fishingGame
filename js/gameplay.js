@@ -1155,23 +1155,19 @@ async function clearBothActivePvp(a,b){
   await batch.commit();
 }
 
+const ONLINE_PRESENCE_MAX_AGE_MS=5*60*1000;
+
 async function updateOnlinePresence(){
-  if(!currentUser) return;
+  if(!currentUser||hasServerTime)return;
   try{
-    const ref = db.collection("onlineUsers").doc(currentUser);
-    await ref.set({
-      nickname: currentUser,
-      title: getCurrentTitle(),
-      updatedAtMillis: Date.now(),
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    }, {merge:true});
-    const snap = await ref.get();
-    const serverStamp = snap.exists && snap.data().updatedAt;
-    if(serverStamp && typeof serverStamp.toMillis === "function"){
-      serverTimeOffsetMs = serverStamp.toMillis() - Date.now();
-      serverTimeAtSync = serverStamp.toMillis();
-      monotonicAtSync = typeof performance !== "undefined" ? performance.now() : 0;
-      hasServerTime = true;
+    // 접속 세션 문서가 온라인 표시도 겸합니다. 로그인 때 서버 시각만 한 번 읽습니다.
+    const snap=await db.collection("accountSessions").doc(currentUser).get();
+    const serverStamp=snap.exists&&snap.data().updatedAt;
+    if(serverStamp&&typeof serverStamp.toMillis==="function"){
+      serverTimeOffsetMs=serverStamp.toMillis()-Date.now();
+      serverTimeAtSync=serverStamp.toMillis();
+      monotonicAtSync=typeof performance!=="undefined"?performance.now():0;
+      hasServerTime=true;
     }
   }catch(e){
     console.error(e);
@@ -1182,7 +1178,7 @@ function startOnlinePresence(){
   if(!currentUser) return;
   updateOnlinePresence();
   if(onlinePresenceTimer) clearInterval(onlinePresenceTimer);
-  onlinePresenceTimer = setInterval(updateOnlinePresence, 20000);
+  onlinePresenceTimer=null;
 }
 
 function stopOnlinePresence(){
@@ -1190,22 +1186,19 @@ function stopOnlinePresence(){
     clearInterval(onlinePresenceTimer);
     onlinePresenceTimer = null;
   }
-  if(currentUser){
-    db.collection("onlineUsers").doc(currentUser).delete().catch(e=>console.error(e));
-  }
 }
 
 async function isUserOnline(nickname){
   nickname = cleanNickname(nickname);
   if(!nickname) return false;
   try{
-    const snap = await db.collection("onlineUsers").doc(nickname).get();
+    const snap = await db.collection("accountSessions").doc(nickname).get();
     if(!snap.exists) return false;
     const data = snap.data() || {};
     const stamp = data.updatedAt;
     const updated = stamp && typeof stamp.toMillis === "function" ? stamp.toMillis() : Number(data.updatedAtMillis || 0);
     const age = getTrustedNowMs() - updated;
-    return age >= 0 && age <= 45000;
+    return age >= 0 && age <= ONLINE_PRESENCE_MAX_AGE_MS;
   }catch(e){
     console.error(e);
     return false;
