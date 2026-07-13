@@ -196,7 +196,36 @@ service cloud.firestore {
         && request.resource.data.record is map
         && request.resource.data.cloudRevision is int
         && request.resource.data.cloudRevision == getAfter(/databases/$(database)/documents/users/$(userId)).data.cloudRevision
-        && request.resource.data.storageVersion == 1
+        && request.resource.data.storageVersion == 2
+        && request.resource.data.updatedAt is timestamp
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    function validBattleFrameChunk(userId) {
+      return request.resource.data.keys().hasAll([
+          'owner',
+          'recordId',
+          'chunkIndex',
+          'chunkCount',
+          'frames',
+          'cloudRevision',
+          'storageVersion',
+          'updatedAt'
+        ])
+        && request.resource.data.owner == userId
+        && request.resource.data.recordId is string
+        && request.resource.data.recordId.size() > 0
+        && request.resource.data.chunkIndex is int
+        && request.resource.data.chunkIndex >= 0
+        && request.resource.data.chunkCount is int
+        && request.resource.data.chunkCount > 0
+        && request.resource.data.chunkIndex < request.resource.data.chunkCount
+        && request.resource.data.frames is list
+        && request.resource.data.frames.size() > 0
+        && request.resource.data.frames.size() <= 80
+        && request.resource.data.cloudRevision is int
+        && request.resource.data.cloudRevision == getAfter(/databases/$(database)/documents/users/$(userId)).data.cloudRevision
+        && request.resource.data.storageVersion == 2
         && request.resource.data.updatedAt is timestamp
         && request.resource.data.updatedAt == request.time;
     }
@@ -270,6 +299,14 @@ service cloud.firestore {
         allow read: if true;
         allow create, update: if parentRevisionAdvanced(userId)
           && validBattleRecord(userId);
+        allow delete: if parentRevisionAdvanced(userId)
+          || parentActiveSessionMatches(userId);
+      }
+
+      match /battleRecordFrames/{chunkId} {
+        allow read: if true;
+        allow create, update: if parentRevisionAdvanced(userId)
+          && validBattleFrameChunk(userId);
         allow delete: if parentRevisionAdvanced(userId)
           || parentActiveSessionMatches(userId);
       }

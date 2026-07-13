@@ -556,7 +556,7 @@
     const animate=target>from&&target-from>Math.max(1,max*.001);
     const token=++state.bossHpAnimationToken;
     if(!animate){setReplayBossHp(target,max);return;}
-    const duration=["phase","crazy"].includes(kind)?1000:650,start=performance.now();
+    const duration=kind==="revival"?1250:["phase","crazy"].includes(kind)?1000:650,start=performance.now();
     const step=now=>{
       if(token!==state.bossHpAnimationToken)return;
       const progress=Math.max(0,Math.min(1,(now-start)/duration)),eased=1-Math.pow(1-progress,3);
@@ -570,8 +570,8 @@
     const dom=state.replayDom||{},arena=dom.arena||$("#bossBattleArena"),action=dom.action||$("#battleActionCard");
     if(!arena||!action||!frame)return;
     clearBossFinisher(arena);
-    const entryText=String(frame.entry||""),kind=replayEventKind(frame.entry),voidVariant=getVoidReplayVariant(frame.entry),allyVariant=getAllyReplayVariant(frame.entry),isVoid=entryText.includes("battle-event--void"),isCrazyPassive=entryText.includes("battle-event--crazy-passive"),isCrazyPassiveApex=entryText.includes("battle-event--crazy-passive-phoenix-apex"),isAllyAttack=!!frame.allyAttack||entryText.includes("battle-event--ally-attack"),isSkillResult=!!frame.skillResult,text=plain(`${frame.entry||""} ${frame.skillDetail||""}`);
-    arena.classList.remove("hit-player","hit-boss","event-skill","event-crazy","event-passive","event-phase","event-ally","event-void","event-result","event-dodge","event-crazy-passive","event-crazy-passive-apex");clearGradeAttackEffect(arena);clearBossAttackScene(arena);
+    const entryText=String(frame.entry||""),kind=replayEventKind(frame.entry),voidVariant=getVoidReplayVariant(frame.entry),allyVariant=getAllyReplayVariant(frame.entry),isVoid=entryText.includes("battle-event--void"),isCrazyPassive=entryText.includes("battle-event--crazy-passive"),isCrazyPassiveApex=entryText.includes("battle-event--crazy-passive-phoenix-apex"),isRevival=entryText.includes("battle-event--revival")||/부활|되살아/.test(plain(entryText)),isAllyAttack=!!frame.allyAttack||entryText.includes("battle-event--ally-attack"),isSkillResult=!!frame.skillResult,text=plain(`${frame.entry||""} ${frame.skillDetail||""}`);
+    arena.classList.remove("hit-player","hit-boss","event-skill","event-crazy","event-passive","event-phase","event-ally","event-void","event-result","event-dodge","event-crazy-passive","event-crazy-passive-apex","event-revival");clearGradeAttackEffect(arena);clearBossAttackScene(arena);
     clearVoidReplayClasses(arena);clearAllyReplayClasses(arena);if(allyVariant)arena.classList.add("event-ally-"+allyVariant.key);
     const bossName=arena.dataset.bossName||"";
     const bossAttack=!isSkillResult&&kind!=="ally"&&(/보스 턴/.test(text)||(bossName&&text.includes(bossName+"의")));
@@ -589,15 +589,16 @@
     if(kind!=="normal")arena.classList.add("event-"+kind);
     if(isCrazyPassive)arena.classList.add("event-crazy-passive");
     if(isCrazyPassiveApex)arena.classList.add("event-crazy-passive-apex");
+    if(isRevival)arena.classList.add("event-revival");
     if(isVoid){arena.classList.add("event-void");if(voidVariant)arena.classList.add("event-void-"+voidVariant.key);}
     else if(bossAttack)arena.classList.add("hit-player");
     else if(playerAttack)arena.classList.add("hit-boss");
-    if(bossAttack)triggerBossAttackScene(arena,arena.dataset.bossId,text,kind);
+    if(bossAttack||["crazy","phase","passive"].includes(kind)||isRevival)triggerBossAttackScene(arena,arena.dataset.bossId,text,kind==="crazy"||isCrazyPassive?"crazy":kind);
     const attackGrade=isProfileCosmeticUnlocked("attackEffect",profileCosmetics.attackEffect)?profileCosmetics.attackEffect:"";
     const attackConfig=cosmeticGrades[attackGrade];
     if(playerAttack&&attackConfig)triggerGradeAttackEffect(arena,attackGrade);
 
-    if(kind==="crazy"||kind==="phase"||isVoid)playGameSound("crazy");
+    if(kind==="crazy"||kind==="phase"||isVoid||isRevival)playGameSound("crazy");
     else if(kind==="ally")playGameSound("timing","GREAT");
     else if(kind==="skill")playGameSound("bossAttack");
     else if(bossAttack&&/공격|피해|치명타/.test(text))playGameSound("bossAttack");
@@ -607,7 +608,7 @@
 
     const turnLabel=dom.turnLabel||$("#battleTurnLabel");
     if(turnLabel&&frame.turn)turnLabel.textContent="TURN "+frame.turn;
-    updateReplayBossHp(frame,kind);
+    updateReplayBossHp(frame,isRevival?"revival":kind);
     const dimensionActive=!!frame.dimension?.active,activeDimension=String(frame.dimension?.activeGroup||"");
     arena.classList.toggle("dimension-split",dimensionActive);arena.dataset.activeDimension=dimensionActive?activeDimension:"";
     const dimensionLabel=dom.dimension||$("#battleDimensionState");if(dimensionLabel){dimensionLabel.hidden=!dimensionActive;dimensionLabel.innerHTML=dimensionActive?`<span class="${activeDimension==="A"?"active":""}">A차원 ${activeDimension==="A"?"· 행동":"· 대기"}</span><i>차원 단절</i><span class="${activeDimension==="B"?"active":""}">B차원 ${activeDimension==="B"?"· 행동":"· 대기"}</span>`:"";}
@@ -636,8 +637,8 @@
       return;
     }
 
-    action.className="battle-action-card "+(kind!=="normal"?"is-"+kind:"")+(isVoid?" is-void":"")+(voidVariant?" is-void-"+voidVariant.key:"")+(isCrazyPassive?" is-crazy-passive":"")+(isCrazyPassiveApex?" is-crazy-passive-apex":"");
-    const bossEventLabel=isCrazyPassive?"크레이지 패시브":kind==="crazy"?"크레이지 궁극기":kind==="phase"?"보스 변화":kind==="passive"?"보스 지속 효과":"보스 스킬";
+    action.className="battle-action-card "+(kind!=="normal"?"is-"+kind:"")+(isVoid?" is-void":"")+(voidVariant?" is-void-"+voidVariant.key:"")+(isCrazyPassive?" is-crazy-passive":"")+(isCrazyPassiveApex?" is-crazy-passive-apex":"")+(isRevival?" is-revival":"");
+    const bossEventLabel=isRevival?"보스 부활":isCrazyPassive?"크레이지 패시브":kind==="crazy"?"크레이지 궁극기":kind==="phase"?"페이즈 전환":kind==="passive"?"보스 패시브":"보스 스킬";
     const actorBanner=attacker?`<div class="battle-attacker-banner ${kind==="ally"?"ally":""} ${allyVariant?`ally-${allyVariant.key}`:""} ${isVoid?"void":""}"><span>${fishIcon(attacker)}</span><div><small>${isVoid?(voidVariant?.label||"공허 스킬"):isAllyAttack?"특성 추가 공격":kind==="ally"?"내 물고기 스킬":"내 공격"}</small><b>${safe(attacker.battleLabel||attacker.name)}</b></div></div>`:["skill","crazy","passive","phase"].includes(kind)?`<div class="battle-attacker-banner boss"><span>${safe(arena.dataset.bossSymbol||"🐲")}</span><div><small>${bossEventLabel}</small><b>${safe(bossName)}</b></div></div>`:bossAttack?`<div class="battle-attacker-banner boss"><span>${safe(arena.dataset.bossSymbol||"🐲")}</span><div><small>보스 공격</small><b>${safe(bossName)}</b></div></div>`:"";
     const detail=frame.skillDetail?`<div class="battle-skill-detail"><small>스킬 효과</small>${replayImpactBadge(frame.skillDetail)}<p>${safe(frame.skillDetail).replace(/\n/g,"<br>")}</p></div>`:"";
     const actionHtml=actorBanner+`<div class="battle-action-text">${replayActionHtml(frame.entry)}${detail}</div>`;
@@ -948,7 +949,7 @@
       : [1,2,3].map(order=>({key:"demo-dragon-"+order,name:"새끼 용",order,hp:900000000,maxHp:900000000,attack:120000000}));
     const demoFishHp=fish.map(item=>item.hp),frame=(entry,turn,bossHp,damageIndex=-1,summons=[])=>{if(damageIndex>=0)demoFishHp[damageIndex]=Math.floor(fish[damageIndex].hp*.55);return {entry,turn,bossHp,bossMaxHp:boss.maxHp,summons,fish:fish.map((item,index)=>({...item,battleLabel:`[${item.grade}] ${item.name}`,hp:demoFishHp[index]}))};};
     const solarEvent=frame('<span class="battle-event battle-event--ally battle-event--ally-attack battle-event--ally-solar"><span class="battle-event__eyebrow">SOLAR BURST</span><b>바다를 삼킨 태양 · 태양 폭발</b><span class="battle-event__body">태양 주기가 완성되어 전장을 밝힙니다.</span></span>',3,34000000000,-1,showSummons?demoSummons:[]),solarResult=frame("[공허] 바다를 삼킨 태양 공격\n치명타!\n16,000,000,000 피해",3,18000000000,-1,showSummons?demoSummons:[]);
-    const phoenixApexEvent=frame('<span class="battle-event battle-event--phase battle-event--crazy-passive battle-event--crazy-passive-phoenix-apex"><span class="battle-event__eyebrow">CRAZY PASSIVE</span><b><span style="color:#ff6f47">피닉스</span> · 불멸의 재점화</b><span class="battle-event__body">2번째 부활 · 체력 50%로 되살아났습니다.</span></span>',7,Math.floor(boss.maxHp*.5));
+    const phoenixApexEvent=frame('<span class="battle-event battle-event--phase battle-event--revival battle-event--revival-phoenix battle-event--crazy-passive battle-event--crazy-passive-phoenix-apex"><span class="battle-event__eyebrow">크레이지 부활</span><b><span style="color:#ff6f47">피닉스</span> · 불멸의 재점화</b><span class="battle-event__body">2번째 부활 · 체력 50%로 되살아났습니다.</span></span>',7,Math.floor(boss.maxHp*.5));
     const frames=finisherDemo?[frame("턴 9",9,12000000000),frame("[공허] 바다를 삼킨 태양 공격\n치명타!\n12,000,000,000 피해\n아자토스를 쓰러뜨렸습니다.",9,0)]:phoenixReviveDemo?[frame("피닉스가 쓰러졌습니다.",7,0),phoenixApexEvent]:demoParams.has("solarDemo")?[solarEvent,solarResult]:[
       frame("전투 시작",0,boss.maxHp),frame("턴 1",1,boss.maxHp),frame('<span class="battle-event battle-event--skill"><span class="battle-event__eyebrow">보스 스킬</span><b><span style="color:#d053ff">아자토스</span> · 맹목의 핵동</b><span class="battle-event__body">회피 불가 전체 공격이 발동했습니다.</span></span>',1,62000000000,-1,showSummons?demoSummons:[]),
       frame("아자토스의 맹목의 핵동\n치명타!\n파티 전체가 피해를 받았습니다.",1,62000000000,1,showSummons?demoSummons:[]),frame('<span class="battle-event battle-event--phase"><span class="battle-event__eyebrow">보스 변화</span><b><span style="color:#d053ff">아자토스</span> · 최종 각성</b><span class="battle-event__body">전투 규칙이 바뀌고 두 번째 행동이 시작됩니다.</span></span>',2,34000000000,-1,showSummons?demoSummons:[]),frame("아자토스의 추가 공격\n대상 2 / 3\n2,000,000 피해",2,34000000000,0,showSummons?demoSummons:[]),solarEvent,solarResult,
@@ -1620,7 +1621,7 @@
   function openBattleHistory(type="boss"){
     type=type==="pvp"?"pvp":"boss";battleHistory=normalizeBattleHistory(battleHistory);
     const records=battleHistory[type]||[],tabs=`<div class="history-tabs"><button data-history-tab="boss" class="${type==="boss"?"active":""}">🐲 보스 최근 ${battleHistory.boss.length}/5</button><button data-history-tab="pvp" class="${type==="pvp"?"active":""}">⚔️ 1대1 최근 ${battleHistory.pvp.length}/5</button></div>`;
-    const cards=records.map((record,index)=>{if(type==="boss"){const success=record.result==="처치 성공";return `<article class="history-card ${gradeClass(record.boss?.grade)}"><span>${bossSymbols[record.boss?.id]||"🐲"}</span><div><small>${safe(formatDateTime(record.createdAtMillis))} · ${safe(record.boss?.difficulty||"일반")}</small><b>${safe(record.boss?.name||"보스")} · ${success?"승리":"패배"}</b><p>총 피해 ${Number(record.totalDamage||0).toLocaleString()} · ${safe(record.rewardDrop||"보상 없음")} × ${Number(record.rewardDropCount||0).toLocaleString()}</p></div><button data-battle-history-index="${index}" data-battle-history-type="boss" ${record.frames?.length?"":"disabled"}>다시 보기</button></article>`;}const opponent=record.left?.name===currentUser?record.right:record.left,won=record.winnerName===currentUser,draw=!record.winnerName;return `<article class="history-card pvp"><span>⚔️</span><div><small>${safe(formatDateTime(record.createdAtMillis))} · ${Number(record.totalTurns||0)}턴</small><b>VS ${safe(opponent?.name||"상대")} · ${draw?"무승부":won?"승리":"패배"}</b><p>${safe(record.summary||"1대1 전투 결과")}</p></div><button data-battle-history-index="${index}" data-battle-history-type="pvp" ${record.frames?.length?"":"disabled"}>다시 보기</button></article>`;}).join("");
+    const cards=records.map((record,index)=>{const replayInfo=`장면 ${Number(record.frames?.length||0).toLocaleString()}개${record.replayComplete===false?" · 일부 장면 불러오기 실패":record.cloudReplayTrimmed?" · 구버전 축약 기록":""}`;if(type==="boss"){const success=record.result==="처치 성공";return `<article class="history-card ${gradeClass(record.boss?.grade)}"><span>${bossSymbols[record.boss?.id]||"🐲"}</span><div><small>${safe(formatDateTime(record.createdAtMillis))} · ${safe(record.boss?.difficulty||"일반")} · ${safe(replayInfo)}</small><b>${safe(record.boss?.name||"보스")} · ${success?"승리":"패배"}</b><p>총 피해 ${Number(record.totalDamage||0).toLocaleString()} · ${safe(record.rewardDrop||"보상 없음")} × ${Number(record.rewardDropCount||0).toLocaleString()}</p></div><button data-battle-history-index="${index}" data-battle-history-type="boss" ${record.frames?.length?"":"disabled"}>다시 보기</button></article>`;}const opponent=record.left?.name===currentUser?record.right:record.left,won=record.winnerName===currentUser,draw=!record.winnerName;return `<article class="history-card pvp"><span>⚔️</span><div><small>${safe(formatDateTime(record.createdAtMillis))} · ${Number(record.totalTurns||0)}턴 · ${safe(replayInfo)}</small><b>VS ${safe(opponent?.name||"상대")} · ${draw?"무승부":won?"승리":"패배"}</b><p>${safe(record.summary||"1대1 전투 결과")}</p></div><button data-battle-history-index="${index}" data-battle-history-type="pvp" ${record.frames?.length?"":"disabled"}>다시 보기</button></article>`;}).join("");
     openUiModal("전투 기록",`<div class="game-dialog battle-history-dialog"><div class="dialog-summary"><div><small>최근 전투 기록</small><b>최근 전투를 다시 확인하세요</b><p>보스와 1대1 기록은 각각 최신 5회까지 저장됩니다.</p></div><span>📼</span></div>${tabs}<div class="history-list">${cards||`<div class="fusion-empty">아직 저장된 ${type==="boss"?"보스":"1대1"} 전투 기록이 없습니다.</div>`}</div></div>`);
   }
 

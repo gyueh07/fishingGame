@@ -35,7 +35,7 @@ let accountSessionUnsubscribe=null;
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
-const GAME_VERSION = "2026-07-13-fishinglife-finisher-order-v25-2-2";
+const GAME_VERSION = "2026-07-13-fishinglife-complete-battle-replay-v25-3-2";
 const USER_WRITE_SCHEMA_VERSION = 250;
 const USER_WRITE_PROTOCOL_VERSION = 4;
 const ACCOUNT_RESET_VERSION = 1;
@@ -47,11 +47,22 @@ const MAX_SAFE_GAME_STATE_BYTES = 850000;
 const BUCKET_STORAGE_VERSION = 1;
 const BUCKET_SHARD_COUNT = 128;
 const BUCKET_SHARD_COLLECTION = "bucketShards";
-const BATTLE_STORAGE_VERSION = 1;
+const BATTLE_STORAGE_VERSION = 2;
 const BATTLE_RECORD_COLLECTION = "battleRecords";
-const MAX_CLOUD_BATTLE_RECORD_BYTES = 700000;
+const BATTLE_FRAME_COLLECTION = "battleRecordFrames";
+const MAX_CLOUD_BATTLE_FRAME_CHUNK_BYTES = 450000;
+const MAX_CLOUD_BATTLE_FRAME_CHUNK_COUNT = 80;
 const UPDATE_NOTICE_TITLE = "📢 업데이트 안내";
 const UPDATE_NOTICES = [
+  {
+    id:"2026-07-13-fishinglife-complete-battle-replay-25-3-2",
+    title:"전투 기록·보스 연출 개선",
+    lines:[
+      "긴 전투 기록도 중간 장면을 줄이지 않고 여러 저장 공간에 나누어 전부 보관합니다.",
+      "히드라와 티아마트의 회복은 보스 턴이 시작된 뒤 패시브로 발동합니다.",
+      "모든 보스의 고유 패시브를 전투 시작에 표시하고 부활·페이즈·크레이지 궁극기 연출을 강화했습니다."
+    ]
+  },
   {
     id:"2026-07-12-fishinglife-scalable-save-25-1-0",
     title:"대용량 양동이 저장 개선",
@@ -140,7 +151,7 @@ const UPDATE_NOTICES = [
       "새 전투 기록에는 아군과 적군이 누구인지 알아보기 쉽게 표시합니다.",
       "받은 소식, 메시지·송금·선물, 저장 파티·잠금·강화 결과를 같은 알림 모양으로 정리했습니다.",
       "보스 다중 공격은 대상 한 마리씩 재생하고 피해 전후 체력·감소율을 별도 결과 카드로 표시합니다.",
-      "치명타와 회피에 전용 배지·화면 효과를 추가하고 수르트 검 파괴·피닉스 부활 등은 BOSS PHASE 카드로 표시합니다.",
+      "치명타와 회피에 전용 배지·화면 효과를 추가하고 수르트 검 파괴·피닉스 부활 등은 보스 페이즈 카드로 표시합니다.",
       "랭킹은 보유 골드·낚싯대 레벨·PVP 전투력 3개 선택 화면으로 나누고 선택한 목록만 보여줍니다.",
       "보스 최초 상금은 실제 지급값까지 10원 단위로 반올림합니다."
     ]
@@ -939,30 +950,13 @@ function clearOldAccountData(username){
   startupEmergencySnapshot=null;
 }
 
-function compactBattleReplayFrames(frames,maxFrames=180){
-  const list=Array.isArray(frames)?frames:[];
-  if(list.length<=maxFrames)return list;
-  const important=/전투 시작|전투 종료|처치 성공|처치 실패|대전 결과|CRAZY|ULTIMATE|BOSS SKILL|ALLY SKILL|PASSIVE|스킬|특성|부활|기절|쓰러|되감|회복/i;
-  const keep=new Set([0,list.length-1]);
-  list.forEach((frame,index)=>{if(important.test(String(frame?.entry||"")))keep.add(index);});
-  const remaining=Math.max(0,maxFrames-keep.size),step=remaining>0?list.length/remaining:list.length;
-  for(let cursor=0;keep.size<maxFrames&&cursor<list.length;cursor+=step)keep.add(Math.min(list.length-1,Math.floor(cursor)));
-  const indexes=[...keep].sort((a,b)=>a-b);
-  if(indexes.length>maxFrames){
-    const finalIndex=list.length-1,trimmed=indexes.slice(0,Math.max(1,maxFrames-1));
-    if(!trimmed.includes(finalIndex))trimmed.push(finalIndex);
-    return trimmed.sort((a,b)=>a-b).map(index=>list[index]);
-  }
-  return indexes.map(index=>list[index]);
-}
-
 function normalizeBattleHistory(value){
   const source=value&&typeof value==="object"?value:{};
   const clean=(items,type)=>(Array.isArray(items)?items:[]).slice(0,5).map((item,index)=>{
     const record=item&&typeof item==="object"?JSON.parse(JSON.stringify(item)):{};
     record.id=String(record.id||`${type}_legacy_${index}_${Number(record.createdAtMillis||0)}`);
     record.createdAtMillis=Number(record.createdAtMillis||Date.now());
-    record.frames=compactBattleReplayFrames(record.frames,180);
+    record.frames=Array.isArray(record.frames)?record.frames:[];
     if(typeof record.fullLog==="string"&&record.fullLog.length>50000)record.fullLog=record.fullLog.slice(-50000);
     return record;
   });
@@ -975,7 +969,7 @@ function addBattleHistory(type,replay){
   const record=JSON.parse(JSON.stringify(replay));
   record.id=String(record.id||`${type}_${Date.now()}_${Math.random().toString(36).slice(2,8)}`);
   record.createdAtMillis=Number(record.createdAtMillis||Date.now());
-  record.frames=compactBattleReplayFrames(record.frames,180);
+  record.frames=Array.isArray(record.frames)?record.frames:[];
   if(typeof record.fullLog==="string"&&record.fullLog.length>50000)record.fullLog=record.fullLog.slice(-50000);
   battleHistory[type]=[record,...battleHistory[type].filter(item=>item.id!==record.id)].slice(0,5);
   return record;
@@ -1387,25 +1381,45 @@ function makeCloudBucketSummary(state){
   return {count:list.length,aquarium,pvp:pvp.map(cloneCloudState)};
 }
 
-function compactBattleRecordForCloud(value){
-  const record=cloneCloudState(value&&typeof value==="object"?value:{})||{};
-  let frames=Array.isArray(record.frames)?record.frames:[];
-  while(frames.length>24&&getSerializedByteSize({...record,frames})>MAX_CLOUD_BATTLE_RECORD_BYTES){
-    const reduced=[frames[0]];
-    for(let i=2;i<frames.length-1;i+=2)reduced.push(frames[i]);
-    reduced.push(frames[frames.length-1]);
-    frames=reduced;
-  }
-  if(getSerializedByteSize({...record,frames})>MAX_CLOUD_BATTLE_RECORD_BYTES){
-    frames=frames.length?[frames[0],frames[frames.length-1]].filter(Boolean):[];
-    record.cloudReplayTrimmed=true;
-  }
-  record.frames=frames;
-  return record;
-}
-
 function battleRecordDocId(type,record){
   return String(type||"boss")+"_"+stableStorageHash(String(record?.id||JSON.stringify(record?.summary||record?.createdAtMillis||"record"))).toString(36);
+}
+
+function splitBattleRecordForCloud(type,value,position){
+  const record=cloneCloudState(value&&typeof value==="object"?value:{})||{},docId=battleRecordDocId(type,record);
+  const frames=Array.isArray(record.frames)?record.frames.map(cloneCloudState).filter(Boolean):[],chunks=[];
+  let current=[];
+  frames.forEach(frame=>{
+    const candidate=[...current,frame];
+    if(current.length&&(current.length>=MAX_CLOUD_BATTLE_FRAME_CHUNK_COUNT||getSerializedByteSize({frames:candidate})>MAX_CLOUD_BATTLE_FRAME_CHUNK_BYTES)){
+      chunks.push(current);
+      current=[frame];
+    }else current=candidate;
+  });
+  if(current.length)chunks.push(current);
+  delete record.frames;
+  delete record.cloudReplayTrimmed;
+  record.frameCount=frames.length;
+  record.frameChunkCount=chunks.length;
+  record.replayComplete=true;
+  return {
+    docId,
+    record:{type,position,record},
+    chunks:chunks.map((chunk,chunkIndex)=>({
+      docId:`${docId}_${String(chunkIndex).padStart(3,"0")}`,
+      value:{recordId:docId,chunkIndex,chunkCount:chunks.length,frames:chunk}
+    }))
+  };
+}
+
+function makeBattleCloudMaps(history){
+  const records=new Map(),chunks=new Map();
+  ["boss","pvp"].forEach(type=>(history[type]||[]).forEach((record,position)=>{
+    const entry=splitBattleRecordForCloud(type,record,position);
+    records.set(entry.docId,entry.record);
+    entry.chunks.forEach(chunk=>chunks.set(chunk.docId,chunk.value));
+  }));
+  return {records,chunks};
 }
 
 function prepareCloudGameState(fullState,existingCloudState={},includeSplitData=false){
@@ -1429,28 +1443,32 @@ function prepareCloudGameState(fullState,existingCloudState={},includeSplitData=
 
 function stageSplitStateWrites(tx,ref,previousState,nextState,revision,force=false){
   const before=previousState&&typeof previousState==="object"?previousState:{},after=nextState&&typeof nextState==="object"?nextState:{};
+  const forceBucket=force===true||force?.bucket===true,forceBattle=force===true||force?.battle===true;
   const beforeShards=partitionBucketForCloud(before.bucket),afterShards=partitionBucketForCloud(after.bucket);
   const shardIds=new Set([...beforeShards.keys(),...afterShards.keys()]);
   const serverTime=firebase.firestore.FieldValue.serverTimestamp();
   shardIds.forEach(shardId=>{
     const previous=beforeShards.get(shardId)||[],next=afterShards.get(shardId)||[];
-    if(!force&&JSON.stringify(previous)===JSON.stringify(next))return;
+    if(!forceBucket&&JSON.stringify(previous)===JSON.stringify(next))return;
     const shardRef=ref.collection(BUCKET_SHARD_COLLECTION).doc(shardId);
     if(!next.length)tx.delete(shardRef);
     else tx.set(shardRef,{owner:ref.id,shardId,items:next,count:next.length,cloudRevision:revision,storageVersion:BUCKET_STORAGE_VERSION,updatedAt:serverTime});
   });
 
-  const beforeHistory=normalizeBattleHistory(before.battleHistory),afterHistory=normalizeBattleHistory(after.battleHistory);
-  ["boss","pvp"].forEach(type=>{
-    const previousMap=new Map(beforeHistory[type].map((record,index)=>[battleRecordDocId(type,record),{record:compactBattleRecordForCloud(record),position:index}]));
-    const nextMap=new Map(afterHistory[type].map((record,index)=>[battleRecordDocId(type,record),{record:compactBattleRecordForCloud(record),position:index}]));
-    new Set([...previousMap.keys(),...nextMap.keys()]).forEach(docId=>{
-      const previous=previousMap.get(docId),next=nextMap.get(docId);
-      if(!force&&JSON.stringify(previous)===JSON.stringify(next))return;
-      const recordRef=ref.collection(BATTLE_RECORD_COLLECTION).doc(docId);
-      if(!next)tx.delete(recordRef);
-      else tx.set(recordRef,{owner:ref.id,type,position:next.position,record:next.record,cloudRevision:revision,storageVersion:BATTLE_STORAGE_VERSION,updatedAt:serverTime});
-    });
+  const beforeCloud=makeBattleCloudMaps(normalizeBattleHistory(before.battleHistory)),afterCloud=makeBattleCloudMaps(normalizeBattleHistory(after.battleHistory));
+  new Set([...beforeCloud.records.keys(),...afterCloud.records.keys()]).forEach(docId=>{
+    const previous=beforeCloud.records.get(docId),next=afterCloud.records.get(docId);
+    if(!forceBattle&&JSON.stringify(previous)===JSON.stringify(next))return;
+    const recordRef=ref.collection(BATTLE_RECORD_COLLECTION).doc(docId);
+    if(!next)tx.delete(recordRef);
+    else tx.set(recordRef,{owner:ref.id,type:next.type,position:next.position,record:next.record,cloudRevision:revision,storageVersion:BATTLE_STORAGE_VERSION,updatedAt:serverTime});
+  });
+  new Set([...beforeCloud.chunks.keys(),...afterCloud.chunks.keys()]).forEach(chunkId=>{
+    const previous=beforeCloud.chunks.get(chunkId),next=afterCloud.chunks.get(chunkId);
+    if(!forceBattle&&JSON.stringify(previous)===JSON.stringify(next))return;
+    const chunkRef=ref.collection(BATTLE_FRAME_COLLECTION).doc(chunkId);
+    if(!next)tx.delete(chunkRef);
+    else tx.set(chunkRef,{owner:ref.id,...next,cloudRevision:revision,storageVersion:BATTLE_STORAGE_VERSION,updatedAt:serverTime});
   });
 }
 
@@ -1472,13 +1490,32 @@ async function loadSplitGameState(username,userData){
     state.bucket=ordered.map(item=>item.fish).filter(Boolean);
   }else state.bucket=Array.isArray(state.bucket)?state.bucket:[];
 
-  if(Number(state.battleStorage?.version||0)>=BATTLE_STORAGE_VERSION){
-    const snapshot=await userRef.collection(BATTLE_RECORD_COLLECTION).get(),history={boss:[],pvp:[]};
+  const battleStorageVersion=Number(state.battleStorage?.version||0);
+  if(battleStorageVersion>=1){
+    const [snapshot,frameSnapshot]=await Promise.all([
+      userRef.collection(BATTLE_RECORD_COLLECTION).get(),
+      battleStorageVersion>=2?userRef.collection(BATTLE_FRAME_COLLECTION).get():Promise.resolve({docs:[]})
+    ]),history={boss:[],pvp:[]},chunksByRecord=new Map();
+    frameSnapshot.docs.forEach(doc=>{
+      const chunk=doc.data()||{},recordId=String(chunk.recordId||"");
+      if(!recordId||!Array.isArray(chunk.frames))return;
+      const list=chunksByRecord.get(recordId)||[];
+      list.push({index:Number(chunk.chunkIndex||0),count:Number(chunk.chunkCount||0),frames:chunk.frames});
+      chunksByRecord.set(recordId,list);
+    });
     snapshot.docs.forEach(doc=>{
       const data=doc.data()||{},type=data.type==="pvp"?"pvp":"boss";
-      if(data.record)history[type].push({position:Number(data.position||0),record:data.record});
+      if(!data.record)return;
+      const record=cloneCloudState(data.record)||{};
+      if(Number(data.storageVersion||1)>=2){
+        const chunks=(chunksByRecord.get(doc.id)||[]).sort((a,b)=>a.index-b.index);
+        record.frames=chunks.flatMap(chunk=>chunk.frames);
+        const expectedFrames=Math.max(0,Number(record.frameCount||0)),expectedChunks=Math.max(0,Number(record.frameChunkCount||0));
+        record.replayComplete=chunks.length===expectedChunks&&record.frames.length===expectedFrames;
+      }else record.frames=Array.isArray(record.frames)?record.frames:[];
+      history[type].push({position:Number(data.position||0),record});
     });
-    state.battleHistory={boss:history.boss.sort((a,b)=>a.position-b.position).slice(0,5).map(item=>item.record),pvp:history.pvp.sort((a,b)=>a.position-b.position).slice(0,5).map(item=>item.record)};
+    state.battleHistory=normalizeBattleHistory({boss:history.boss.sort((a,b)=>a.position-b.position).slice(0,5).map(item=>item.record),pvp:history.pvp.sort((a,b)=>a.position-b.position).slice(0,5).map(item=>item.record)});
   }else state.battleHistory=normalizeBattleHistory(state.battleHistory);
   return state;
 }
@@ -1510,7 +1547,10 @@ function txSetProtectedUser(tx,ref,existingData,patch,reason="user_write",option
   if(Object.prototype.hasOwnProperty.call(patch||{},"cloudRevision")&&Number(patch.cloudRevision)!==expectedRevision)throw new Error("REVISION_MISMATCH");
   const backupMeta=create||options.backup===false?{}:stageAccountBackup(tx,ref,existingData,reason,options.forceBackup===true);
   const serverTime=firebase.firestore.FieldValue.serverTimestamp();
-  if(includeSplitData)stageSplitStateWrites(tx,ref,previousState,fullState,expectedRevision,Number(existingCloudState.bucketStorage?.version||0)<BUCKET_STORAGE_VERSION||Number(existingCloudState.battleStorage?.version||0)<BATTLE_STORAGE_VERSION);
+  if(includeSplitData)stageSplitStateWrites(tx,ref,previousState,fullState,expectedRevision,{
+    bucket:Number(existingCloudState.bucketStorage?.version||0)<BUCKET_STORAGE_VERSION,
+    battle:Number(existingCloudState.battleStorage?.version||0)<BATTLE_STORAGE_VERSION
+  });
   const payload={
     ...(patch||{}),
     ...backupMeta,
@@ -2661,7 +2701,11 @@ async function deleteAccount(password=""){
   const passwordHash=await hashPassword(String(password||""));
   try{
     const userRef=db.collection("users").doc(username),sessionRef=db.collection("accountSessions").doc(username);
-    const [bucketShardSnap,battleRecordSnap]=await Promise.all([userRef.collection(BUCKET_SHARD_COLLECTION).get(),userRef.collection(BATTLE_RECORD_COLLECTION).get()]);
+    const [bucketShardSnap,battleRecordSnap,battleFrameSnap]=await Promise.all([
+      userRef.collection(BUCKET_SHARD_COLLECTION).get(),
+      userRef.collection(BATTLE_RECORD_COLLECTION).get(),
+      userRef.collection(BATTLE_FRAME_COLLECTION).get()
+    ]);
     await db.runTransaction(async tx=>{
       const userSnap=await tx.get(userRef);
       if(!userSnap.exists)throw new Error("ACCOUNT_NOT_FOUND");
@@ -2672,6 +2716,7 @@ async function deleteAccount(password=""){
       for(let slot=0;slot<ACCOUNT_BACKUP_SLOT_COUNT;slot++)tx.delete(userRef.collection("backups").doc("slot"+slot));
       bucketShardSnap.docs.forEach(doc=>tx.delete(doc.ref));
       battleRecordSnap.docs.forEach(doc=>tx.delete(doc.ref));
+      battleFrameSnap.docs.forEach(doc=>tx.delete(doc.ref));
       tx.delete(userRef);
       if(sessionSnap.exists)tx.delete(sessionRef);
     });
@@ -3126,6 +3171,7 @@ function sanitizeGameHtml(value){
     "battle-event--ally-solar", "battle-event--ally-ascension", "battle-event--ally-constellation", "battle-event--ally-white-flame",
     "battle-event--ally-tide", "battle-event--ally-heartbeat", "battle-event--crazy-passive",
     "battle-event--crazy-passive-phoenix", "battle-event--crazy-passive-phoenix-apex",
+    "battle-event--revival", "battle-event--revival-phoenix",
     "battle-event--void", "battle-event--void-letter-one", "battle-event--void-letter-two", "battle-event--void-letter-three",
     "battle-event--void-observer", "battle-event--void-anomaly",
     "battle-event__eyebrow", "battle-event__body"
