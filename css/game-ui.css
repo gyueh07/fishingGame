@@ -741,3 +741,29 @@ body[data-profile-background] .ambient-bg { transition:background .55s ease; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* v25.4.0 modal input shield and readable one-screen battle text */
+.modalOverlay{pointer-events:auto;isolation:isolate;touch-action:manipulation}
+html.modal-open,html.modal-open body{overflow:hidden!important;overscroll-behavior:none}
+.battle-replay-mode :is(.replay-fish,.pvp-replay-fish)>div{min-width:0}
+.battle-replay-mode :is(.replay-fish,.pvp-replay-fish)>div>b,
+.battle-replay-mode :is(.replay-fish,.pvp-replay-fish)>div>small,
+.battle-replay-mode .replay-boss>div:last-child>b,
+.battle-replay-mode .battle-player-card>div:last-child :is(b,em){overflow:visible;text-overflow:clip;white-space:normal;overflow-wrap:anywhere;line-height:1.2}
+.battle-replay-mode .battle-event{padding:8px 11px;overflow-wrap:anywhere}
+.battle-replay-mode .battle-event__eyebrow{margin-bottom:2px;font-size:6px;letter-spacing:0}
+.battle-replay-mode .battle-event b{font-size:12px;line-height:1.25}
+.battle-replay-mode .battle-event__body{margin-top:3px;font-size:8px;line-height:1.35}
+.battle-replay-mode :is(.battle-event--crazy,.battle-event--crazy-passive,.battle-event--revival,.battle-event--phase) b{font-size:14px}
+.battle-replay-mode :is(.battle-event--crazy,.battle-event--crazy-passive,.battle-event--revival){padding-right:58px}
+.battle-replay-mode .battle-skill-detail{margin-top:4px;padding:6px 9px}
+.battle-replay-mode .battle-skill-detail p{margin-top:2px;font-size:8px;line-height:1.35;overflow-wrap:anywhere}
+@media(max-width:850px){
+  .battle-replay-mode .battle-event{padding:5px 7px}
+  .battle-replay-mode .battle-event b{font-size:9px}
+  .battle-replay-mode :is(.battle-event--crazy,.battle-event--crazy-passive,.battle-event--revival,.battle-event--phase) b{font-size:10px}
+  .battle-replay-mode .battle-event__body{font-size:6px;line-height:1.25}
+  .battle-replay-mode :is(.battle-event--crazy,.battle-event--crazy-passive,.battle-event--revival){padding-right:42px}
+  .battle-replay-mode .battle-skill-detail{margin-top:2px;padding:4px 6px}
+  .battle-replay-mode .battle-skill-detail p{font-size:6px;line-height:1.25}
+}

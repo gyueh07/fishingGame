@@ -688,6 +688,7 @@ function getBossDifficultyConfig(difficultyId){
 }
 
 function isBossDifficultyCleared(bossOrId,difficultyId="normal"){
+  if(typeof isCurrentFishingAdmin==="function"&&isCurrentFishingAdmin())return true;
   const id=typeof bossOrId==="string"?bossOrId:bossOrId.id;
   if(difficultyId==="normal" && bossProgress.defeated && bossProgress.defeated[id]) return true;
   return !!(bossProgress.difficultyClears && bossProgress.difficultyClears[id] && bossProgress.difficultyClears[id][difficultyId]);
@@ -701,6 +702,7 @@ function markBossDifficultyCleared(boss,difficultyId){
 }
 
 function isBossDifficultyUnlocked(boss,difficultyId){
+  if(typeof isCurrentFishingAdmin==="function"&&isCurrentFishingAdmin())return true;
   if(!isBossUnlocked(boss)) return false;
   if(difficultyId==="normal") return true;
   if(difficultyId==="hard") return isBossDifficultyCleared(boss,"normal");
@@ -732,10 +734,11 @@ function selectBossDifficulty(difficultyId,quiet=false){
 
 function getBossForDifficulty(baseBoss,difficultyId=getSelectedBossDifficulty(baseBoss)){
   const config=getBossDifficultyConfig(difficultyId);
+  const live=typeof getLiveBalanceConfig==="function"?getLiveBalanceConfig():{bossHpMultiplier:1,bossAttackMultiplier:1};
   return {
     ...baseBoss,
-    hp:Math.floor(baseBoss.hp*config.hpMultiplier),
-    attack:Math.floor(baseBoss.attack*config.attackMultiplier*BOSS_ATTACK_BALANCE_MULTIPLIER),
+    hp:Math.floor(baseBoss.hp*config.hpMultiplier*live.bossHpMultiplier),
+    attack:Math.floor(baseBoss.attack*config.attackMultiplier*BOSS_ATTACK_BALANCE_MULTIPLIER*live.bossAttackMultiplier),
     dodge:Number(baseBoss.dodge||0)+config.dodgeBonus,
     skillRate:Math.min(100,Number(baseBoss.skillRate||0)*config.skillMultiplier),
     difficulty:difficultyId,
@@ -745,7 +748,8 @@ function getBossForDifficulty(baseBoss,difficultyId=getSelectedBossDifficulty(ba
 }
 
 function getBossDifficultyReward(baseBoss,difficultyId){
-  const reward=Number(baseBoss.reward||0)*getBossDifficultyConfig(difficultyId).rewardMultiplier;
+  const live=typeof getLiveBalanceConfig==="function"?getLiveBalanceConfig():{bossRewardMultiplier:1};
+  const reward=Number(baseBoss.reward||0)*getBossDifficultyConfig(difficultyId).rewardMultiplier*live.bossRewardMultiplier;
   return Math.max(0,Math.round(reward/10)*10);
 }
 
@@ -759,6 +763,7 @@ function scaleBossSkillChance(boss,baseChance){
 }
 
 function isBossUnlocked(boss){
+  if(typeof isCurrentFishingAdmin==="function"&&isCurrentFishingAdmin())return true;
   const idx = bossList.findIndex(b => b.id === boss.id);
   if(idx <= 0) return true;
   const prev = bossList[idx - 1];
@@ -1596,7 +1601,7 @@ function afterFishAttackTrait(f,boss,outcome,baseAttack,battleLog){
     const chance=Number(st.heartbeatStage)>=3?0.5:0.3;
     const ratio=Number(st.heartbeatStage)>=3?0.5:0.4;
     if(Math.random()<chance){
-      dealTraitDamage(boss,getEffectiveFishAttack(f,boss)*ratio,traitUseByFish(f, "심장이 한 번 더 뛰었습니다.","화염의 심박"),battleLog);
+      dealTraitDamage(boss,getEffectiveFishAttack(f,boss)*ratio,traitUseByFish(f, "불꽃의 잔영이 추가 공격을 가했습니다.","화염의 심박"),battleLog);
     }
   }
   if(f.name==="불타는 마음"&&Number(st.heartbeatStage||0)>=3){
@@ -1606,7 +1611,7 @@ function afterFishAttackTrait(f,boss,outcome,baseAttack,battleLog){
       const heal=Math.min(Math.floor(c.hp*0.3),cap-c.hp);
       if(heal>0){
         c.hp=Math.min(cap,c.hp+heal);
-        battleLog.push(traitUseByFish(f, "꺼져가던 심장이 다시 불붙었습니다.\n체력 "+heal.toLocaleString()+" 회복"));
+        battleLog.push(traitUseByFish(f, "남은 불씨가 상처를 봉합했습니다.\n체력 "+heal.toLocaleString()+" 회복"));
       }
     }
   }

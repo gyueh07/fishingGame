@@ -2,6 +2,12 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email is string
+        && request.auth.token.email == 'admin@fishinglife.app';
+    }
+
     function currentWriteSchema() {
       return 250;
     }
@@ -233,7 +239,7 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if true;
 
-      allow create: if validWriteEnvelope(request.resource.data)
+      allow create: if isAdmin() || (validWriteEnvelope(request.resource.data)
         && validUserCore(request.resource.data)
         && request.resource.data.keys().hasAll([
           'passwordHash',
@@ -256,22 +262,22 @@ service cloud.firestore {
         && request.resource.data.cloudRevision == 0
         && request.resource.data.writeProtocolSeq == 1
         && request.resource.data.createdAt is timestamp
-        && request.resource.data.createdAt == request.time;
+        && request.resource.data.createdAt == request.time);
 
-      allow update: if validWriteEnvelope(request.resource.data)
+      allow update: if isAdmin() || (validWriteEnvelope(request.resource.data)
         && validUserCore(request.resource.data)
         && writeGuardChanged()
         && identityFieldsUnchanged()
         && validUpdateSequence()
         && (progressDoesNotRegress() || validFullReset())
-        && request.resource.data.nickname == userId;
+        && request.resource.data.nickname == userId);
 
-      allow delete: if activeSessionMatches(userId);
+      allow delete: if isAdmin() || activeSessionMatches(userId);
 
       match /backups/{slotId} {
         allow read: if false;
 
-        allow create, update: if slotId in ['slot0', 'slot1', 'slot2']
+        allow create, update: if isAdmin() || (slotId in ['slot0', 'slot1', 'slot2']
           && validWriteEnvelope(request.resource.data)
           && request.resource.data.username == userId
           && request.resource.data.slot is int
@@ -282,39 +288,44 @@ service cloud.firestore {
           && request.resource.data.summary is map
           && request.resource.data.gameState is map
           && request.resource.data.capturedAt is timestamp
-          && request.resource.data.capturedAt == request.time;
+          && request.resource.data.capturedAt == request.time);
 
-        allow delete: if parentActiveSessionMatches(userId);
+        allow delete: if isAdmin() || parentActiveSessionMatches(userId);
       }
 
       match /bucketShards/{shardId} {
         allow read: if true;
-        allow create, update: if parentRevisionAdvanced(userId)
-          && validBucketShard(userId, shardId);
-        allow delete: if parentRevisionAdvanced(userId)
+        allow create, update: if isAdmin() || (parentRevisionAdvanced(userId)
+          && validBucketShard(userId, shardId));
+        allow delete: if isAdmin() || parentRevisionAdvanced(userId)
           || parentActiveSessionMatches(userId);
       }
 
       match /battleRecords/{recordId} {
         allow read: if true;
-        allow create, update: if parentRevisionAdvanced(userId)
-          && validBattleRecord(userId);
-        allow delete: if parentRevisionAdvanced(userId)
+        allow create, update: if isAdmin() || (parentRevisionAdvanced(userId)
+          && validBattleRecord(userId));
+        allow delete: if isAdmin() || parentRevisionAdvanced(userId)
           || parentActiveSessionMatches(userId);
       }
 
       match /battleRecordFrames/{chunkId} {
         allow read: if true;
-        allow create, update: if parentRevisionAdvanced(userId)
-          && validBattleFrameChunk(userId);
-        allow delete: if parentRevisionAdvanced(userId)
+        allow create, update: if isAdmin() || (parentRevisionAdvanced(userId)
+          && validBattleFrameChunk(userId));
+        allow delete: if isAdmin() || parentRevisionAdvanced(userId)
           || parentActiveSessionMatches(userId);
       }
     }
 
     match /config/{documentId} {
       allow read: if true;
-      allow write: if false;
+      allow write: if isAdmin();
+    }
+
+    match /adminAuditLogs/{documentId} {
+      allow read, create: if isAdmin();
+      allow update, delete: if false;
     }
 
     match /serverAlerts/{documentId} {

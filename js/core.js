@@ -35,9 +35,13 @@ let accountSessionUnsubscribe=null;
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
-const GAME_VERSION = "2026-07-13-fishinglife-battle-skip-reward-v25-3-7";
+const GAME_VERSION = "2026-07-13-fishinglife-admin-balance-v25-4-0";
 const USER_WRITE_SCHEMA_VERSION = 250;
 const USER_WRITE_PROTOCOL_VERSION = 4;
+const FISHING_ADMIN_NICKNAME = "admin";
+const FISHING_ADMIN_AUTH_EMAIL = "admin@fishinglife.app";
+const DEFAULT_LIVE_BALANCE = Object.freeze({bossHpMultiplier:1,bossAttackMultiplier:1,bossRewardMultiplier:1,balanceRevision:0,balancePatchTitle:"",balancePatchNote:""});
+let liveBalanceConfig={...DEFAULT_LIVE_BALANCE};
 const ACCOUNT_RESET_VERSION = 1;
 const ACCOUNT_SESSION_TTL_MS = 5*60*1000;
 const ACCOUNT_SESSION_HEARTBEAT_MS = 2*60*1000;
@@ -54,6 +58,15 @@ const MAX_CLOUD_BATTLE_FRAME_CHUNK_BYTES = 450000;
 const MAX_CLOUD_BATTLE_FRAME_CHUNK_COUNT = 80;
 const UPDATE_NOTICE_TITLE = "📢 업데이트 안내";
 const UPDATE_NOTICES = [
+  {
+    id:"2026-07-13-fishinglife-admin-balance-25-4-0",
+    title:"보스 선택과 전투 화면 개선",
+    lines:[
+      "보스 선택창 바깥을 눌렀을 때 뒤의 보스 버튼이 함께 눌리지 않도록 수정했습니다.",
+      "한 화면 전투에서 긴 물고기 이름과 체력 수치가 잘리지 않도록 표시를 보강했습니다.",
+      "운영 밸런스가 게시되면 보스 체력, 공격력과 최초 상금에 최신 배율을 적용합니다."
+    ]
+  },
   {
     id:"2026-07-13-fishinglife-battle-skip-reward-25-3-7",
     title:"전투 건너뛰기와 보스 보상 개선",
@@ -656,6 +669,39 @@ let serverAlertUnsubscribe = null;
 let serverAlertStartTime = Date.now();
 let isOnlineActionRunning = false;
 
+function normalizeLiveBalanceConfig(value){
+  const source=value&&typeof value==="object"?value:{};
+  const multiplier=(key)=>{
+    const number=Number(source[key]);
+    return Number.isFinite(number)?Math.min(5,Math.max(.25,number)):1;
+  };
+  return {
+    bossHpMultiplier:multiplier("bossHpMultiplier"),
+    bossAttackMultiplier:multiplier("bossAttackMultiplier"),
+    bossRewardMultiplier:multiplier("bossRewardMultiplier"),
+    balanceRevision:Math.max(0,Math.floor(Number(source.balanceRevision)||0)),
+    balancePatchTitle:String(source.balancePatchTitle||"").slice(0,40),
+    balancePatchNote:String(source.balancePatchNote||"").slice(0,240)
+  };
+}
+
+function getLiveBalanceConfig(){
+  return liveBalanceConfig;
+}
+
+function isFishingAdminNickname(value){
+  return String(value||"").trim().toLowerCase()===FISHING_ADMIN_NICKNAME;
+}
+
+function isCurrentFishingAdmin(){
+  return isFishingAdminNickname(currentUser);
+}
+
+function isRankingExcludedUser(user,id=""){
+  const source=user&&typeof user==="object"?user:{};
+  return source.rankingExcluded===true||source.isAdmin===true||isFishingAdminNickname(source.nickname||id);
+}
+
 function cleanNickname(name){
   const cleaned = String(name || "").trim().replace(/\s+/g, "_").slice(0, 16);
   return /^[A-Za-z0-9_\-가-힣]{1,16}$/.test(cleaned) ? cleaned : "";
@@ -999,6 +1045,7 @@ function addBattleHistory(type,replay){
 }
 
 function hasBossDifficultyClearById(id,difficulty){
+  if(isCurrentFishingAdmin())return true;
   if(difficulty==="normal"&&bossProgress.defeated&&bossProgress.defeated[id])return true;
   return !!(bossProgress.difficultyClears&&bossProgress.difficultyClears[id]&&bossProgress.difficultyClears[id][difficulty]);
 }
@@ -1011,6 +1058,7 @@ function isBossGradeCrazyCleared(grade){
 
 function isProfileCosmeticUnlocked(type,id){
   if(!id)return true;
+  if(isCurrentFishingAdmin())return true;
   if(type==="border")return hasBossDifficultyClearById(id,"hard");
   if(type==="aura")return hasBossDifficultyClearById(id,"crazy");
   if(type==="background"||type==="attackEffect")return isBossGradeCrazyCleared(id);
@@ -1073,6 +1121,24 @@ function normalizePartyPresets(value){
     boss:Array.isArray(value.boss) ? [...new Set(value.boss.map(String))].slice(0,5) : [],
     pvp:Array.isArray(value.pvp) ? [...new Set(value.pvp.map(String))].slice(0,3) : []
   };
+}
+
+function applyFishingLifeAdminPrivileges(){
+  if(!isCurrentFishingAdmin())return false;
+  const before=JSON.stringify({rodLevel,researchLevels,trainingLevels,unlockedTitles,bossProgress});
+  rodLevel=MAX_ROD;
+  researchLevels={fishing:MAX_RESEARCH,appraisal:MAX_RESEARCH};
+  trainingLevels={attack:MAX_TRAINING,hp:MAX_TRAINING,critDamage:MAX_TRAINING};
+  unlockedTitles=[...new Set([...unlockedTitles,...getAllTitleNames()])];
+  if(typeof bossList!=="undefined"){
+    bossList.forEach(boss=>{
+      const id=String(boss.id||"");
+      if(!id)return;
+      bossProgress.defeated[id]=true;
+      bossProgress.difficultyClears[id]={normal:true,hard:true,crazy:true};
+    });
+  }
+  return before!==JSON.stringify({rodLevel,researchLevels,trainingLevels,unlockedTitles,bossProgress});
 }
 
 function normalizeAquariumFishIds(value){
@@ -1159,6 +1225,7 @@ async function checkGameVersion(force=false){
     try{
       const snap=await db.collection("config").doc("game").get({source:"server"});
       const config=snap.exists?(snap.data()||{}):{};
+      liveBalanceConfig=normalizeLiveBalanceConfig(config);
       const minimumSchema=Math.max(0,Number(config.minSaveSchemaVersion??config.minimumBuild??0)||0);
       const minimumProtocol=Math.max(0,Number(config.minimumWriteProtocol??0)||0);
       if(config.maintenance===true){
@@ -2599,6 +2666,7 @@ async function registerUser(providedNickname,providedPassword){
   const password=String(formRegister?providedPassword:(nickname?prompt("비밀번호를 입력하세요."):"")||"");
   const setLoginProgress=(message,kind="loading")=>{if(typeof globalThis.updateFishingLifeLoginStatus==="function")globalThis.updateFishingLifeLoginStatus(message,kind);};
   if(!nickname){setLoginProgress("닉네임을 입력해주세요.","error");return {ok:false};}
+  if(isFishingAdminNickname(nickname)){setLoginProgress("관리자 전용 아이디입니다.","error");return {ok:false};}
   if(password.length<4){setLoginProgress("비밀번호는 4자 이상 입력해주세요.","error");return {ok:false};}
 
   try{
@@ -2668,23 +2736,46 @@ async function loginUser(providedNickname,providedPassword){
   if(!nickname){setLoginProgress("닉네임을 입력해주세요.","error");if(!formLogin)print("로그인이 취소되었습니다.");return {ok:false};}
   if(!password){setLoginProgress("비밀번호를 입력해주세요.","error");if(!formLogin)print("비밀번호를 입력해야 합니다.");return {ok:false};}
 
+  const adminLogin=isFishingAdminNickname(nickname);
+  try{
+    if(adminLogin){
+      if(typeof firebase.auth!=="function")throw new Error("ADMIN_AUTH_UNAVAILABLE");
+      const auth=firebase.auth();
+      await auth.setPersistence(firebase.auth.Auth.Persistence.NONE);
+      await auth.signInWithEmailAndPassword(FISHING_ADMIN_AUTH_EMAIL,password);
+    }else if(typeof firebase.auth==="function"&&firebase.auth().currentUser){
+      await firebase.auth().signOut();
+    }
+  }catch(error){
+    console.error(error);
+    const code=String(error?.code||error?.message||"");
+    const message=code.includes("too-many-requests")
+      ?"로그인 시도가 너무 많습니다. 잠시 후 다시 시도해주세요."
+      :code==="ADMIN_AUTH_UNAVAILABLE"
+        ?"관리자 로그인 파일이 아직 게시되지 않았습니다."
+        :"관리자 아이디 또는 비밀번호가 맞지 않습니다.";
+    setLoginProgress(message,"error");
+    if(!formLogin)print(message);
+    return {ok:false,error:code};
+  }
+
   setLoginProgress("계정을 확인하고 있습니다.");
   const ref=db.collection("users").doc(nickname);
   const sessionRef=db.collection("accountSessions").doc(nickname);
-  const passwordHash=await hashPassword(password);
+  const passwordHash=adminLogin?"":await hashPassword(password);
   const sessionTokenHash=await startUserSession(nickname);
   const [pendingRecovery,cachedCloudBase]=await Promise.all([
     readCloudRecovery(nickname),
     readCloudSyncBaseAsync(nickname)
   ]);
   let loginData=null,nextRevision=0;
-  let accountWasReset=false,replacedExistingSession=false,pendingRecoveryApplied=false;
+  let accountWasReset=false,replacedExistingSession=false,pendingRecoveryApplied=false,adminPrivilegesChanged=false;
 
   try{
     const initialSnap=await ref.get();
     if(!initialSnap.exists)throw new Error("ACCOUNT_NOT_FOUND");
     const initialData=initialSnap.data()||{};
-    if(initialData.passwordHash!==passwordHash)throw new Error("WRONG_PASSWORD");
+    if(!adminLogin&&initialData.passwordHash!==passwordHash)throw new Error("WRONG_PASSWORD");
     const initialRevision=Number(initialData.cloudRevision||0);
     const cachedStateIsCurrent=Number(initialData.accountResetVersion||0)>=ACCOUNT_RESET_VERSION
       && Number(cachedCloudBase?.revision)===initialRevision
@@ -2697,7 +2788,7 @@ async function loginUser(providedNickname,providedPassword){
       if(!latestSnap.exists)throw new Error("ACCOUNT_NOT_FOUND");
       const sessionSnap=await tx.get(sessionRef);
       const latest=latestSnap.data()||{};
-      if(latest.passwordHash!==passwordHash)throw new Error("WRONG_PASSWORD");
+      if(!adminLogin&&latest.passwordHash!==passwordHash)throw new Error("WRONG_PASSWORD");
       if(Number(latest.cloudRevision||0)!==initialRevision)throw new Error("LOGIN_RETRY");
       const activeSession=sessionSnap.exists?(sessionSnap.data()||{}):null;
       replacedExistingSession=isOtherDeviceSessionActive(activeSession);
@@ -2737,9 +2828,10 @@ async function loginUser(providedNickname,providedPassword){
   }catch(e){
     console.error(e);
     clearUserSession();
+    if(adminLogin&&typeof firebase.auth==="function")await firebase.auth().signOut().catch(()=>{});
     const protectedWriteBlocked=handleProtectedWriteError(e,nickname,pendingRecovery?.localState||null,pendingRecovery?.baseState||null);
     const errorCode=String(e?.code||e?.message||"LOGIN_FAILED").replace(/^firestore\//,"").slice(0,60);
-    const message=e.message==="ACCOUNT_NOT_FOUND"?"존재하지 않는 닉네임입니다.":e.message==="WRONG_PASSWORD"?"비밀번호가 틀렸습니다.":e.message==="LOGIN_RETRY"?"계정 기록이 방금 변경되었습니다. 다시 로그인해주세요.":protectedWriteBlocked?"Firebase 규칙 업데이트가 필요합니다. 규칙을 게시한 뒤 새로고침해주세요.":e.message==="USER_STATE_TOO_LARGE"?"계정 기록이 커서 로그인 저장을 완료하지 못했습니다.":isCloudQuotaError(e)?"Firebase 무료 사용량이 모두 사용되었습니다. 사용량이 초기화된 뒤 다시 로그인해주세요.":isCloudConnectionError(e)?"인터넷 연결이 불안정합니다. 잠시 후 다시 시도해주세요.":`로그인 처리 중 오류가 발생했습니다. 오류 코드: ${errorCode}`;
+    const message=e.message==="ACCOUNT_NOT_FOUND"?(adminLogin?"관리자 페이지에서 관리자 게임 계정을 먼저 준비해주세요.":"존재하지 않는 닉네임입니다."):e.message==="WRONG_PASSWORD"?"비밀번호가 틀렸습니다.":e.message==="LOGIN_RETRY"?"계정 기록이 방금 변경되었습니다. 다시 로그인해주세요.":protectedWriteBlocked?"Firebase 규칙 업데이트가 필요합니다. 규칙을 게시한 뒤 새로고침해주세요.":e.message==="USER_STATE_TOO_LARGE"?"계정 기록이 커서 로그인 저장을 완료하지 못했습니다.":isCloudQuotaError(e)?"Firebase 무료 사용량이 모두 사용되었습니다. 사용량이 초기화된 뒤 다시 로그인해주세요.":isCloudConnectionError(e)?"인터넷 연결이 불안정합니다. 잠시 후 다시 시도해주세요.":`로그인 처리 중 오류가 발생했습니다. 오류 코드: ${errorCode}`;
     setLoginProgress(message,"error");
     if(!formLogin)print(message);
     return {ok:false,error:e.message};
@@ -2752,6 +2844,7 @@ async function loginUser(providedNickname,providedPassword){
     localStorage.setItem("textFishingLastLoginNickname",currentUser);
     if(accountWasReset)clearOldAccountData(nickname);
     applyGameState(loginData.gameState);
+    adminPrivilegesChanged=applyFishingLifeAdminPrivileges();
     cloudRevision=nextRevision;
     cloudSyncedSeq=localSaveSeq;
     lastCloudSyncedState=cloneCloudState(loginData.gameState);
@@ -2780,7 +2873,7 @@ async function loginUser(providedNickname,providedPassword){
     const mobile=typeof matchMedia==="function"&&matchMedia("(max-width: 850px)").matches;
     const combatChanged=await migrateCombatStatsToCurrentVersionAsync(mobile?35:100,false);
     const titlesChanged=checkSpecialTitles();
-    if(combatChanged||titlesChanged.length)saveGame();
+    if(combatChanged||titlesChanged.length||adminPrivilegesChanged)saveGame();
     updateWallet();
   }catch(e){
     console.error(e);
@@ -2804,6 +2897,7 @@ async function logoutUser(){
   if(!currentUser) return print("로그인 상태가 아닙니다.");
   if(isOnlineActionRunning)return print("송금·물고기 전송·메시지 처리가 끝난 뒤 로그아웃해주세요.");
   const old = currentUser;
+  const wasAdmin=isFishingAdminNickname(old);
   await saveCloudData();
   if(hasPendingLocalCloudChanges()){
     setCloudSyncStatus("retrying","저장이 끝나면 다시 로그아웃해주세요.");
@@ -2815,6 +2909,7 @@ async function logoutUser(){
   currentUser = null;
   localStorage.removeItem("textFishingCurrentUser");
   clearUserSession();
+  if(wasAdmin&&typeof firebase.auth==="function")await firebase.auth().signOut().catch(()=>{});
   resetGameData();
   updateWallet();
   print(old + " 님 로그아웃 완료.\n\n다른 계정을 사용하려면 로그인 또는 회원가입을 해주세요.");
@@ -2823,6 +2918,7 @@ async function logoutUser(){
 
 async function deleteAccount(password=""){
   if(!currentUser)return {ok:false,message:"로그인 상태가 아닙니다."};
+  if(isCurrentFishingAdmin())return {ok:false,message:"관리자 계정은 관리자 페이지에서 관리해주세요."};
   if(isOnlineActionRunning)return {ok:false,message:"진행 중인 전송이 끝난 뒤 다시 시도해주세요."};
   const username=currentUser,sessionHash=await getCurrentSessionHash();
   if(!sessionHash)return {ok:false,message:"로그인 정보가 만료되었습니다. 다시 로그인해주세요."};
@@ -2975,8 +3071,8 @@ async function showRanking(){
     const moneySnap = await db.collection("users").orderBy("money","desc").get();
     const levelSnap = await db.collection("users").orderBy("rodLevel","desc").get();
 
-    const moneyList = moneySnap.docs.map(d => d.data());
-    const levelList = levelSnap.docs.map(d => d.data());
+    const moneyList = moneySnap.docs.map(d => ({...d.data(),id:d.id})).filter(u=>!isRankingExcludedUser(u,u.id));
+    const levelList = levelSnap.docs.map(d => ({...d.data(),id:d.id})).filter(u=>!isRankingExcludedUser(u,u.id));
 
     const moneyFull = buildRankSection("지갑 랭킹", moneyList, "money").trim();
     const levelFull = buildRankSection("레벨 랭킹", levelList, "level").trim();
@@ -3339,6 +3435,7 @@ function openModal(title, content){
   document.getElementById("modalTitle").textContent = title;
   document.getElementById("modalBody").innerHTML = sanitizeGameHtml(content);
   document.getElementById("modalOverlay").style.display = "block";
+  document.documentElement.classList.add("modal-open");
 }
 function closeModal(force=false){
   if(!force&&!currentUser){
@@ -3363,6 +3460,7 @@ function closeModal(force=false){
     return;
   }
   document.getElementById("modalOverlay").style.display = "none";
+  document.documentElement.classList.remove("modal-open");
 }
 function printPreview(title, summary, buttonText, modalContent){
   const id = "btn_" + Math.random().toString(36).slice(2);
@@ -3693,8 +3791,8 @@ function printAchievementRewards(list){
   print(s.trim());
 }
 
-function getOwnedTitles(){
-  const order = [
+function getAllTitleNames(){
+  return [
     "환경 지킴이",
     "수집가",
     "탐험가",
@@ -3715,6 +3813,11 @@ function getOwnedTitles(){
     "부자",
     "재벌"
   ];
+}
+
+function getOwnedTitles(){
+  const order=getAllTitleNames();
+  if(isCurrentFishingAdmin())return order;
 
   const ownedSet = new Set();
 

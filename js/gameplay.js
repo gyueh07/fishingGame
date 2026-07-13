@@ -1548,13 +1548,13 @@ function simulatePvpBattle({leftName,leftTitle,leftProfile,leftTeam,rightName,ri
     if(f.name==="불타는 마음"&&Number(pvpState(f).heartbeatStage||0)>=2){
       const stage=Number(pvpState(f).heartbeatStage||0), t=chooseTarget(enemySide);
       const chance=stage>=3?0.5:0.3, ratio=stage>=3?0.5:0.4;
-      if(t&&Math.random()<chance)logParts.push(applyPvpDamage(enemySide,t,Number(f.combat.attack||0)*ratio,null,side,traitUseByFish(f, "심장이 한 번 더 뛰었습니다.")));
+      if(t&&Math.random()<chance)logParts.push(applyPvpDamage(enemySide,t,Number(f.combat.attack||0)*ratio,null,side,traitUseByFish(f, "불꽃의 잔영이 추가 공격을 가했습니다.")));
     }
     if(f.name==="불타는 마음"&&Number(pvpState(f).heartbeatStage||0)>=3){
       const c=f.combat,cap=Math.floor(c.maxHp*0.3);
       if(c.hp>0&&c.hp<cap&&Math.random()<0.25){
         const heal=Math.min(Math.floor(c.hp*0.3),cap-c.hp);
-        if(heal>0){c.hp=Math.min(cap,c.hp+heal);logParts.push(traitUseByFish(f, "꺼져가던 심장이 다시 불붙었습니다.\n체력 "+heal.toLocaleString()+" 회복")+"\n\n");}
+        if(heal>0){c.hp=Math.min(cap,c.hp+heal);logParts.push(traitUseByFish(f, "남은 불씨가 상처를 봉합했습니다.\n체력 "+heal.toLocaleString()+" 회복")+"\n\n");}
       }
     }
   }
