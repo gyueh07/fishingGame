@@ -35,7 +35,7 @@ let accountSessionUnsubscribe=null;
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
-const GAME_VERSION = "2026-07-13-fishinglife-live-operations-v25-5-0";
+const GAME_VERSION = "2026-07-13-fishinglife-live-operations-v25-5-1";
 const USER_WRITE_SCHEMA_VERSION = 250;
 const USER_WRITE_PROTOCOL_VERSION = 4;
 const FISHING_ADMIN_NICKNAME = "admin";

@@ -45,6 +45,8 @@
   let adminBalanceConfig=DEFAULT_BALANCE;
   let dashboardLoaded=false;
   let toastTimer=null;
+  let existingFishCatalog=[];
+  let existingFishByName=new Map();
 
   function cleanNickname(value){
     const cleaned=String(value||"").trim().replace(/\s+/g,"_").slice(0,16);
@@ -58,6 +60,35 @@
   function clampNumber(value,min,max,fallback=min){
     const number=Number(value);
     return Number.isFinite(number)?Math.min(max,Math.max(min,number)):fallback;
+  }
+
+  function initializeFishGrantCatalog(){
+    const source=typeof fishByGrade!=="undefined"&&fishByGrade&&typeof fishByGrade==="object"?fishByGrade:{};
+    const sizes=typeof sizeData!=="undefined"&&sizeData&&typeof sizeData==="object"?sizeData:{};
+    existingFishCatalog=GRADE_NAMES.flatMap(grade=>(Array.isArray(source[grade])?source[grade]:[]).map(name=>({name:String(name),grade,sizeRange:Array.isArray(sizes[name])?sizes[name]:null})));
+    existingFishByName=new Map(existingFishCatalog.map(fish=>[fish.name,fish]));
+    const select=$("#grantFishSelect");
+    if(!select)return;
+    select.innerHTML='<option value="">물고기를 선택하세요</option>'+GRADE_NAMES.map(grade=>{
+      const fishes=existingFishCatalog.filter(fish=>fish.grade===grade);
+      return fishes.length?`<optgroup label="${escapeHtml(grade)}">${fishes.map(fish=>`<option value="${escapeHtml(fish.name)}">${escapeHtml(fish.name)}</option>`).join("")}</optgroup>`:"";
+    }).join("");
+    syncFishGrantSelection();
+  }
+
+  function syncFishGrantSelection(){
+    const selected=existingFishByName.get($("#grantFishSelect")?.value||"");
+    const gradeInput=$("#grantFishGrade"),sizeInput=$("#grantFishSize");
+    if(gradeInput)gradeInput.value=selected?.grade||"";
+    if(!sizeInput)return;
+    if(!selected){sizeInput.disabled=false;sizeInput.value="";sizeInput.placeholder="물고기 선택 후 자동 설정";sizeInput.removeAttribute("max");return;}
+    const range=selected.sizeRange;
+    if(!range){sizeInput.value="";sizeInput.disabled=true;sizeInput.placeholder="크기 없음";sizeInput.removeAttribute("max");return;}
+    const minimum=Number(range[0])||0,maximum=Math.max(minimum,Number(range[1])||minimum);
+    sizeInput.disabled=false;sizeInput.min=String(minimum);sizeInput.max=String(maximum);sizeInput.placeholder=`${minimum} ~ ${maximum}`;
+    sizeInput.value=String(Math.round(((minimum+maximum)/2)*10)/10);
+    const gradeBalance=adminBalanceConfig.gradeBalance?.[selected.grade]||DEFAULT_GRADE_BALANCE[selected.grade];
+    if(gradeBalance){$("#grantFishAttack").value=Math.max(1,Math.round((Number(gradeBalance.attackMin)+Number(gradeBalance.attackMax))/2));$("#grantFishHp").value=Math.max(1,Math.round((Number(gradeBalance.hpMin)+Number(gradeBalance.hpMax))/2));}
   }
 
   function formatMoney(value){
@@ -371,12 +402,13 @@
   function bucketShardIdForFish(fish){return "shard_"+String(stableStorageHash(fish?.id)%BUCKET_SHARD_COUNT).padStart(3,"0");}
 
   function makeAdminFish(values,index=0){
-    const now=Date.now(),name=String(values.name||"").trim().slice(0,40),grade=GRADE_NAMES.includes(values.grade)&&values.grade!=="쓰레기"?values.grade:"일반";
-    if(!name)throw new Error("INVALID_FISH");
+    const now=Date.now(),name=String(values.name||"").trim().slice(0,40),catalogFish=existingFishByName.get(name);
+    if(!catalogFish)throw new Error("INVALID_FISH");
+    const grade=catalogFish.grade;
     const attack=Math.max(1,Math.floor(Number(values.attack)||0)),maxHp=Math.max(1,Math.floor(Number(values.hp)||0));
     if(!Number.isSafeInteger(attack)||!Number.isSafeInteger(maxHp))throw new Error("INVALID_FISH");
     const star=value=>Math.max(0,Math.min(4,Math.floor(Number(value)||0))),stars={attack:star(values.attackStar),hp:star(values.hpStar),dodge:star(values.dodgeStar),critRate:star(values.critRateStar),critDamage:star(values.critDamageStar)};
-    const dodge=clampNumber(values.dodge,0,100,0),critRate=clampNumber(values.critRate,0,100,0),critDamage=clampNumber(values.critDamage,100,2000,150),gradeBalance=adminBalanceConfig.gradeBalance?.[grade]||DEFAULT_GRADE_BALANCE[grade],defaults=DEFAULT_GRADE_BALANCE[grade],size=Number(values.size)>=0?Number(Number(values.size).toFixed(1)):null,basePrice=Math.max(0,Number(gradeBalance.basePrice)||0),gradePower=Math.max(0,GRADE_NAMES.indexOf(grade)),price=grade==="쓰레기"?Math.max(1,Math.floor((Math.floor(Math.random()*30)+1)*Math.max(1,basePrice))):Math.max(1,Math.floor(basePrice+(size===null?7777:size)*gradePower*1000+Math.random()*basePrice*.4)),attackScale=(Number(gradeBalance.attackMin)+Number(gradeBalance.attackMax))/Math.max(1,defaults.attackMin+defaults.attackMax),hpScale=(Number(gradeBalance.hpMin)+Number(gradeBalance.hpMax))/Math.max(1,defaults.hpMin+defaults.hpMax);
+    const dodge=clampNumber(values.dodge,0,100,0),critRate=clampNumber(values.critRate,0,100,0),critDamage=clampNumber(values.critDamage,100,2000,150),gradeBalance=adminBalanceConfig.gradeBalance?.[grade]||DEFAULT_GRADE_BALANCE[grade],defaults=DEFAULT_GRADE_BALANCE[grade],sizeText=String(values.size??"").trim(),size=sizeText!==""&&Number(sizeText)>=0?Number(Number(sizeText).toFixed(1)):null,basePrice=Math.max(0,Number(gradeBalance.basePrice)||0),gradePower=Math.max(0,GRADE_NAMES.indexOf(grade)),price=grade==="쓰레기"?Math.max(1,Math.floor((Math.floor(Math.random()*30)+1)*Math.max(1,basePrice))):Math.max(1,Math.floor(basePrice+(size===null?7777:size)*gradePower*1000+Math.random()*basePrice*.4)),attackScale=(Number(gradeBalance.attackMin)+Number(gradeBalance.attackMax))/Math.max(1,defaults.attackMin+defaults.attackMax),hpScale=(Number(gradeBalance.hpMin)+Number(gradeBalance.hpMax))/Math.max(1,defaults.hpMin+defaults.hpMax);
     const id=`admin_${now.toString(36)}_${index.toString(36)}_${Math.random().toString(36).slice(2,10)}`,order=now*1000+index+Math.floor(Math.random()*100);
     return {id,name,grade,size,price,locked:false,isNewCatch:false,time:`${new Date(now).toLocaleString("ko-KR")} · 관리자 지급`,adminGranted:true,adminGrantedAtMillis:now,_bucketStorageOrder:order,combat:{attack,hp:maxHp,maxHp,dodge,critRate,critDamage,_baseAttack:attack,_baseMaxHp:maxHp,_baseCritDamage:critDamage,status:"정상",combatVersion:16,hpBalanceVersion:1,voidStatBalanceVersion:1,stars,_liveOpsRawBaseAttack:attack/Math.max(.0001,attackScale),_liveOpsRawBaseMaxHp:maxHp/Math.max(.0001,hpScale),_liveOpsAttackMultiplier:attackScale,_liveOpsHpMultiplier:hpScale}};
   }
@@ -489,7 +521,7 @@
     if(code.includes("AMOUNT_TOO_LARGE"))return "지급 후 금액이 너무 큽니다.";
     if(code.includes("NO_GROWTH_CHANGE"))return "기존보다 높은 성장 수치를 입력해주세요.";
     if(code.includes("PATCH_TEXT_REQUIRED"))return "패치 제목과 내용을 입력해주세요.";
-    if(code.includes("INVALID_FISH"))return "물고기 이름과 전투 수치를 정확히 입력해주세요.";
+    if(code.includes("INVALID_FISH"))return "기존 물고기를 선택하고 전투 수치를 정확히 입력해주세요.";
     if(code.includes("permission-denied"))return "Firestore 관리자 규칙을 게시해주세요.";
     return "처리 중 오류가 발생했습니다.";
   }
@@ -520,10 +552,13 @@
   $("#userSearchForm").addEventListener("submit",async event=>{event.preventDefault();const button=event.submitter;setButtonBusy(button,true,"검색 중...");try{await searchUser($("#targetNickname").value);showToast("유저를 불러왔습니다.");}catch(error){console.error(error);setStatus("#userActionStatus",errorMessage(error),"error");}finally{setButtonBusy(button,false);}});
   $("#moneyGrantForm").addEventListener("submit",async event=>{event.preventDefault();const button=event.submitter;setButtonBusy(button,true,"지급 중...");try{await grantMoney($("#grantAmount").value,$("#grantReason").value);$("#grantAmount").value="";setStatus("#userActionStatus","골드를 지급하고 운영 기록에 남겼습니다.","success");showToast("골드 지급 완료");}catch(error){console.error(error);setStatus("#userActionStatus",errorMessage(error),"error");}finally{setButtonBusy(button,false);}});
   $("#growthAdjustForm").addEventListener("submit",async event=>{event.preventDefault();const button=event.submitter;setButtonBusy(button,true,"저장 중...");try{await adjustGrowth({rod:$("#adjustRod").value,attack:$("#adjustAttack").value,hp:$("#adjustHp").value,critDamage:$("#adjustCrit").value},$("#growthReason").value);setStatus("#userActionStatus","성장 수치를 저장하고 운영 기록에 남겼습니다.","success");showToast("성장 수치 저장 완료");}catch(error){console.error(error);setStatus("#userActionStatus",errorMessage(error),"error");}finally{setButtonBusy(button,false);}});
-  $("#fishGrantForm").addEventListener("submit",async event=>{event.preventDefault();const button=event.submitter;setButtonBusy(button,true,"지급 중...");try{await grantFish({name:$("#grantFishName").value,grade:$("#grantFishGrade").value,size:$("#grantFishSize").value,quantity:$("#grantFishQuantity").value,attack:$("#grantFishAttack").value,hp:$("#grantFishHp").value,dodge:$("#grantFishDodge").value,critRate:$("#grantFishCritRate").value,critDamage:$("#grantFishCritDamage").value,attackStar:$("#grantFishAttackStar").value,hpStar:$("#grantFishHpStar").value,dodgeStar:$("#grantFishDodgeStar").value,critRateStar:$("#grantFishCritRateStar").value,critDamageStar:$("#grantFishCritDamageStar").value},$("#grantFishReason").value);setStatus("#userActionStatus","물고기를 지급했습니다. 접속 중인 유저에게 바로 표시됩니다.","success");showToast("물고기 지급 완료");}catch(error){console.error(error);setStatus("#userActionStatus",errorMessage(error),"error");}finally{setButtonBusy(button,false);}});
+  $("#grantFishSelect").addEventListener("change",syncFishGrantSelection);
+  $("#fishGrantForm").addEventListener("submit",async event=>{event.preventDefault();const button=event.submitter;setButtonBusy(button,true,"지급 중...");try{await grantFish({name:$("#grantFishSelect").value,size:$("#grantFishSize").value,quantity:$("#grantFishQuantity").value,attack:$("#grantFishAttack").value,hp:$("#grantFishHp").value,dodge:$("#grantFishDodge").value,critRate:$("#grantFishCritRate").value,critDamage:$("#grantFishCritDamage").value,attackStar:$("#grantFishAttackStar").value,hpStar:$("#grantFishHpStar").value,dodgeStar:$("#grantFishDodgeStar").value,critRateStar:$("#grantFishCritRateStar").value,critDamageStar:$("#grantFishCritDamageStar").value},$("#grantFishReason").value);setStatus("#userActionStatus","물고기를 지급했습니다. 접속 중인 유저에게 바로 표시됩니다.","success");showToast("물고기 지급 완료");}catch(error){console.error(error);setStatus("#userActionStatus",errorMessage(error),"error");}finally{setButtonBusy(button,false);}});
   $("#balanceForm").addEventListener("submit",async event=>{event.preventDefault();const button=event.submitter;setButtonBusy(button,true,"게시 중...");try{await publishBalance(collectBalanceForm());setStatus("#balanceStatus","밸런스를 게시했습니다. 접속 중인 게임에도 바로 적용됩니다.","success");showToast("밸런스 게시 완료");}catch(error){console.error(error);setStatus("#balanceStatus",errorMessage(error),"error");}finally{setButtonBusy(button,false);}});
   $("#noticeForm").addEventListener("submit",async event=>{event.preventDefault();const button=event.submitter;setButtonBusy(button,true,"게시 중...");try{await publishNotice($("#noticeCategory").value,$("#noticeTitle").value,$("#noticeBody").value);$("#noticeTitle").value="";$("#noticeBody").value="";setStatus("#noticeStatus","공지를 게시했습니다. 접속 중인 유저에게 바로 표시됩니다.","success");showToast("공지 게시 완료");}catch(error){console.error(error);setStatus("#noticeStatus",errorMessage(error),"error");}finally{setButtonBusy(button,false);}});
   $("#prepareAdminAccount").addEventListener("click",async event=>{const button=event.currentTarget;setButtonBusy(button,true,"계정 준비 중...");try{await prepareAdminGameAccount();setStatus("#adminAccountStatus","관리자 게임 계정을 준비했습니다.","success");showToast("관리자 게임 계정 준비 완료");}catch(error){console.error(error);setStatus("#adminAccountStatus",errorMessage(error),"error");}finally{setButtonBusy(button,false);}});
+
+  initializeFishGrantCatalog();
 
   if(localDemo){openDashboard();}
   else auth.onAuthStateChanged(async user=>{
