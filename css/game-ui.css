@@ -654,7 +654,7 @@ body[data-profile-background] .ambient-bg { transition:background .55s ease; }
 
 @media(max-width:850px){.battle-event--ally-solar,.battle-event--ally-ascension,.battle-event--ally-constellation,.battle-event--ally-white-flame,.battle-event--ally-tide,.battle-event--ally-heartbeat,.battle-event--crazy{padding-right:52px}:is(.battle-event--ally-solar,.battle-event--ally-ascension,.battle-event--ally-constellation,.battle-event--ally-white-flame,.battle-event--ally-tide,.battle-event--ally-heartbeat)::after{right:10px;font-size:27px}.battle-event--crazy::after{right:7px;font-size:20px}.battle-event--crazy-passive::after{font-size:17px}.battle-event--crazy-passive-phoenix-apex::after{font-size:15px}.battle-event--crazy-passive b,.battle-event--crazy-passive-phoenix-apex b{font-size:13px}}
 
-/* v25.3.2 complete replay, boss revival and phase impact */
+/* v25.3.3 complete replay, boss revival and phase impact */
 .battle-action-card,.battle-replay-mode .battle-action-card{overflow-x:hidden;overflow-y:auto}
 .boss-battle-arena:is(.event-phase,.event-passive,.event-crazy,.event-crazy-passive) .boss-attack-backdrop{animation-duration:1.65s}
 .boss-battle-arena.event-crazy{border-color:rgba(255,72,111,.96);box-shadow:0 0 92px rgba(255,26,82,.48),inset 0 0 145px rgba(105,0,42,.48)}

@@ -35,7 +35,7 @@ let accountSessionUnsubscribe=null;
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
-const GAME_VERSION = "2026-07-13-fishinglife-complete-battle-replay-v25-3-2";
+const GAME_VERSION = "2026-07-13-fishinglife-login-migration-fix-v25-3-3";
 const USER_WRITE_SCHEMA_VERSION = 250;
 const USER_WRITE_PROTOCOL_VERSION = 4;
 const ACCOUNT_RESET_VERSION = 1;
@@ -55,12 +55,13 @@ const MAX_CLOUD_BATTLE_FRAME_CHUNK_COUNT = 80;
 const UPDATE_NOTICE_TITLE = "📢 업데이트 안내";
 const UPDATE_NOTICES = [
   {
-    id:"2026-07-13-fishinglife-complete-battle-replay-25-3-2",
+    id:"2026-07-13-fishinglife-login-migration-fix-25-3-3",
     title:"전투 기록·보스 연출 개선",
     lines:[
       "긴 전투 기록도 중간 장면을 줄이지 않고 여러 저장 공간에 나누어 전부 보관합니다.",
       "히드라와 티아마트의 회복은 보스 턴이 시작된 뒤 패시브로 발동합니다.",
-      "모든 보스의 고유 패시브를 전투 시작에 표시하고 부활·페이즈·크레이지 궁극기 연출을 강화했습니다."
+      "모든 보스의 고유 패시브를 전투 시작에 표시하고 부활·페이즈·크레이지 궁극기 연출을 강화했습니다.",
+      "로그인할 때 옛 전투 기록을 한꺼번에 다시 저장하지 않아 기록이 많은 계정도 바로 접속할 수 있습니다."
     ]
   },
   {
@@ -1153,7 +1154,9 @@ async function checkGameVersion(force=false){
       return true;
     }catch(error){
       console.error(error);
-      reportCloudVersionGate("업데이트 확인에 실패했습니다. 인터넷 연결을 확인한 뒤 새로고침해주세요.","connection","연결 확인");
+      if(isCloudConnectionError(error))reportCloudVersionGate("업데이트 확인에 실패했습니다. 인터넷 연결을 확인한 뒤 새로고침해주세요.","connection","연결 확인");
+      else if(isPermissionDeniedError(error))reportCloudVersionGate("Firebase 설정을 확인하지 못했습니다. Firestore 규칙을 게시한 뒤 새로고침해주세요.","update","설정 확인");
+      else reportCloudVersionGate("업데이트 확인 중 오류가 발생했습니다. 페이지를 새로고침해주세요.","update","업데이트 확인");
       return false;
     }
   })();
@@ -1549,7 +1552,9 @@ function txSetProtectedUser(tx,ref,existingData,patch,reason="user_write",option
   const serverTime=firebase.firestore.FieldValue.serverTimestamp();
   if(includeSplitData)stageSplitStateWrites(tx,ref,previousState,fullState,expectedRevision,{
     bucket:Number(existingCloudState.bucketStorage?.version||0)<BUCKET_STORAGE_VERSION,
-    battle:Number(existingCloudState.battleStorage?.version||0)<BATTLE_STORAGE_VERSION
+    // v1 기록은 그대로 읽고, 새 전투부터 v2 조각 저장을 사용합니다.
+    // 로그인 중 기존 기록 전체를 다시 쓰면 큰 계정에서 트랜잭션 한도를 넘을 수 있습니다.
+    battle:Number(existingCloudState.battleStorage?.version||0)<1
   });
   const payload={
     ...(patch||{}),
@@ -2611,7 +2616,7 @@ async function loginUser(providedNickname,providedPassword){
     console.error(e);
     clearUserSession();
     const protectedWriteBlocked=handleProtectedWriteError(e,nickname,pendingRecovery?.localState||null,pendingRecovery?.baseState||null);
-    const message=e.message==="ACCOUNT_NOT_FOUND"?"존재하지 않는 닉네임입니다.":e.message==="WRONG_PASSWORD"?"비밀번호가 틀렸습니다.":e.message==="LOGIN_RETRY"?"계정 기록이 방금 변경되었습니다. 다시 로그인해주세요.":protectedWriteBlocked?"게임이 업데이트되었습니다. 페이지를 새로고침해주세요.":e.message==="USER_STATE_TOO_LARGE"?"계정 기록을 옮기지 못했습니다.":"인터넷 연결이 불안정합니다. 잠시 후 다시 시도해주세요.";
+    const message=e.message==="ACCOUNT_NOT_FOUND"?"존재하지 않는 닉네임입니다.":e.message==="WRONG_PASSWORD"?"비밀번호가 틀렸습니다.":e.message==="LOGIN_RETRY"?"계정 기록이 방금 변경되었습니다. 다시 로그인해주세요.":protectedWriteBlocked?"Firebase 규칙 업데이트가 필요합니다. 규칙을 게시한 뒤 새로고침해주세요.":e.message==="USER_STATE_TOO_LARGE"?"계정 기록이 커서 로그인 저장을 완료하지 못했습니다.":isCloudConnectionError(e)?"인터넷 연결이 불안정합니다. 잠시 후 다시 시도해주세요.":"로그인 처리 중 오류가 발생했습니다. 페이지를 새로고침한 뒤 다시 시도해주세요.";
     setLoginProgress(message,"error");
     if(!formLogin)print(message);
     return {ok:false,error:e.message};
