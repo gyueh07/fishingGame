@@ -1547,19 +1547,22 @@ function dealTraitDamage(boss,raw,label,battleLog){
   const ctx=activeTraitBattle;if(!ctx||raw<=0||Number(boss._currentHp)<=0)return 0;
   const damage=applyBossPassiveBeforeFishAttack(boss,Math.max(1,Math.floor(raw)),battleLog);
   const beforeBossHp=Math.max(0,Number(boss._currentHp||0)),actualBossDamage=Math.min(beforeBossHp,damage);
-  boss._currentHp=Math.max(0,beforeBossHp-damage);ctx.traitDamage+=actualBossDamage+Number(boss._lastDamageToSword||0);
   const eventLabel=String(label||"").includes("battle-event--ally")?String(label).replace("battle-event--ally","battle-event--ally battle-event--ally-attack"):String(label||"");
+  const separateSkillResult=eventLabel.includes("battle-event--ally-attack");
+  if(separateSkillResult)battleLog.push(eventLabel);
+  boss._currentHp=Math.max(0,beforeBossHp-damage);ctx.traitDamage+=actualBossDamage+Number(boss._lastDamageToSword||0);
+  const hpChange="보스 체력 "+beforeBossHp.toLocaleString()+" → "+Number(boss._currentHp).toLocaleString();
   if(boss.id==="surtr" && Number(boss._lastDamageToSword||0)>0){
     let entry = "수르트가 피해를 불꽃의 검과 나눠 받았습니다.\n\n";
-    entry += "수르트 : " + damage.toLocaleString() + " 피해\n";
+    entry += "수르트 : " + actualBossDamage.toLocaleString() + " 피해\n";
     entry += "불꽃의 검 : " + Number(boss._lastDamageToSword||0).toLocaleString() + " 피해\n";
     entry += "검 내구도 : " + Number(boss._flameSwordHp||0).toLocaleString() + " / 30,000,000";
-    entry += "\n\n" + bossColor(boss.name,boss) + "\n" + hpBar(boss._currentHp,boss.hp);
-    if(eventLabel.includes("battle-event--ally-attack")){battleLog.push(eventLabel);battleLog.push(entry);}else battleLog.push(eventLabel+"\n\n"+entry);
+    entry += "\n" + hpChange + "\n\n" + bossColor(boss.name,boss) + "\n" + hpBar(boss._currentHp,boss.hp);
+    if(separateSkillResult)battleLog.push(entry);else battleLog.push(eventLabel+"\n\n"+entry);
     if(boss._flameSwordJustBroken)battleLog.push(bossBattleEvent(boss,"불꽃의 검 파괴","검의 피해 분담이 끝나고 수르트가 받는 피해가 "+(boss.difficulty==="crazy"?20:boss.difficulty==="hard"?25:30)+"% 증가합니다.","phase"));
   } else {
-    const result=damage.toLocaleString()+" 피해\n\n"+bossColor(boss.name,boss)+"\n"+hpBar(boss._currentHp,boss.hp);
-    if(eventLabel.includes("battle-event--ally-attack")){battleLog.push(eventLabel);battleLog.push(result);}else battleLog.push(eventLabel+"\n\n"+result);
+    const result=actualBossDamage.toLocaleString()+" 피해\n"+hpChange+"\n\n"+bossColor(boss.name,boss)+"\n"+hpBar(boss._currentHp,boss.hp);
+    if(separateSkillResult)battleLog.push(result);else battleLog.push(eventLabel+"\n\n"+result);
   }
   startPeriodTraitIfNeeded(boss,battleLog);
   return damage;
@@ -1642,7 +1645,7 @@ function afterFishAttackTrait(f,boss,outcome,baseAttack,battleLog){
       const heal=Math.min(Math.floor(c.hp*0.3),cap-c.hp);
       if(heal>0){
         c.hp=Math.min(cap,c.hp+heal);
-        battleLog.push(traitUseByFish(f, "남은 불씨가 상처를 봉합했습니다.\n체력 "+heal.toLocaleString()+" 회복"));
+        battleLog.push(traitUseByFish(f, "화염의 심박으로 체력을 회복했습니다.\n체력 "+heal.toLocaleString()+" 회복"));
       }
     }
   }
@@ -1910,11 +1913,6 @@ function bossAttackSpecificTarget(boss, f, battleLog, bossAttackMultiplier=1, sk
   const appliesBurn=!!options.burn||(boss.id==="surtr"&&boss.difficulty==="crazy"&&boss._muspelAwakened);
   if(options.isSpecial && !boss._activeSpecialName && !beginBossSpecial(boss,skillName,battleLog)) return false;
   if(!f) return false;
-  const eye=getStormEye();
-  if(f===eye){
-    const alternatives=getAliveTargets(activeTraitBattle?activeTraitBattle.participants:[]).filter(x=>x!==eye);
-    if(alternatives.length)f=alternatives[Math.floor(Math.random()*alternatives.length)];
-  }
   const c = ensureCombatStats(f);
   if(!isBattleTargetableFish(f)) return false;
 
@@ -1995,7 +1993,7 @@ function applyBossPassiveBeforeFishAttack(boss, damage, battleLog=null){
     const absorbed=Math.min(Number(boss._voidShieldHp),damage);
     boss._voidShieldHp=Math.max(0,Number(boss._voidShieldHp)-absorbed);
     damage-=absorbed;
-    if(battleLog) battleLog.push(bossColor(boss.name,boss)+"의 폭풍 장벽\n"+absorbed.toLocaleString()+" 피해 흡수\n남은 보호막 : "+Number(boss._voidShieldHp).toLocaleString());
+    if(battleLog)battleLog.push(bossBattleEvent(boss,"폭풍 장벽",absorbed.toLocaleString()+" 피해 흡수 · 남은 보호막 "+Number(boss._voidShieldHp).toLocaleString(),"passive"));
   }
 
   if(Number(boss._wrathCharges||0)>0){
@@ -2004,7 +2002,7 @@ function applyBossPassiveBeforeFishAttack(boss, damage, battleLog=null){
     boss._lastReflectedDamage=Math.floor(damage*reflection);
     damage=Math.floor(damage*(1-reduction));
     if(boss._wrathCharges<=0&&boss._wrathFinalePending)boss._wrathFinaleReady=true;
-    if(battleLog) battleLog.push(bossColor(boss.name,boss)+"의 용왕의 역린\n받는 피해 "+Math.round(reduction*100)+"% 감소, 공격자에게 "+Math.round(reflection*100)+"% 반사\n남은 역린 : "+boss._wrathCharges);
+    if(battleLog)battleLog.push(bossBattleEvent(boss,"용왕의 역린","받는 피해 "+Math.round(reduction*100)+"% 감소 · 공격자에게 "+Math.round(reflection*100)+"% 반사 · 남은 역린 "+boss._wrathCharges,"passive"));
   }
 
   if(boss.id==="nyarlathotep"&&Array.isArray(boss._nyarlMasks)&&boss._nyarlMasks.includes("mirror")){
@@ -2019,7 +2017,7 @@ function applyBossPassiveBeforeFishAttack(boss, damage, battleLog=null){
       const absorbed=Math.min(Number(boss._stoneArmorHp),damage);
       boss._stoneArmorHp=Math.max(0,Number(boss._stoneArmorHp)-absorbed);
       damage-=absorbed;
-      if(battleLog)battleLog.push(bossColor(boss.name,boss)+"의 암석 갑옷\n"+absorbed.toLocaleString()+" 피해 흡수\n남은 갑옷 : "+Number(boss._stoneArmorHp).toLocaleString());
+      if(battleLog)battleLog.push(bossBattleEvent(boss,"암석 갑옷",absorbed.toLocaleString()+" 피해 흡수 · 남은 갑옷 "+Number(boss._stoneArmorHp).toLocaleString(),"passive"));
       if(boss._stoneArmorHp<=0){
         boss._stoneExposedUntil=(activeTraitBattle?activeTraitBattle.turn:0)+1;
         if(battleLog)battleLog.push(bossBattleEvent(boss,"대륙의 균열","암석 갑옷이 무너져 다음 턴까지 받는 피해가 20% 증가합니다.","phase"));
@@ -2042,7 +2040,7 @@ function applyBossPassiveBeforeFishAttack(boss, damage, battleLog=null){
       const reduced = Math.floor(damage * (1-reduction));
       boss._damageRecord = reduced;
       if(battleLog){
-        battleLog.push(bossColor(boss.name, boss) + "의 드래곤 스케일\n" + damage.toLocaleString() + " 피해를 " + reduced.toLocaleString() + " 피해로 감소\n피해 기록 : " + reduced.toLocaleString());
+        battleLog.push(bossBattleEvent(boss,"드래곤 스케일",damage.toLocaleString()+" 피해를 "+reduced.toLocaleString()+" 피해로 감소 · 피해 기록 "+reduced.toLocaleString(),"passive"));
       }
       return reduced;
     }
@@ -2086,7 +2084,7 @@ function handleFenrirCriticalHit(boss, hit, battleLog){
   boss._gleipnirKnots = knots - 1;
   boss._knotsBrokenThisTurn = brokenThisTurn + 1;
   const maxKnots=boss.difficulty==="crazy"?8:boss.difficulty==="hard"?7:6;
-  battleLog.push(bossColor(boss.name, boss) + "의 글레이프니르\n매듭 해제 : " + boss._gleipnirKnots + " / "+maxKnots+" 남음");
+  battleLog.push(bossBattleEvent(boss,"글레이프니르","매듭 해제 · "+boss._gleipnirKnots+" / "+maxKnots+" 남음","passive"));
 
   if(boss._gleipnirKnots <= 0){
     battleLog.push(bossBattleEvent(boss,"글레이프니르 해방",boss.difficulty==="crazy"?"공격력이 50% 증가하고 신을 삼키는 자를 사용할 수 있습니다.":"공격력과 회피율이 돌아오고 신을 삼키는 자를 사용할 수 있습니다.","phase"));
@@ -2099,7 +2097,7 @@ function handleKrakenCriticalHit(boss,hit,battleLog){
   if(Number(boss._krakenPressureReducedTurn||0)===turn)return;
   boss._krakenPressureReducedTurn=turn;
   boss._krakenPressure=Math.max(0,Number(boss._krakenPressure)-1);
-  battleLog.push("치명타가 심해의 수압을 밀어냈습니다.\n수압 "+boss._krakenPressure+" / 3");
+  battleLog.push(bossBattleEvent(boss,"심해의 수압","치명타로 수압 감소 · "+boss._krakenPressure+" / 3","passive"));
 }
 
 function checkCrazyBossHpPassives(boss,bossHp,battleLog){
@@ -2203,7 +2201,7 @@ function applyPhoenixImmortalityIfNeeded(boss, bossHp, battleLog){
   boss._currentHp=bossHp;
   const reviveBody=(used+1)+"번째 부활 · 체력 "+Math.round(reviveRates[used]*100)+"%로 되살아났습니다.\n"+hpBar(bossHp,boss.hp);
   const apex=boss.difficulty==="crazy"&&used===1;
-  battleLog.push(bossRevivalEvent(boss,apex?"불멸의 재점화":boss.difficulty==="crazy"?"불사조의 대부활":"불사 부활",reviveBody,apex));
+  battleLog.push(bossRevivalEvent(boss,apex?"두 번째 불사":"불사 발동",reviveBody,apex));
   return bossHp;
 }
 

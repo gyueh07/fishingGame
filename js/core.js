@@ -35,7 +35,7 @@ let accountSessionUnsubscribe=null;
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
-const GAME_VERSION = "2026-07-13-fishinglife-live-operations-v25-5-5";
+const GAME_VERSION = "2026-07-13-fishinglife-boss-profile-ui-v25-5-7";
 const USER_WRITE_SCHEMA_VERSION = 250;
 const USER_WRITE_PROTOCOL_VERSION = 4;
 const FISHING_ADMIN_NICKNAME = "admin";
@@ -83,12 +83,15 @@ const MAX_CLOUD_BATTLE_FRAME_CHUNK_COUNT = 80;
 const UPDATE_NOTICE_TITLE = "📢 업데이트 안내";
 const UPDATE_NOTICES = [
   {
-    id:"2026-07-13-fishinglife-battle-aquarium-storm-25-5-5",
+    id:"2026-07-13-fishinglife-battle-aquarium-storm-25-5-7",
     title:"전투 표시와 수족관 능력치 수정",
     lines:[
       "보스 해금 안내는 다음 보스가 실제로 처음 열린 전투에서만 표시됩니다.",
       "다른 선장의 수족관은 관람자의 훈련소가 아니라 수족관 주인의 훈련소 수치를 적용합니다.",
       "휘몰아치는 마음은 체력 비율이 가장 낮은 아군의 단일 대상 피해를 50% 줄이고, 바람 8개에 공격력 250%의 추격 폭풍을 일으킵니다.",
+      "추격 폭풍은 스킬 장면 뒤 피해량과 보스 체력 변화를 별도 결과 화면으로 표시합니다.",
+      "베히모스의 암석 갑옷을 포함한 보스 행동은 일반 문장 대신 기술·피해·상태가 구분된 전투 UI로 표시됩니다.",
+      "프로필 신화 배경과 공격 연출은 전설보다 강한 붉은 일식, 이중 타격과 화면 섬광을 사용합니다.",
       "영원 등급 6종은 폭풍, 빛 굴절, 결빙, 생명광, 화염, 시간 왜곡을 구분한 전용 스킬 연출로 표시됩니다.",
       "짧은 화면에서도 전투 스킬 설명이 아래에서 잘리지 않도록 배치를 조정했습니다."
     ]

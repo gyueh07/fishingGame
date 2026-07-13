@@ -391,6 +391,20 @@
     if(!chips.length&&!notes.length)return "";
     return `<div class="battle-action-summary">${chips.join("")}${notes.length?`<div class="battle-action-notes">${notes.join("")}</div>`:""}</div>`;
   }
+  function replayBossMoveHtml(value,bossName){
+    const name=String(bossName||"").trim();
+    if(!name)return "";
+    const lines=replayDetailText(value).split("\n").map(line=>line.trim()).filter(Boolean);
+    const possessive=name+"의 ",subject=name+"가 ";
+    const leadIndex=lines.findIndex(line=>line.startsWith(possessive)||line.startsWith(subject));
+    if(leadIndex<0)return "";
+    const lead=lines[leadIndex];
+    const title=lead.startsWith(possessive)?lead.slice(possessive.length).trim():"보스 효과";
+    const details=lines.filter((_,index)=>index!==leadIndex);
+    if(lead.startsWith(subject))details.unshift(lead);
+    const summary=replayActionHtml(details.join("\n"));
+    return `<section class="battle-boss-move"><small>보스 행동</small><h3>${safe(title||"보스 효과")}</h3>${summary||'<div class="battle-boss-move-pulse"><i></i><span>효과 적용</span></div>'}</section>`;
+  }
   function replayImpactBadge(value){
     const text=String(value||"");
     if(text.includes("치명타"))return '<span class="battle-result-badge critical">💥 치명타</span>';
@@ -687,7 +701,9 @@
     const actorBanner=attacker?`<div class="battle-attacker-banner ${kind==="ally"?"ally":""} ${allyVariant?`ally-${allyVariant.key}`:""} ${isVoid?"void":""}"><span>${fishIcon(attacker)}</span><div><small>${isVoid?(voidVariant?.label||"공허 스킬"):isAllyAttack?"특성 추가 공격":kind==="ally"?"내 물고기 스킬":"내 공격"}</small><b>${safe(attacker.battleLabel||attacker.name)}</b></div></div>`:["skill","crazy","passive","phase"].includes(kind)?`<div class="battle-attacker-banner boss"><span>${safe(arena.dataset.bossSymbol||"🐲")}</span><div><small>${bossEventLabel}</small><b>${safe(bossName)}</b></div></div>`:bossAttack?`<div class="battle-attacker-banner boss"><span>${safe(arena.dataset.bossSymbol||"🐲")}</span><div><small>보스 공격</small><b>${safe(bossName)}</b></div></div>`:"";
     const detail=frame.skillDetail?`<div class="battle-skill-detail"><small>스킬 효과</small>${replayImpactBadge(frame.skillDetail)}<p>${safe(frame.skillDetail).replace(/\n/g,"<br>")}</p></div>`:"";
     const entityNames=[bossName,...(frame.fish||[]).flatMap(fish=>[fish.battleLabel,fish.displayName,fish.name])];
-    const actionHtml=actorBanner+`<div class="battle-action-text">${replayActionHtml(frame.entry,{actorLabel:attacker?.battleLabel||attacker?.name||"",entityNames})}${detail}</div>`;
+    const bossMove=kind==="normal"&&bossAttack?replayBossMoveHtml(frame.entry,bossName):"";
+    const actionBody=bossMove||replayActionHtml(frame.entry,{actorLabel:attacker?.battleLabel||attacker?.name||"",entityNames});
+    const actionHtml=actorBanner+`<div class="battle-action-text">${actionBody}${detail}</div>`;
     if(actionHtml!==state.lastActionHtml){action.innerHTML=actionHtml;state.lastActionHtml=actionHtml;}
   }
 
@@ -851,7 +867,7 @@
     if(token!==state.battleReplayToken||$("#modalOverlay")?.style.display==="none")return false;
     showBossCinematic(arena,profile,"·","wake");arena.classList.remove("revival-false-end");arena.classList.add("revival-ember-wake");bossCard?.classList.add("revival-fallen");
     action.className="battle-action-card is-revival-awakening";
-    action.innerHTML='<section class="battle-revival-story"><small>재 속의 불씨</small><strong>불꽃이 다시 피어난다</strong></section>';
+    action.innerHTML='<section class="battle-revival-story"><small>불사 발동</small><strong>피닉스가 다시 일어선다</strong></section>';
     playGameSound("timing","GOOD");
     await holdLocalBossCinematic("wake");
     await sleep(bossCinematicDelay(1100,speed,480));
@@ -1140,7 +1156,7 @@
     const demoFishHp=fish.map(item=>item.hp),frame=(entry,turn,bossHp,damageIndex=-1,summons=[])=>{if(damageIndex>=0)demoFishHp[damageIndex]=Math.floor(fish[damageIndex].hp*.55);return {entry,turn,bossHp,bossMaxHp:boss.maxHp,summons,fish:fish.map((item,index)=>({...item,battleLabel:`[${item.grade}] ${item.name}`,hp:demoFishHp[index]}))};};
     const solarEvent=frame('<span class="battle-event battle-event--ally battle-event--ally-attack battle-event--ally-solar"><span class="battle-event__eyebrow">SOLAR BURST</span><b>바다를 삼킨 태양 · 태양 폭발</b><span class="battle-event__body">태양 주기가 완성되어 전장을 밝힙니다.</span></span>',3,34000000000,-1,showSummons?demoSummons:[]),solarResult=frame("상태 : 정오\n[공허] 바다를 삼킨 태양 공격\n치명타!\n16,000,000,000 피해\n아자토스\nHP 18,000,000,000 / 70,000,000,000",3,18000000000,-1,showSummons?demoSummons:[]);
     const stormEvent=frame('<span class="battle-event battle-event--ally battle-event--ally-storm"><span class="battle-event__eyebrow">STORM RESONANCE</span><b>휘몰아치는 마음 · 추격 폭풍</b><span class="battle-event__body">바람 8 / 8 · 파티의 공격이 거대한 폭풍으로 이어집니다.</span></span>',4,26000000000,-1,showSummons?demoSummons:[]),stormResult=frame("[영원] 휘몰아치는 마음\n추격 폭풍\n7,250,000,000 피해\n아자토스\nHP 18,750,000,000 / 70,000,000,000",4,18750000000,-1,showSummons?demoSummons:[]);
-    const phoenixApexEvent=frame('<span class="battle-event battle-event--phase battle-event--revival battle-event--revival-phoenix battle-event--crazy-passive battle-event--crazy-passive-phoenix-apex"><span class="battle-event__eyebrow">크레이지 부활</span><b><span style="color:#ff6f47">피닉스</span> · 불멸의 재점화</b><span class="battle-event__body">2번째 부활 · 체력 50%로 되살아났습니다.</span></span>',7,Math.floor(boss.maxHp*.5));
+    const phoenixApexEvent=frame('<span class="battle-event battle-event--phase battle-event--revival battle-event--revival-phoenix battle-event--crazy-passive battle-event--crazy-passive-phoenix-apex"><span class="battle-event__eyebrow">크레이지 부활</span><b><span style="color:#ff6f47">피닉스</span> · 두 번째 불사</b><span class="battle-event__body">2번째 부활 · 체력 50%로 되살아났습니다.</span></span>',7,Math.floor(boss.maxHp*.5));
     const transformationSpecs={hydra:["아홉 머리 재생","잘린 목에서 새로운 머리가 솟아납니다."],leviathan:["심해 최하층","전장이 바다 밑바닥의 수압에 잠깁니다."],behemoth:["움직이는 대륙","거대한 육체가 지면을 밀어 올립니다."],erebos:["원초의 장막","모든 빛이 사라지고 장막이 완성됩니다."],azathoth:["최종 각성","감긴 눈이 열리며 전투 규칙이 뒤틀립니다."]};
     const transformationSpec=transformationSpecs[boss.id]||["보스 각성","전장의 기운이 완전히 달라집니다."],transformationClass=boss.id==="azathoth"?"battle-event--phase":"battle-event--phase battle-event--crazy-passive";
     const transformationEvent=frame(`<span class="battle-event ${transformationClass}"><span class="battle-event__eyebrow">${boss.id==="azathoth"?"페이즈 전환":"크레이지 패시브"}</span><b>${safe(boss.name)} · ${safe(transformationSpec[0])}</b><span class="battle-event__body">${safe(transformationSpec[1])}</span></span>`,4,35000000000);
@@ -1184,9 +1200,9 @@
 
   function applyLocalCosmeticDemo(){
     if(location.hostname!=="127.0.0.1"||!new URLSearchParams(location.search).has("cosmeticDemo"))return;
-    const apex=new URLSearchParams(location.search).get("cosmeticDemo")==="apex",targets=apex?bossList.map(boss=>boss.id):["kraken","hydra"];
+    const requested=new URLSearchParams(location.search).get("cosmeticDemo")||"hero",grade=Object.keys(cosmeticGrades).find(name=>cosmeticGrades[name].slug===requested)||"영웅",apex=requested==="apex",targets=apex?bossList.map(boss=>boss.id):bossList.filter(boss=>boss.grade===grade).map(boss=>boss.id);
     targets.forEach(id=>{bossProgress.defeated[id]=true;bossProgress.difficultyClears[id]={normal:true,hard:true,crazy:true};});
-    profileCosmetics=apex?{border:"azathoth",aura:"azathoth",background:"공허",attackEffect:"공허"}:{border:"kraken",aura:"hydra",background:"영웅",attackEffect:"영웅"};
+    profileCosmetics=apex?{border:"azathoth",aura:"azathoth",background:"공허",attackEffect:"공허"}:{border:targets[0]||"",aura:targets[1]||targets[0]||"",background:grade,attackEffect:grade};
   }
 
   function applyLocalFusionDemo(){

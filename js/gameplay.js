@@ -1579,7 +1579,7 @@ function simulatePvpBattle({leftName,leftTitle,leftProfile,leftTeam,rightName,ri
       const c=f.combat,cap=Math.floor(c.maxHp*0.3);
       if(c.hp>0&&c.hp<cap&&Math.random()<0.25){
         const heal=Math.min(Math.floor(c.hp*0.3),cap-c.hp);
-        if(heal>0){c.hp=Math.min(cap,c.hp+heal);logParts.push(traitUseByFish(f, "남은 불씨가 상처를 봉합했습니다.\n체력 "+heal.toLocaleString()+" 회복")+"\n\n");}
+        if(heal>0){c.hp=Math.min(cap,c.hp+heal);logParts.push(traitUseByFish(f, "화염의 심박으로 체력을 회복했습니다.\n체력 "+heal.toLocaleString()+" 회복")+"\n\n");}
       }
     }
   }
