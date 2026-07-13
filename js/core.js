@@ -35,7 +35,7 @@ let accountSessionUnsubscribe=null;
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
-const GAME_VERSION = "2026-07-13-fishinglife-live-operations-v25-5-1";
+const GAME_VERSION = "2026-07-13-fishinglife-live-operations-v25-5-4";
 const USER_WRITE_SCHEMA_VERSION = 250;
 const USER_WRITE_PROTOCOL_VERSION = 4;
 const FISHING_ADMIN_NICKNAME = "admin";
@@ -746,7 +746,7 @@ function normalizeGradeBalanceConfig(value){
 
 function normalizeStarBalanceConfig(value){
   const source=Array.isArray(value)?value:[];
-  return DEFAULT_STAR_BALANCE.map((defaults,tier)=>{
+  const rows=DEFAULT_STAR_BALANCE.map((defaults,tier)=>{
     const row=source.find(item=>Number(item?.tier)===tier)||source[tier]||{};
     const range=(minKey,maxKey,low,high)=>{
       const min=liveOpsNumber(row[minKey],low,high,defaults[minKey]);
@@ -756,6 +756,19 @@ function normalizeStarBalanceConfig(value){
     const attack=range("attackMin","attackMax",.05,100),hp=range("hpMin","hpMax",.05,100),dodge=range("dodgeMin","dodgeMax",0,100),critRate=range("critRateMin","critRateMax",0,100),critDamage=range("critDamageMin","critDamageMax",100,2000);
     return {tier,chance:liveOpsNumber(row.chance,0,100,defaults.chance),attackMin:attack[0],attackMax:attack[1],hpMin:hp[0],hpMax:hp[1],dodgeMin:dodge[0],dodgeMax:dodge[1],critRateMin:critRate[0],critRateMax:critRate[1],critDamageMin:critDamage[0],critDamageMax:critDamage[1]};
   });
+  return enforceStarTierOrder(rows);
+}
+
+function enforceStarTierOrder(rows){
+  const ordered=rows.map(row=>({...row}));
+  ["attack","hp","dodge","critRate","critDamage"].forEach(stat=>{
+    for(let tier=1;tier<ordered.length;tier++){
+      const minimumKey=stat+"Min",maximumKey=stat+"Max",previousMaximum=Number(ordered[tier-1][maximumKey])||0;
+      ordered[tier][minimumKey]=Math.max(Number(ordered[tier][minimumKey])||0,previousMaximum);
+      ordered[tier][maximumKey]=Math.max(Number(ordered[tier][maximumKey])||0,ordered[tier][minimumKey]);
+    }
+  });
+  return ordered;
 }
 
 function normalizeTrainingBalanceConfig(value){
@@ -3358,9 +3371,11 @@ function showUnseenOperationsNotice(items=getFishingLifeOperationsNotices()){
   const seen=getOperationsNoticeSeenIds(),unseen=items.filter(item=>item.id&&!seen.has(item.id)&&!shownOperationsNoticeIds.has(item.id));
   if(!unseen.length){if(typeof globalThis.updateFishingLifeOperationsNoticeUi==="function")globalThis.updateFishingLifeOperationsNoticeUi();return;}
   unseen.forEach(item=>shownOperationsNoticeIds.add(item.id));
-  const latest=unseen.sort((a,b)=>b.createdAtMillis-a.createdAtMillis)[0],extra=unseen.length-1;
+  const personal=unseen.filter(item=>item.type==="personal");
+  if(!personal.length){if(typeof globalThis.updateFishingLifeOperationsNoticeUi==="function")globalThis.updateFishingLifeOperationsNoticeUi();return;}
+  const latest=personal.sort((a,b)=>b.createdAtMillis-a.createdAtMillis)[0],extra=personal.length-1;
   const detail=[latest.body,extra>0?`확인하지 않은 공지가 ${extra.toLocaleString()}개 더 있습니다.`:""].filter(Boolean).join(" · ");
-  if(typeof globalThis.showFishingLifeNotice==="function")globalThis.showFishingLifeNotice({icon:latest.type==="personal"?"🎁":"📢",eyebrow:latest.type==="personal"?"관리자 지급":"운영 공지",title:latest.title,detail,kind:"info",duration:6500});
+  if(typeof globalThis.showFishingLifeNotice==="function")globalThis.showFishingLifeNotice({icon:"🎁",eyebrow:"관리자 지급",title:latest.title,detail,kind:"info",duration:6500});
   if(latest.category==="fish"&&latest.fishIds?.length&&typeof globalThis.showFishingLifeReceivedFishNotice==="function")setTimeout(()=>globalThis.showFishingLifeReceivedFishNotice(latest.fishIds),180);
   if(typeof globalThis.updateFishingLifeOperationsNoticeUi==="function")globalThis.updateFishingLifeOperationsNoticeUi();
 }
@@ -4420,6 +4435,7 @@ function upgradeTraining(which){
   });
 
   saveGame();
+  if(typeof globalThis.requestFishingLifeRender==="function")globalThis.requestFishingLifeRender(true);
 
   let effect = "";
   if(key === "attack") effect = "공격력 +" + getTrainingAttackBonus() + "%";

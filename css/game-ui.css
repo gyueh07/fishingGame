@@ -601,6 +601,7 @@ body[data-profile-background] .ambient-bg { transition:background .55s ease; }
 
 /* v25.1.2 global rare-catch alert */
 .world-catch-feed{position:fixed;z-index:140;right:18px;bottom:24px;width:min(360px,calc(100% - 36px));gap:8px}.world-catch-card{grid-template-columns:48px minmax(0,1fr);gap:11px;padding:12px 14px;background:linear-gradient(135deg,var(--grade-bg,rgba(5,35,52,.96)),rgba(2,18,30,.98));box-shadow:0 14px 36px rgba(0,10,20,.42),0 0 22px var(--grade-glow,rgba(78,228,206,.17))}.world-catch-card>span{width:46px;height:46px;font-size:27px}.world-catch-card small{font-size:9px;letter-spacing:0}.world-catch-card b{margin-top:3px;font-size:13px}.world-catch-card p{margin-top:3px;font-size:11px}
+.world-catch-card{grid-template-columns:minmax(0,1fr)}.world-catch-inline-icon{display:inline-block;margin:0 3px;color:inherit;font-size:14px;font-style:normal;vertical-align:-1px}
 @media(max-width:850px){.world-catch-feed{left:14px;right:14px;bottom:82px;width:auto}}
 
 /* v25.2 compact battle HUD and visible status effects */

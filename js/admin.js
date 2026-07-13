@@ -87,8 +87,36 @@
     const minimum=Number(range[0])||0,maximum=Math.max(minimum,Number(range[1])||minimum);
     sizeInput.disabled=false;sizeInput.min=String(minimum);sizeInput.max=String(maximum);sizeInput.placeholder=`${minimum} ~ ${maximum}`;
     sizeInput.value=String(Math.round(((minimum+maximum)/2)*10)/10);
-    const gradeBalance=adminBalanceConfig.gradeBalance?.[selected.grade]||DEFAULT_GRADE_BALANCE[selected.grade];
-    if(gradeBalance){$("#grantFishAttack").value=Math.max(1,Math.round((Number(gradeBalance.attackMin)+Number(gradeBalance.attackMax))/2));$("#grantFishHp").value=Math.max(1,Math.round((Number(gradeBalance.hpMin)+Number(gradeBalance.hpMax))/2));}
+  }
+
+  function randomInt(min,max){return Math.floor(min+Math.random()*(max-min+1));}
+
+  function fishSizeRatio(catalogFish,size){
+    const range=catalogFish?.sizeRange;
+    if(size===null||!Array.isArray(range)||Number(range[1])<=Number(range[0]))return .5;
+    return clampNumber((Number(size)-Number(range[0]))/(Number(range[1])-Number(range[0])),0,1,.5);
+  }
+
+  function rollStarRange(min,max,tier,ratio,stat){
+    const balance=adminBalanceConfig.starBalance?.[tier]||DEFAULT_STAR_BALANCE[tier]||DEFAULT_STAR_BALANCE[0];
+    const minMultiplier=Number(balance[stat+"Min"]||1),maxMultiplier=Number(balance[stat+"Max"]||1);
+    const scaledMin=Math.max(1,Math.floor((tier===0?min:max)*minMultiplier)+(tier===0?0:1));
+    const scaledMax=Math.max(scaledMin,Math.floor(max*maxMultiplier));
+    if(tier!==0)return randomInt(scaledMin,scaledMax);
+    const roll=clampNumber((Math.random()+Math.random()+ratio)/3,0,1,.5);
+    return Math.floor(scaledMin+(scaledMax-scaledMin)*roll);
+  }
+
+  function makeAutomaticCombatStats(catalogFish,size,stars){
+    if(catalogFish.grade==="쓰레기")return {attack:0,hp:0,maxHp:0,dodge:0,critRate:0,critDamage:0,_baseAttack:0,_baseMaxHp:0,_baseCritDamage:0,status:"전투 불가",combatVersion:16,hpBalanceVersion:1,voidStatBalanceVersion:1,stars:{attack:0,hp:0,dodge:0,critRate:0,critDamage:0}};
+    const gradeBalance=adminBalanceConfig.gradeBalance?.[catalogFish.grade]||DEFAULT_GRADE_BALANCE[catalogFish.grade],defaults=DEFAULT_GRADE_BALANCE[catalogFish.grade];
+    const attackMin=Number(gradeBalance.attackMin)||1,attackMax=Math.max(attackMin,Number(gradeBalance.attackMax)||attackMin),hpMin=Number(gradeBalance.hpMin)||1,hpMax=Math.max(hpMin,Number(gradeBalance.hpMax)||hpMin),ratio=fishSizeRatio(catalogFish,size);
+    const attack=rollStarRange(attackMin,attackMax,stars.attack,ratio,"attack"),maxHp=rollStarRange(hpMin,hpMax,stars.hp,.5,"hp");
+    const dodgeBalance=adminBalanceConfig.starBalance?.[stars.dodge]||DEFAULT_STAR_BALANCE[stars.dodge],dodge=Math.round((Number(dodgeBalance.dodgeMin)+(Number(dodgeBalance.dodgeMax)-Number(dodgeBalance.dodgeMin))*clampNumber((Math.random()+Math.random()+ratio)/3,0,1,.5))*10)/10;
+    const critRateBalance=adminBalanceConfig.starBalance?.[stars.critRate]||DEFAULT_STAR_BALANCE[stars.critRate],critRate=Math.round((Number(critRateBalance.critRateMin)+Math.random()*(Number(critRateBalance.critRateMax)-Number(critRateBalance.critRateMin)))*10)/10;
+    const critDamageBalance=adminBalanceConfig.starBalance?.[stars.critDamage]||DEFAULT_STAR_BALANCE[stars.critDamage],critDamage=randomInt(Math.floor(Number(critDamageBalance.critDamageMin)),Math.floor(Number(critDamageBalance.critDamageMax)));
+    const attackScale=(Number(gradeBalance.attackMin)+Number(gradeBalance.attackMax))/Math.max(1,Number(defaults.attackMin)+Number(defaults.attackMax)),hpScale=(Number(gradeBalance.hpMin)+Number(gradeBalance.hpMax))/Math.max(1,Number(defaults.hpMin)+Number(defaults.hpMax));
+    return {attack,hp:maxHp,maxHp,dodge,critRate,critDamage,_baseAttack:attack,_baseMaxHp:maxHp,_baseCritDamage:critDamage,status:"정상",combatVersion:16,hpBalanceVersion:1,voidStatBalanceVersion:1,stars,_liveOpsRawBaseAttack:attack/Math.max(.0001,attackScale),_liveOpsRawBaseMaxHp:maxHp/Math.max(.0001,hpScale),_liveOpsAttackMultiplier:attackScale,_liveOpsHpMultiplier:hpScale};
   }
 
   function formatMoney(value){
@@ -156,7 +184,7 @@
     const gradeSource=data.gradeBalance&&typeof data.gradeBalance==="object"?data.gradeBalance:{};
     const gradeBalance=Object.fromEntries(GRADE_NAMES.map(name=>{const row=gradeSource[name]||{},defaults=DEFAULT_GRADE_BALANCE[name],pair=(minKey,maxKey,defaultMin,defaultMax,legacy=1)=>{const low=clampNumber(row[minKey],0,Number.MAX_SAFE_INTEGER,defaultMin*legacy),high=clampNumber(row[maxKey],0,Number.MAX_SAFE_INTEGER,defaultMax*legacy);return [Math.min(low,high),Math.max(low,high)];},attack=pair("attackMin","attackMax",defaults.attackMin,defaults.attackMax,clampNumber(row.attackMultiplier,.05,20,1)),hp=pair("hpMin","hpMax",defaults.hpMin,defaults.hpMax,clampNumber(row.hpMultiplier,.05,20,1));return [name,{chance:clampNumber(row.chance,0,100,defaults.chance*clampNumber(row.chanceMultiplier,0,20,1)),basePrice:Math.round(clampNumber(row.basePrice,0,Number.MAX_SAFE_INTEGER,defaults.basePrice*clampNumber(row.priceMultiplier,.05,20,1))),attackMin:Math.round(attack[0]),attackMax:Math.round(attack[1]),hpMin:Math.round(hp[0]),hpMax:Math.round(hp[1])}];}));
     const starSource=Array.isArray(data.starBalance)?data.starBalance:[];
-    const starBalance=DEFAULT_STAR_BALANCE.map((defaults,tier)=>{const row=starSource.find(item=>Number(item?.tier)===tier)||starSource[tier]||{};const pair=(minKey,maxKey,min,max)=>{const low=clampNumber(row[minKey],min,max,defaults[minKey]),high=clampNumber(row[maxKey],min,max,defaults[maxKey]);return [Math.min(low,high),Math.max(low,high)];},attack=pair("attackMin","attackMax",.05,100),hp=pair("hpMin","hpMax",.05,100),dodge=pair("dodgeMin","dodgeMax",0,100),critRate=pair("critRateMin","critRateMax",0,100),critDamage=pair("critDamageMin","critDamageMax",100,2000);return {tier,chance:clampNumber(row.chance,0,100,defaults.chance),attackMin:attack[0],attackMax:attack[1],hpMin:hp[0],hpMax:hp[1],dodgeMin:dodge[0],dodgeMax:dodge[1],critRateMin:critRate[0],critRateMax:critRate[1],critDamageMin:critDamage[0],critDamageMax:critDamage[1]};});
+    const starBalance=enforceStarTierOrder(DEFAULT_STAR_BALANCE.map((defaults,tier)=>{const row=starSource.find(item=>Number(item?.tier)===tier)||starSource[tier]||{};const pair=(minKey,maxKey,min,max)=>{const low=clampNumber(row[minKey],min,max,defaults[minKey]),high=clampNumber(row[maxKey],min,max,defaults[maxKey]);return [Math.min(low,high),Math.max(low,high)];},attack=pair("attackMin","attackMax",.05,100),hp=pair("hpMin","hpMax",.05,100),dodge=pair("dodgeMin","dodgeMax",0,100),critRate=pair("critRateMin","critRateMax",0,100),critDamage=pair("critDamageMin","critDamageMax",100,2000);return {tier,chance:clampNumber(row.chance,0,100,defaults.chance),attackMin:attack[0],attackMax:attack[1],hpMin:hp[0],hpMax:hp[1],dodgeMin:dodge[0],dodgeMax:dodge[1],critRateMin:critRate[0],critRateMax:critRate[1],critDamageMin:critDamage[0],critDamageMax:critDamage[1]};}));
     const trainingSource=data.trainingBalance&&typeof data.trainingBalance==="object"?data.trainingBalance:{};
     return {
       bossHpMultiplier:clampNumber(data.bossHpMultiplier,.25,5,1),
@@ -173,6 +201,18 @@
     };
   }
 
+  function enforceStarTierOrder(rows){
+    const ordered=rows.map(row=>({...row}));
+    ["attack","hp","dodge","critRate","critDamage"].forEach(stat=>{
+      for(let tier=1;tier<ordered.length;tier++){
+        const minimumKey=stat+"Min",maximumKey=stat+"Max",previousMaximum=Number(ordered[tier-1][maximumKey])||0;
+        ordered[tier][minimumKey]=Math.max(Number(ordered[tier][minimumKey])||0,previousMaximum);
+        ordered[tier][maximumKey]=Math.max(Number(ordered[tier][maximumKey])||0,ordered[tier][minimumKey]);
+      }
+    });
+    return ordered;
+  }
+
   function applyBalanceForm(balance){
     const normalized=normalizeBalance(balance);
     adminBalanceConfig=normalized;
@@ -185,7 +225,7 @@
     $("#metricBossHp").textContent="×"+normalized.bossHpMultiplier.toFixed(2);
     $("#metricBossAttack").textContent="×"+normalized.bossAttackMultiplier.toFixed(2);
     $("#gradeBalanceEditor").innerHTML=GRADE_NAMES.map(name=>{const row=normalized.gradeBalance[name];return `<div class="balance-table-row" data-grade-row="${escapeHtml(name)}"><strong>${escapeHtml(name)}</strong><label>기본 확률값<input data-grade-field="chance" type="number" min="0" max="100" step="0.01" value="${row.chance}"></label><label>기준 판매가<input data-grade-field="basePrice" type="number" min="0" step="1" value="${row.basePrice}"></label>${gradeRangeInput("공격력",row,"attack")}${gradeRangeInput("체력",row,"hp")}</div>`;}).join("");
-    $("#starBalanceEditor").innerHTML=normalized.starBalance.map(row=>`<div class="balance-table-row" data-star-row="${row.tier}"><strong>${row.tier?`${row.tier}성`:"무별"}${row.tier===4?' <small>기본 0%</small>':""}</strong><label>확률(%)<input data-star-field="chance" type="number" min="0" max="100" step="0.1" value="${row.chance}"></label>${starRangeInput("공격 수치",row,"attack")}${starRangeInput("체력 수치",row,"hp")}${starRangeInput("회피율",row,"dodge")}${starRangeInput("치명타 확률",row,"critRate")}${starRangeInput("치명타 피해",row,"critDamage")}</div>`).join("");
+    $("#starBalanceEditor").innerHTML=normalized.starBalance.map(row=>`<div class="balance-table-row" data-star-row="${row.tier}"><strong>${row.tier?`${row.tier}성`:"무별"}${row.tier===4?' <small>기본 0%</small>':""}</strong><label>확률(%)<input data-star-field="chance" type="number" min="0" max="100" step="0.1" value="${row.chance}"></label>${starRangeInput("공격 범위",row,"attack")}${starRangeInput("체력 범위",row,"hp")}${starRangeInput("회피율",row,"dodge")}${starRangeInput("치명타 확률",row,"critRate")}${starRangeInput("치명타 피해",row,"critDamage")}</div>`).join("");
     const training=normalized.trainingBalance;
     $("#trainingBalanceEditor").innerHTML=`<label>강화 비용 배율<input data-training-field="costMultiplier" type="number" min="0.05" max="20" step="0.05" value="${training.costMultiplier}"></label><label>공격 훈련 효과<input data-training-field="attackEffectMultiplier" type="number" min="0" max="20" step="0.05" value="${training.attackEffectMultiplier}"></label><label>체력 훈련 효과<input data-training-field="hpEffectMultiplier" type="number" min="0" max="20" step="0.05" value="${training.hpEffectMultiplier}"></label><label>치명타 훈련 효과<input data-training-field="critDamageEffectMultiplier" type="number" min="0" max="20" step="0.05" value="${training.critDamageEffectMultiplier}"></label>`;
     renderAdminNotices(normalized.announcements);
@@ -405,12 +445,10 @@
     const now=Date.now(),name=String(values.name||"").trim().slice(0,40),catalogFish=existingFishByName.get(name);
     if(!catalogFish)throw new Error("INVALID_FISH");
     const grade=catalogFish.grade;
-    const attack=Math.max(1,Math.floor(Number(values.attack)||0)),maxHp=Math.max(1,Math.floor(Number(values.hp)||0));
-    if(!Number.isSafeInteger(attack)||!Number.isSafeInteger(maxHp))throw new Error("INVALID_FISH");
     const star=value=>Math.max(0,Math.min(4,Math.floor(Number(value)||0))),stars={attack:star(values.attackStar),hp:star(values.hpStar),dodge:star(values.dodgeStar),critRate:star(values.critRateStar),critDamage:star(values.critDamageStar)};
-    const dodge=clampNumber(values.dodge,0,100,0),critRate=clampNumber(values.critRate,0,100,0),critDamage=clampNumber(values.critDamage,100,2000,150),gradeBalance=adminBalanceConfig.gradeBalance?.[grade]||DEFAULT_GRADE_BALANCE[grade],defaults=DEFAULT_GRADE_BALANCE[grade],sizeText=String(values.size??"").trim(),size=sizeText!==""&&Number(sizeText)>=0?Number(Number(sizeText).toFixed(1)):null,basePrice=Math.max(0,Number(gradeBalance.basePrice)||0),gradePower=Math.max(0,GRADE_NAMES.indexOf(grade)),price=grade==="쓰레기"?Math.max(1,Math.floor((Math.floor(Math.random()*30)+1)*Math.max(1,basePrice))):Math.max(1,Math.floor(basePrice+(size===null?7777:size)*gradePower*1000+Math.random()*basePrice*.4)),attackScale=(Number(gradeBalance.attackMin)+Number(gradeBalance.attackMax))/Math.max(1,defaults.attackMin+defaults.attackMax),hpScale=(Number(gradeBalance.hpMin)+Number(gradeBalance.hpMax))/Math.max(1,defaults.hpMin+defaults.hpMax);
+    const gradeBalance=adminBalanceConfig.gradeBalance?.[grade]||DEFAULT_GRADE_BALANCE[grade],sizeText=String(values.size??"").trim(),size=sizeText!==""&&Number(sizeText)>=0?Number(Number(sizeText).toFixed(1)):null,basePrice=Math.max(0,Number(gradeBalance.basePrice)||0),gradePower=Math.max(0,GRADE_NAMES.indexOf(grade)),price=grade==="쓰레기"?Math.max(1,Math.floor((Math.floor(Math.random()*30)+1)*Math.max(1,basePrice))):Math.max(1,Math.floor(basePrice+(size===null?7777:size)*gradePower*1000+Math.random()*basePrice*.4)),combat=makeAutomaticCombatStats(catalogFish,size,stars);
     const id=`admin_${now.toString(36)}_${index.toString(36)}_${Math.random().toString(36).slice(2,10)}`,order=now*1000+index+Math.floor(Math.random()*100);
-    return {id,name,grade,size,price,locked:false,isNewCatch:false,time:`${new Date(now).toLocaleString("ko-KR")} · 관리자 지급`,adminGranted:true,adminGrantedAtMillis:now,_bucketStorageOrder:order,combat:{attack,hp:maxHp,maxHp,dodge,critRate,critDamage,_baseAttack:attack,_baseMaxHp:maxHp,_baseCritDamage:critDamage,status:"정상",combatVersion:16,hpBalanceVersion:1,voidStatBalanceVersion:1,stars,_liveOpsRawBaseAttack:attack/Math.max(.0001,attackScale),_liveOpsRawBaseMaxHp:maxHp/Math.max(.0001,hpScale),_liveOpsAttackMultiplier:attackScale,_liveOpsHpMultiplier:hpScale}};
+    return {id,name,grade,size,price,locked:false,isNewCatch:false,time:`${new Date(now).toLocaleString("ko-KR")} · 관리자 지급`,adminGranted:true,adminGrantedAtMillis:now,_bucketStorageOrder:order,combat};
   }
 
   async function grantFish(values,reason){
@@ -553,7 +591,7 @@
   $("#moneyGrantForm").addEventListener("submit",async event=>{event.preventDefault();const button=event.submitter;setButtonBusy(button,true,"지급 중...");try{await grantMoney($("#grantAmount").value,$("#grantReason").value);$("#grantAmount").value="";setStatus("#userActionStatus","골드를 지급하고 운영 기록에 남겼습니다.","success");showToast("골드 지급 완료");}catch(error){console.error(error);setStatus("#userActionStatus",errorMessage(error),"error");}finally{setButtonBusy(button,false);}});
   $("#growthAdjustForm").addEventListener("submit",async event=>{event.preventDefault();const button=event.submitter;setButtonBusy(button,true,"저장 중...");try{await adjustGrowth({rod:$("#adjustRod").value,attack:$("#adjustAttack").value,hp:$("#adjustHp").value,critDamage:$("#adjustCrit").value},$("#growthReason").value);setStatus("#userActionStatus","성장 수치를 저장하고 운영 기록에 남겼습니다.","success");showToast("성장 수치 저장 완료");}catch(error){console.error(error);setStatus("#userActionStatus",errorMessage(error),"error");}finally{setButtonBusy(button,false);}});
   $("#grantFishSelect").addEventListener("change",syncFishGrantSelection);
-  $("#fishGrantForm").addEventListener("submit",async event=>{event.preventDefault();const button=event.submitter;setButtonBusy(button,true,"지급 중...");try{await grantFish({name:$("#grantFishSelect").value,size:$("#grantFishSize").value,quantity:$("#grantFishQuantity").value,attack:$("#grantFishAttack").value,hp:$("#grantFishHp").value,dodge:$("#grantFishDodge").value,critRate:$("#grantFishCritRate").value,critDamage:$("#grantFishCritDamage").value,attackStar:$("#grantFishAttackStar").value,hpStar:$("#grantFishHpStar").value,dodgeStar:$("#grantFishDodgeStar").value,critRateStar:$("#grantFishCritRateStar").value,critDamageStar:$("#grantFishCritDamageStar").value},$("#grantFishReason").value);setStatus("#userActionStatus","물고기를 지급했습니다. 접속 중인 유저에게 바로 표시됩니다.","success");showToast("물고기 지급 완료");}catch(error){console.error(error);setStatus("#userActionStatus",errorMessage(error),"error");}finally{setButtonBusy(button,false);}});
+  $("#fishGrantForm").addEventListener("submit",async event=>{event.preventDefault();const button=event.submitter;setButtonBusy(button,true,"지급 중...");try{await grantFish({name:$("#grantFishSelect").value,size:$("#grantFishSize").value,quantity:$("#grantFishQuantity").value,attackStar:$("#grantFishAttackStar").value,hpStar:$("#grantFishHpStar").value,dodgeStar:$("#grantFishDodgeStar").value,critRateStar:$("#grantFishCritRateStar").value,critDamageStar:$("#grantFishCritDamageStar").value},$("#grantFishReason").value);setStatus("#userActionStatus","물고기를 지급했습니다. 접속 중인 유저에게 바로 표시됩니다.","success");showToast("물고기 지급 완료");}catch(error){console.error(error);setStatus("#userActionStatus",errorMessage(error),"error");}finally{setButtonBusy(button,false);}});
   $("#balanceForm").addEventListener("submit",async event=>{event.preventDefault();const button=event.submitter;setButtonBusy(button,true,"게시 중...");try{await publishBalance(collectBalanceForm());setStatus("#balanceStatus","밸런스를 게시했습니다. 접속 중인 게임에도 바로 적용됩니다.","success");showToast("밸런스 게시 완료");}catch(error){console.error(error);setStatus("#balanceStatus",errorMessage(error),"error");}finally{setButtonBusy(button,false);}});
   $("#noticeForm").addEventListener("submit",async event=>{event.preventDefault();const button=event.submitter;setButtonBusy(button,true,"게시 중...");try{await publishNotice($("#noticeCategory").value,$("#noticeTitle").value,$("#noticeBody").value);$("#noticeTitle").value="";$("#noticeBody").value="";setStatus("#noticeStatus","공지를 게시했습니다. 접속 중인 유저에게 바로 표시됩니다.","success");showToast("공지 게시 완료");}catch(error){console.error(error);setStatus("#noticeStatus",errorMessage(error),"error");}finally{setButtonBusy(button,false);}});
   $("#prepareAdminAccount").addEventListener("click",async event=>{const button=event.currentTarget;setButtonBusy(button,true,"계정 준비 중...");try{await prepareAdminGameAccount();setStatus("#adminAccountStatus","관리자 게임 계정을 준비했습니다.","success");showToast("관리자 게임 계정 준비 완료");}catch(error){console.error(error);setStatus("#adminAccountStatus",errorMessage(error),"error");}finally{setButtonBusy(button,false);}});

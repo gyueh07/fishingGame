@@ -228,7 +228,8 @@
     const host=$("#worldCatchFeed");if(!host)return;
     const card=document.createElement("article");
     card.className=`world-catch-card ${gradeClass(fishGrade)}`;
-    card.innerHTML=`<span>${fishIcon({name:fishName,grade:fishGrade})}</span><div><small>희귀 물고기 소식 · ${safe(fishGrade)}</small><b>${safe(nickname)} 님</b><p>${safe(fishName)} 낚시 성공!</p></div>`;
+    const icon=fishIcon({name:fishName,grade:fishGrade}),particle=typeof objParticle==="function"?objParticle(fishName):"을(를)";
+    card.innerHTML=`<div><b>${safe(nickname)} 님이</b><p>${safe(fishName)}<i class="world-catch-inline-icon">${safe(icon)}</i>${particle} 낚았습니다!</p></div>`;
     host.appendChild(card);
     while(host.children.length>3)host.firstElementChild?.remove();
     requestAnimationFrame(()=>card.classList.add("show"));
@@ -2070,7 +2071,8 @@
   }
   function syncOwnedFishTrainingBonuses() {
     if(isLoginPostProcessing)return;
-    const key = `${currentUser || "local"}|${bucket.length}|${trainingLevels?.attack || 0}|${trainingLevels?.hp || 0}|${trainingLevels?.critDamage || 0}`;
+    const balance=typeof getLiveTrainingBalance==="function"?getLiveTrainingBalance():{};
+    const key = `${currentUser || "local"}|${bucket.length}|${trainingLevels?.attack || 0}|${trainingLevels?.hp || 0}|${trainingLevels?.critDamage || 0}|${Number(balance.attackEffectMultiplier)||0}|${Number(balance.hpEffectMultiplier)||0}|${Number(balance.critDamageEffectMultiplier)||0}`;
     if (key === state.trainingSyncKey && state.trainingBucketRef === bucket) return;
     state.trainingSyncKey = key;
     state.trainingBucketRef = bucket;
