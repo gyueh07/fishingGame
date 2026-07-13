@@ -35,7 +35,7 @@ let accountSessionUnsubscribe=null;
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
-const GAME_VERSION = "2026-07-13-fishinglife-quota-saver-v25-3-5";
+const GAME_VERSION = "2026-07-13-fishinglife-battle-skip-reward-v25-3-7";
 const USER_WRITE_SCHEMA_VERSION = 250;
 const USER_WRITE_PROTOCOL_VERSION = 4;
 const ACCOUNT_RESET_VERSION = 1;
@@ -54,6 +54,24 @@ const MAX_CLOUD_BATTLE_FRAME_CHUNK_BYTES = 450000;
 const MAX_CLOUD_BATTLE_FRAME_CHUNK_COUNT = 80;
 const UPDATE_NOTICE_TITLE = "📢 업데이트 안내";
 const UPDATE_NOTICES = [
+  {
+    id:"2026-07-13-fishinglife-battle-skip-reward-25-3-7",
+    title:"전투 건너뛰기와 보스 보상 개선",
+    lines:[
+      "전투를 건너뛰어도 마지막 기록의 보스 체력, 파티 체력, 쓰러짐과 상태 효과를 정확히 표시합니다.",
+      "보스를 처치하면 상금과 보유 골드가 바로 갱신되고 다음 보스가 즉시 해금됩니다.",
+      "처치 결과에서 해금된 다음 보스로 곧바로 이동할 수 있습니다."
+    ]
+  },
+  {
+    id:"2026-07-13-fishinglife-battle-replay-fix-25-3-6",
+    title:"전투 기록과 부활 연출 개선",
+    lines:[
+      "백염 뒤 다음 물고기의 공격이 전투 기록에서 빠져 보이던 문제를 수정했습니다.",
+      "잿빛 밤하늘 드래곤은 공격을 받은 뒤 재의 유언을 발동하고, 재 상태에서도 3번 행동합니다.",
+      "보스 변화 컷신을 추가하고, 1대1 마지막 일격에서 패배 파티의 체력이 정확히 0으로 표시되도록 수정했습니다."
+    ]
+  },
   {
     id:"2026-07-13-fishinglife-quota-saver-25-3-5",
     title:"Firebase 무료 사용량 절약",

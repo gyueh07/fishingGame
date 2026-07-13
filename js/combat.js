@@ -1145,7 +1145,11 @@ function isBattleActionableFish(f){
   const c = ensureCombatStats(f);
   const turn=activeTraitBattle?Number(activeTraitBattle.turn||0):0;
   const notBanished=!Number(c.voidBanishedUntil||0)||Number(c.voidBanishedUntil||0)<turn;
-  return c.hp > 0 && c.status !== "기절" && !c.knockedOut && !c.battleDown && !c.devouredByFenrir && notBanished && !(c._traitBattle && c._traitBattle.ashRemnant);
+  return c.hp > 0 && c.status !== "기절" && !c.knockedOut && !c.battleDown && !c.devouredByFenrir && notBanished;
+}
+
+function isBattleTargetableFish(f){
+  return isBattleActionableFish(f)&&!traitState(f).ashRemnant;
 }
 
 function isFishTraitSealed(f){
@@ -1156,11 +1160,11 @@ function isFishTraitSealed(f){
 }
 
 function traitFish(participants, name, aliveOnly=true){
-  return (participants || []).find(f => f && f.name === name && !isFishTraitSealed(f) && (!aliveOnly || isBattleActionableFish(f))) || null;
+  return (participants || []).find(f => f && f.name === name && !isFishTraitSealed(f) && (!aliveOnly || isBattleTargetableFish(f))) || null;
 }
 
 function traitFishes(participants, name, aliveOnly=true){
-  return (participants || []).filter(f => f && f.name === name && !isFishTraitSealed(f) && (!aliveOnly || isBattleActionableFish(f)));
+  return (participants || []).filter(f => f && f.name === name && !isFishTraitSealed(f) && (!aliveOnly || isBattleTargetableFish(f)));
 }
 
 function getBurningHeartStageByCombat(c){
@@ -1440,48 +1444,52 @@ function tryReverseBossSpecial(){ return false; }
 function traitModifyIncoming(f,damage,battleLog,meta={}){
   const ctx=activeTraitBattle,c=ensureCombatStats(f),st=traitState(f);
   let final=Math.max(0,Math.floor(damage)),afterHeal=0;
-  if(!ctx) return {damage:final,afterHeal};
+  const deferredLogs=[];
+  if(!ctx) return {damage:final,afterHeal,deferredLogs};
+  const ownTraitActive=!isFishTraitSealed(f);
   const lifeEndActive=Number(ctx.lifeEndUntil||0)>=Number(ctx.turn||0);
   if(lifeEndActive) meta.blockDeathPrevention=true;
-  if(!meta.ignoreReduction&&f.name==="금빛 보름달 드래곤"&&st.moonPhase===0) final=Math.floor(final*0.8);
-  if(f.name==="불타는 마음"&&getBurningHeartStageByCombat(c)>=3) final=Math.floor(final*1.2);
-  if(!meta.forced&&f.name==="기묘한 기운 🌀"&&final>Number(c.attack||0)&&Math.random()<0.25){
+  if(ownTraitActive&&!meta.ignoreReduction&&f.name==="금빛 보름달 드래곤"&&st.moonPhase===0) final=Math.floor(final*0.8);
+  if(ownTraitActive&&f.name==="불타는 마음"&&getBurningHeartStageByCombat(c)>=3) final=Math.floor(final*1.2);
+  if(ownTraitActive&&!meta.forced&&f.name==="기묘한 기운 🌀"&&final>Number(c.attack||0)&&Math.random()<0.25){
     st.numericStored=Math.max(1,Math.floor(final*1.1/FISH_HP_BALANCE_MULTIPLIER)); final=Math.max(0,Math.floor(c.attack));
-    battleLog.push(traitUseByFish(f, "받을 피해와 공격 수치가 뒤바뀌었습니다. 다음 공격 : "+st.numericStored.toLocaleString()));
+    deferredLogs.push(traitUseByFish(f, "받을 피해와 공격 수치가 뒤바뀌었습니다. 다음 공격 : "+st.numericStored.toLocaleString()));
   }
   const lethal=final>=c.hp;
   const hasLetters=traitFish(ctx.participants,"잃어버린 첫 번째 편지 조각 ✉️")&&traitFish(ctx.participants,"잃어버린 두 번째 편지 조각 ✉️")&&traitFish(ctx.participants,"잃어버린 세 번째 편지 조각 ✉️");
   if(lethal&&!meta.blockDeathPrevention&&hasLetters&&!ctx.rewriteUsed){
     ctx.rewriteUsed=true; final=0;
-    battleLog.push(traitUseByFish(traitFish(ctx.participants,"잃어버린 첫 번째 편지 조각 ✉️"), fishSubjectLabel(f)+" 쓰러지는 사건과 그 피해가 삭제되었습니다.", "다시 쓰인 편지"));
-  }else if(lethal&&!meta.blockDeathPrevention&&f.name==="잿빛 밤하늘 드래곤"&&!st.ashUsed){
+    deferredLogs.push(traitUseByFish(traitFish(ctx.participants,"잃어버린 첫 번째 편지 조각 ✉️"), fishSubjectLabel(f)+" 쓰러지는 사건과 그 피해가 삭제되었습니다.", "다시 쓰인 편지"));
+  }else if(lethal&&ownTraitActive&&!meta.blockDeathPrevention&&f.name==="잿빛 밤하늘 드래곤"&&!st.ashUsed){
     st.ashUsed=true;st.ashTurns=3;st.ashRemnant=true;final=Math.max(0,c.hp-1);
-    battleLog.push(traitUseByFish(f, color(lineFish(f),f.grade)+"\n3턴 동안 재의 잔영으로 남습니다."));
+    deferredLogs.push(traitUseByFish(f, color(lineFish(f),f.grade)+"\n3턴 동안 대상이 되지 않고 공격력 50%로 공격합니다."));
   }else if(lethal&&!meta.blockDeathPrevention&&traitFish(ctx.participants,"빛나는 마음")){
     const required=Math.max(1,Math.floor(c.maxHp*0.3));
     if(ctx.lightPool>=required){
       ctx.lightPool-=required; final=Math.max(0,c.hp-1); afterHeal=required;meta.skipLightGain=true;
-      battleLog.push(traitUseByFish(traitFish(ctx.participants,"빛나는 마음"), color(lineFish(f),f.grade)+"의 죽음을 막고 "+afterHeal.toLocaleString()+" 체력을 회복합니다."));
+      deferredLogs.push(traitUseByFish(traitFish(ctx.participants,"빛나는 마음"), color(lineFish(f),f.grade)+"의 죽음을 막고 "+afterHeal.toLocaleString()+" 체력을 회복합니다."));
     }
   }
-  return {damage:final,afterHeal};
+  return {damage:final,afterHeal,deferredLogs};
 }
 
 function traitAfterDamage(f,beforeHp,actualDamage,battleLog,meta={},afterHeal=0){
-  const ctx=activeTraitBattle;if(!ctx)return;
+  const ctx=activeTraitBattle;if(!ctx)return {appliedAfterHeal:0};
   const c=ensureCombatStats(f),st=traitState(f);
   const healingBlocked=Number(c.healingBlockedUntil||0)>=Number(ctx.turn||0)||Number(ctx.lifeEndUntil||0)>=Number(ctx.turn||0);
-  if(afterHeal>0&&!healingBlocked)afterHeal=healFishForBattle(f,afterHeal,battleLog);
+  let appliedAfterHeal=0;
+  if(afterHeal>0&&!healingBlocked)appliedAfterHeal=healFishForBattle(f,afterHeal,battleLog);
   if(actualDamage>0&&!meta.skipLightGain&&traitFish(ctx.participants,"빛나는 마음"))ctx.lightPool+=Math.floor(actualDamage*0.25);
   if(c.hp<=0&&f.name==="무한한 시간"&&!ctx.timeRewindUsed&&!healingBlocked)ctx.timeRewindPending=true;
   if(meta.fromBoss&&actualDamage>0){
-    if(ctx.lastBossTarget===f.id&&f.name==="흑룡"){
+    if(ctx.lastBossTarget===f.id&&f.name==="흑룡"&&!isFishTraitSealed(f)){
       const reflected=Math.floor(actualDamage*0.3/FISH_HP_BALANCE_MULTIPLIER),beforeBossHp=Math.max(0,Number(ctx.boss._currentHp||0));
       ctx.boss._currentHp=Math.max(0,beforeBossHp-reflected);ctx.traitDamage+=Math.min(beforeBossHp,reflected);st.scaleEmpowered=true;
       battleLog.push(traitUseByFish(f, reflected.toLocaleString()+" 피해를 반사하고 다음 공격이 강화됩니다."));
     }
     ctx.lastBossTarget=f.id;
   }
+  return {appliedAfterHeal};
 }
 
 function traitAttackStats(f,boss,battleLog){
@@ -1633,7 +1641,7 @@ function tryTimeRewindAfterWipe(battleLog){
 
 function finishTraitTurn(boss,battleLog){
   const ctx=activeTraitBattle;if(!ctx)return;
-  if(ctx.participants.some(f=>{const c=ensureCombatStats(f);return isBattleActionableFish(f)&&c.maxHp>0&&c.hp/c.maxHp<=0.15;}))advanceWish("low",battleLog);
+  if(ctx.participants.some(f=>{const c=ensureCombatStats(f);return isBattleTargetableFish(f)&&c.maxHp>0&&c.hp/c.maxHp<=0.15;}))advanceWish("low",battleLog);
   startPeriodTraitIfNeeded(boss,battleLog);
 }
 
@@ -1689,7 +1697,7 @@ function getBossAttackValue(boss, bossAttackMultiplier=1){
 
 function getAliveTargets(targets){
   return targets.filter(f => {
-    return isBattleActionableFish(f);
+    return isBattleTargetableFish(f);
   });
 }
 
@@ -1783,19 +1791,23 @@ function applyDamageToFish(f, damage, battleLog, prefix, meta={}){
   damage=modified.damage;
   c.hp = Math.max(0, c.hp - damage);
   const actualDamage = Math.min(beforeHp, damage);
-  traitAfterDamage(f,beforeHp,actualDamage,battleLog,meta,modified.afterHeal);
 
   let logText = prefix;
   logText += damage.toLocaleString() + " 피해\n\n";
   logText += color(lineFish(f), f.grade) + "\n" + hpBar(c.hp, c.maxHp);
   battleLog.push(logText);
+  (modified.deferredLogs||[]).forEach(entry=>battleLog.push(entry));
+  const afterResult=traitAfterDamage(f,beforeHp,actualDamage,battleLog,meta,modified.afterHeal);
+  if(Number(afterResult?.appliedAfterHeal||0)>0){
+    battleLog.push(color(lineFish(f),f.grade)+"\n"+hpBar(c.hp,c.maxHp));
+  }
 
   if(c.hp <= 0){
     stunFish(f);
     battleLog.push(color(lineFish(f), f.grade) + "\n체력이 0이 되어 회복 중입니다.");
   }
 
-  const peers = Array.isArray(c.rootLinkedPeers) ? c.rootLinkedPeers.filter(x => x !== f && isBattleActionableFish(x)) : [];
+  const peers = Array.isArray(c.rootLinkedPeers) ? c.rootLinkedPeers.filter(x => x !== f && isBattleTargetableFish(x)) : [];
   if(actualDamage > 0 && peers.length > 0 && !c._receivingRootShare){
     const shareEach = Math.floor(actualDamage * 0.5 / peers.length);
     peers.forEach(peer => {
@@ -1868,7 +1880,7 @@ function bossAttackSpecificTarget(boss, f, battleLog, bossAttackMultiplier=1, sk
     if(alternatives.length)f=alternatives[Math.floor(Math.random()*alternatives.length)];
   }
   const c = ensureCombatStats(f);
-  if(!isBattleActionableFish(f)) return false;
+  if(!isBattleTargetableFish(f)) return false;
 
   const dodgeRoll = Math.random() * 100 < getEffectiveFishDodge(f, boss);
   if(dodgeRoll && !ignoreDodge){
@@ -1903,7 +1915,7 @@ function bossAllTargetAttack(boss, targets, battleLog, bossAttackMultiplier=1, s
   const appliesBurn=!!options.burn||(boss.id==="surtr"&&boss.difficulty==="crazy"&&boss._muspelAwakened);
   if(options.isSpecial && !boss._activeSpecialName && !beginBossSpecial(boss,skillName,battleLog)) return false;
   const bossAttack = getBossAttackValue(boss, bossAttackMultiplier);
-  const activeTargets=targets.filter(f=>isBattleActionableFish(f));
+  const activeTargets=targets.filter(f=>isBattleTargetableFish(f));
 
   activeTargets.forEach((f,targetIndex) => {
     const logs=[];
@@ -2162,7 +2174,7 @@ function applyPhoenixImmortalityIfNeeded(boss, bossHp, battleLog){
 function applyBossStartTurnEffects(participants, battleLog){
   participants.forEach(f => {
     const c = ensureCombatStats(f);
-    if(!isBattleActionableFish(f)) return;
+    if(!isBattleTargetableFish(f)) return;
 
     const poison = Math.min(3, Number(c.poisonStacks || 0));
     if(poison <= 0) return;
@@ -2401,7 +2413,7 @@ function runCerberusDeadWeight(boss, participants, battleLog){
 }
 
 function refreshRootLinks(boss, participants, battleLog){
-  let links = (boss._rootLinks || []).filter(f => isBattleActionableFish(f));
+  let links = (boss._rootLinks || []).filter(f => isBattleTargetableFish(f));
   const available = getAliveTargets(participants).filter(f => !links.includes(f));
   if(links.length === 0){
     while(links.length < 2 && available.length){
@@ -3350,7 +3362,7 @@ function runBossBattle(){
           if(target)applyDamageToFish(target,Math.max(1,Math.floor(damage*0.3)),battleLog,"인과의 법칙 붕괴\n"+color(lineFish(f),f.grade)+"의 공격이 아군에게 되돌아왔습니다.\n",{fromBoss:true,isSpecial:true,skillName:"인과의 법칙 붕괴"});
         }
 
-        if(Number(boss._lastReflectedDamage||0)>0 && isBattleActionableFish(f)){
+        if(Number(boss._lastReflectedDamage||0)>0 && isBattleTargetableFish(f)){
           const reflected=Number(boss._lastReflectedDamage||0);
           boss._lastReflectedDamage=0;
           applyDamageToFish(f,reflected,battleLog,bossColor(boss.name,boss)+"의 용왕의 역린\n반사 피해\n",{fromBoss:true,isSpecial:true,skillName:"용왕의 역린"});

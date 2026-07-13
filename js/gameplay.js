@@ -1354,8 +1354,9 @@ function simulatePvpBattle({leftName,leftTitle,leftProfile,leftTeam,rightName,ri
   function teamOf(side){ return state[side].team; }
   function alive(team){ return team.filter(f=>f&&f.combat&&f.combat.hp>0&&!f.combat._pvp?.gone); }
   function livingSide(side){ return alive(teamOf(side)); }
-  function hasFish(side,name){ return livingSide(side).some(f=>f.name===name); }
   function pvpState(f){ if(!f.combat._pvp) f.combat._pvp={originalMaxHp:f.combat.maxHp,originalCritDamage:f.combat.critDamage}; return f.combat._pvp; }
+  function targetableSide(side){ return livingSide(side).filter(f=>!pvpState(f).ashRemnant); }
+  function hasFish(side,name){ return targetableSide(side).some(f=>f.name===name); }
   function pvpPreAttackText(f){
     const stateText=getCyclingTraitStateText(f,pvpState(f));
     return stateText ? stateText + "\n" : "";
@@ -1397,22 +1398,22 @@ function simulatePvpBattle({leftName,leftTitle,leftProfile,leftTeam,rightName,ri
   }
   function getStormEye(side){
     if(!hasFish(side,"휘몰아치는 마음")) return null;
-    return livingSide(side).sort((a,b)=>Number(a.combat.attack||0)-Number(b.combat.attack||0))[0]||null;
+    return targetableSide(side).sort((a,b)=>Number(a.combat.attack||0)-Number(b.combat.attack||0))[0]||null;
   }
   function chooseTarget(defSide){
-    let candidates=livingSide(defSide).filter(f=>!pvpState(f).ashRemnant);
+    let candidates=targetableSide(defSide);
     const eye=getStormEye(defSide);
     if(eye&&candidates.length>1)candidates=candidates.filter(f=>f!==eye);
     if(candidates.length===0)return null;
     return candidates[Math.floor(Math.random()*candidates.length)];
   }
   function registerPvpStatus(side){
-    const dragon=livingSide(side).find(f=>f.name==="청룡"); if(!dragon)return "";
+    const dragon=targetableSide(side).find(f=>f.name==="청룡"); if(!dragon)return "";
     const st=pvpState(dragon); st.raindrops=Number(st.raindrops||0)+1;
     if(st.raindrops<3)return "";
     st.raindrops=0;
     const logs=[];
-    livingSide(side).forEach(f=>{
+    targetableSide(side).forEach(f=>{
       const c=f.combat,heal=Math.floor(c.maxHp*0.1);
       const removed=clearOnePvpStatus(f);
       c.hp=Math.min(c.maxHp,c.hp+heal);
@@ -1432,15 +1433,15 @@ function simulatePvpBattle({leftName,leftTitle,leftProfile,leftTeam,rightName,ri
     const letters=hasFish(defSide,"잃어버린 첫 번째 편지 조각 ✉️")&&hasFish(defSide,"잃어버린 두 번째 편지 조각 ✉️")&&hasFish(defSide,"잃어버린 세 번째 편지 조각 ✉️");
     if(dmg>=c.hp&&letters&&!state[defSide].rewriteUsed){
       state[defSide].rewriteUsed=true; dmg=0;
-      extraLog+=traitUseByFish(livingSide(defSide).find(f=>f.name==="잃어버린 첫 번째 편지 조각 ✉️"), pvpSubjectLabel(target)+" 쓰러지는 사건이 삭제되었습니다.", "다시 쓰인 편지")+"\n\n";
+      extraLog+=traitUseByFish(targetableSide(defSide).find(f=>f.name==="잃어버린 첫 번째 편지 조각 ✉️"), pvpSubjectLabel(target)+" 쓰러지는 사건이 삭제되었습니다.", "다시 쓰인 편지")+"\n\n";
     }else if(dmg>=c.hp&&target.name==="잿빛 밤하늘 드래곤"&&!st.ashUsed){
       st.ashUsed=true; st.ashRemnant=true; st.ashTurns=3; dmg=Math.max(0,c.hp-1);
-      extraLog+=traitUseByFish(target, pvpFishLabel(target)+"\n3턴 동안 재의 잔영으로 남습니다.")+"\n\n";
+      extraLog+=traitUseByFish(target, pvpFishLabel(target)+"\n3턴 동안 대상이 되지 않고 공격력 50%로 공격합니다.")+"\n\n";
     }else if(dmg>=c.hp&&hasFish(defSide,"빛나는 마음")){
       const required=Math.max(1,Math.floor(c.maxHp*0.3));
       if(state[defSide].lightPool>=required){
         state[defSide].lightPool-=required; dmg=Math.max(0,c.hp-1);st.afterHeal=required;st.skipLightGain=true;
-        extraLog+=traitUseByFish(livingSide(defSide).find(f=>f.name==="빛나는 마음"), pvpFishLabel(target)+"의 죽음을 막고 "+required.toLocaleString()+" 회복합니다.")+"\n\n";
+        extraLog+=traitUseByFish(targetableSide(defSide).find(f=>f.name==="빛나는 마음"), pvpFishLabel(target)+"의 죽음을 막고 "+required.toLocaleString()+" 회복합니다.")+"\n\n";
       }
     }
     return {dmg,extraLog};
@@ -1450,14 +1451,19 @@ function simulatePvpBattle({leftName,leftTitle,leftProfile,leftTeam,rightName,ri
     const before=target.combat.hp;
     const inc=pvpIncoming(defSide,target,raw,attacker,atkSide);
     target.combat.hp=Math.max(0,target.combat.hp-inc.dmg);
-    if(pvpState(target).afterHeal){target.combat.hp=Math.min(target.combat.maxHp,target.combat.hp+pvpState(target).afterHeal);delete pvpState(target).afterHeal;}
+    const afterHeal=Math.max(0,Number(pvpState(target).afterHeal||0));
+    delete pvpState(target).afterHeal;
     const actual=Math.min(before,inc.dmg);
     if(actual>0)state[atkSide].damage+=actual;
     if(actual>0&&!pvpState(target).skipLightGain&&hasFish(defSide,"빛나는 마음"))state[defSide].lightPool+=Math.floor(actual*0.25);
     delete pvpState(target).skipLightGain;
     if(target.name==="무한한 시간"&&target.combat.hp<=0&&!state[defSide].timeUsed)state[defSide].timePending=true;
     const reasonLine = reason === "" ? "" : (reason || "피해") + "\n";
-    let s=inc.extraLog+reasonLine+inc.dmg.toLocaleString()+" 피해\n\n"+pvpFishLabel(target)+"\n"+pvpHpBar(target.combat.hp,target.combat.maxHp)+"\n\n";
+    let s=reasonLine+inc.dmg.toLocaleString()+" 피해\n\n"+pvpFishLabel(target)+"\n"+pvpHpBar(target.combat.hp,target.combat.maxHp)+"\n\n"+inc.extraLog;
+    if(afterHeal>0){
+      target.combat.hp=Math.min(target.combat.maxHp,target.combat.hp+afterHeal);
+      s+=pvpFishLabel(target)+"\n"+pvpHpBar(target.combat.hp,target.combat.maxHp)+"\n\n";
+    }
     if(attacker&&actual>0){
       const st=pvpState(target);
       if(st.lastAttackerId===attacker.id&&target.name==="흑룡"){
@@ -1495,12 +1501,12 @@ function simulatePvpBattle({leftName,leftTitle,leftProfile,leftTeam,rightName,ri
     }
     if(f.name==="바다를 삼킨 태양")mult*=[1.1,1.2,1.35,1.5,1.8][Math.max(0,Number(st.sunStage||1)-1)];
     if(Number(st.observedWeakUntil||0)>=turn)mult*=0.75;
-    const eye=getStormEye(side); if(eye&&eye!==f){extra+=Math.floor(Number(eye.combat.attack||0)*0.2);preLog+=traitUseByFish(livingSide(side).find(x=>x.name==="휘몰아치는 마음"), pvpFishLabel(eye)+"가 폭풍의 중심이 되어 이번 공격에 힘을 보탰습니다.")+"\n\n";}
+    const eye=getStormEye(side); if(eye&&eye!==f){extra+=Math.floor(Number(eye.combat.attack||0)*0.2);preLog+=traitUseByFish(targetableSide(side).find(x=>x.name==="휘몰아치는 마음"), pvpFishLabel(eye)+"가 폭풍의 중심이 되어 이번 공격에 힘을 보탰습니다.")+"\n\n";}
     if(st.numericStored){atk=st.numericStored;mult=1;extra=0;replaced=true;delete st.numericStored;}
     return {atk,critDmg,mult,extra,replaced,preLog};
   }
   function recordOutcome(side,outcome,enemySide,logParts){
-    const galaxy=livingSide(side).find(f=>f.name==="호수에 비친 은하수");
+    const galaxy=targetableSide(side).find(f=>f.name==="호수에 비친 은하수");
     if(galaxy){
       const st=pvpState(galaxy); if(!st.constellation)st.constellation={hit:false,crit:false,miss:false}; st.constellation[outcome]=true;
       if(st.constellation.hit&&st.constellation.crit&&st.constellation.miss){
@@ -1510,7 +1516,7 @@ function simulatePvpBattle({leftName,leftTitle,leftProfile,leftTeam,rightName,ri
         if(target)logParts.push(applyPvpDamage(enemySide,target,raw,null,side,traitUseByFish(galaxy, "일반 적중, 치명타, 빗나감을 모두 기록해 별자리가 완성되었습니다.\n살아 있는 아군의 힘이 별빛으로 이어집니다.")));
       }
     }
-    const wish=livingSide(side).find(f=>f.name==="호수에 비친 별");
+    const wish=targetableSide(side).find(f=>f.name==="호수에 비친 별");
     if(wish){
       const st=pvpState(wish);
       if(st.wish===outcome){st.wishCount++;const need=outcome==="crit"?3:outcome==="dodge"?2:1;if(st.wishCount>=need){state[enemySide].sealNext=true;st.wish="";st.wishCount=0;logParts.push(traitUseByFish(wish, "소원 성취\n상대의 다음 공격 1회를 봉인합니다.")+"\n\n");}}
@@ -1526,7 +1532,8 @@ function simulatePvpBattle({leftName,leftTitle,leftProfile,leftTeam,rightName,ri
   }
   function afterHit(side,f,enemySide,target,logParts){
     if(!f||!f.combat||f.combat.hp<=0)return;
-    if(f.name==="푸른 눈의 백염룡"&&target&&target.combat.hp>0){
+    const targetStillTargetable=target&&target.combat.hp>0&&!pvpState(target).ashRemnant;
+    if(f.name==="푸른 눈의 백염룡"&&targetStillTargetable){
       target.combat.whiteFlame=Number(target.combat.whiteFlame||0)+1;
       logParts.push(registerPvpStatus(enemySide));
       if(target.combat.whiteFlame>=3){target.combat.whiteFlame=0;logParts.push(applyPvpDamage(enemySide,target,Number(f.combat.attack||0)*1.5,null,side,traitUseByFish(f, "백염이 3중첩이 되어 폭발했습니다.")));}
@@ -1534,7 +1541,7 @@ function simulatePvpBattle({leftName,leftTitle,leftProfile,leftTeam,rightName,ri
     }
     if(f.name==="해신룡"){
       const st=pvpState(f);
-      if(st.tideHigh&&target&&target.combat.hp>0){logParts.push(applyPvpDamage(enemySide,target,Number(f.combat.attack||0)*0.4,null,side,traitUseByFish(f, "밀물의 파도가 이어져 추가 피해가 들어갑니다.")));st.tideStored=false;}
+      if(st.tideHigh&&targetStillTargetable){logParts.push(applyPvpDamage(enemySide,target,Number(f.combat.attack||0)*0.4,null,side,traitUseByFish(f, "밀물의 파도가 이어져 추가 피해가 들어갑니다.")));st.tideStored=false;}
       else if(!st.tideHigh)st.tideStored=true;
     }
     if(f.name==="바다를 삼킨 태양"&&pvpState(f).sunStage===5){const t=chooseTarget(enemySide);if(t)logParts.push(applyPvpDamage(enemySide,t,Number(f.combat.attack||0)*2,null,side,traitUseByFish(f, "태양 주기가 태양 폭발 단계에 도달했습니다.")));}
@@ -1555,7 +1562,7 @@ function simulatePvpBattle({leftName,leftTitle,leftProfile,leftTeam,rightName,ri
     const stSide=state[side];
     const turnLogs=[];
     stSide.history.push({turn,states:snapshotSide(side)}); if(stSide.history.length>7)stSide.history.shift();
-    const wish=livingSide(side).find(f=>f.name==="호수에 비친 별");
+    const wish=targetableSide(side).find(f=>f.name==="호수에 비친 별");
     if(wish&&!pvpState(wish).wish){
       const st=pvpState(wish),kinds=["crit","dodge","low"];
       st.wish=kinds[Math.floor(Math.random()*kinds.length)];st.wishCount=0;
@@ -1567,7 +1574,7 @@ function simulatePvpBattle({leftName,leftTitle,leftProfile,leftTeam,rightName,ri
       const target=livingSide(side).sort((a,b)=>a.combat.hp/a.combat.maxHp-b.combat.hp/b.combat.maxHp)[0];
       if(past&&target&&past.states.get(target.id)){
         restorePvpHealthAndStatuses(target,past.states.get(target.id));
-        turnLogs.push(traitUseByFish(livingSide(side).find(f=>f.name==="호수에 비친 달"), pvpFishLabel(target)+"\n2턴 전 상태를 되찾았습니다.")+"\n\n");
+        turnLogs.push(traitUseByFish(targetableSide(side).find(f=>f.name==="호수에 비친 달"), pvpFishLabel(target)+"\n2턴 전 상태를 되찾았습니다.")+"\n\n");
       }
     }
     livingSide(side).forEach(f=>{
@@ -1582,7 +1589,7 @@ function simulatePvpBattle({leftName,leftTitle,leftProfile,leftTeam,rightName,ri
           const t=livingSide(side).sort((a,b)=>a.combat.hp/a.combat.maxHp-b.combat.hp/b.combat.maxHp)[0];
           if(t){const heal=Math.floor(t.combat.maxHp*0.1);t.combat.hp=Math.min(t.combat.maxHp,t.combat.hp+heal);turnLogs.push(traitUseByFish(f,"반달\n"+pvpFishLabel(t)+" "+heal.toLocaleString()+" 회복")+"\n\n");}
         }else if(st.moonPhase===2){
-          const t=livingSide(side).find(x=>clearOnePvpStatus(x));
+          const t=targetableSide(side).find(x=>clearOnePvpStatus(x));
           if(t)turnLogs.push(traitUseByFish(f,"보름달\n"+pvpFishLabel(t)+"의 상태이상을 해제했습니다.")+"\n\n");
         }
       }
@@ -1594,7 +1601,7 @@ function simulatePvpBattle({leftName,leftTitle,leftProfile,leftTeam,rightName,ri
   function getPvpSideTurnBlock(side){
     const enemySide=otherSide(side);
     if(turn%4!==0||!hasFish(enemySide,"잃어버린 두 번째 편지 조각 ✉️"))return "";
-    return traitUseByFish(livingSide(enemySide).find(f=>f.name==="잃어버린 두 번째 편지 조각 ✉️"), sideTitle(side)+"의 이번 페이지에는 아무 내용도 적혀 있지 않습니다.\n이번 턴에 행동하지 못합니다.")+"\n\n";
+    return traitUseByFish(targetableSide(enemySide).find(f=>f.name==="잃어버린 두 번째 편지 조각 ✉️"), sideTitle(side)+"의 이번 페이지에는 아무 내용도 적혀 있지 않습니다.\n이번 턴에 행동하지 못합니다.")+"\n\n";
   }
   function sideAttack(side,onlyAttacker=null){
     const enemySide=otherSide(side);
@@ -1605,7 +1612,7 @@ function simulatePvpBattle({leftName,leftTitle,leftProfile,leftTeam,rightName,ri
       const frameLogStart=sideLog.length;
       try{
       if(!attacker.combat||attacker.combat.hp<=0||pvpState(attacker).ashRemnant&&pvpState(attacker).ashTurns<=0)continue;
-      const firstLetter=livingSide(enemySide).find(f=>f.name==="잃어버린 첫 번째 편지 조각 ✉️");
+      const firstLetter=targetableSide(enemySide).find(f=>f.name==="잃어버린 첫 번째 편지 조각 ✉️");
       if(state[enemySide].deletedAttackerId===attacker.id&&turn<=state[enemySide].deletedAttackerUntil){
         sideLog.push(traitUseByFish(teamOf(enemySide).find(f=>f.name==="잃어버린 첫 번째 편지 조각 ✉️"), pvpFishLabel(attacker)+"의 공격이 이야기에서 삭제되어 사용할 수 없습니다.")+"\n\n");continue;
       }
@@ -1613,21 +1620,21 @@ function simulatePvpBattle({leftName,leftTitle,leftProfile,leftTeam,rightName,ri
         state[enemySide].deletedAttackerUsed=true;state[enemySide].deletedAttackerId=attacker.id;state[enemySide].deletedAttackerUntil=turn+3;
         sideLog.push(traitUseByFish(firstLetter, pvpFishLabel(attacker)+"의 공격이 이야기에서 삭제되어 3턴 동안 사용할 수 없습니다.")+"\n\n");continue;
       }
-      if(state[side].sealNext){state[side].sealNext=false;sideLog.push(traitUseByFish(livingSide(enemySide).find(f=>f.name==="호수에 비친 별"), pvpFishLabel(attacker)+"의 공격이 봉인되었습니다.")+"\n\n");continue;}
+      if(state[side].sealNext){state[side].sealNext=false;sideLog.push(traitUseByFish(targetableSide(enemySide).find(f=>f.name==="호수에 비친 별"), pvpFishLabel(attacker)+"의 공격이 봉인되었습니다.")+"\n\n");continue;}
       if(state[enemySide].observedId===attacker.id&&turn<=state[enemySide].observedUntil&&hasFish(enemySide,"수상한 기운 👁️")){
-        const observer=livingSide(enemySide).find(f=>f.name==="수상한 기운 👁️"),healLogs=[];
-        livingSide(enemySide).forEach(ally=>{const heal=Math.max(1,Math.floor(ally.combat.maxHp*0.18)),removed=clearOnePvpStatus(ally);ally.combat.hp=Math.min(ally.combat.maxHp,ally.combat.hp+heal);healLogs.push(pvpFishLabel(ally)+(removed?" · "+removed+" 해제":"")+" · "+heal.toLocaleString()+" 회복");});
+        const observer=targetableSide(enemySide).find(f=>f.name==="수상한 기운 👁️"),healLogs=[];
+        targetableSide(enemySide).forEach(ally=>{const heal=Math.max(1,Math.floor(ally.combat.maxHp*0.18)),removed=clearOnePvpStatus(ally);ally.combat.hp=Math.min(ally.combat.maxHp,ally.combat.hp+heal);healLogs.push(pvpFishLabel(ally)+(removed?" · "+removed+" 해제":"")+" · "+heal.toLocaleString()+" 회복");});
         pvpState(attacker).observedWeakUntil=turn+3;state[enemySide].observedId="";state[enemySide].observedUntil=0;state[enemySide].observedResolvedTurn=turn;
         sideLog.push(traitUseByFish(observer, pvpFishLabel(attacker)+"의 공격 효과가 뒤집혔습니다.\n"+healLogs.join("\n")+"\n"+pvpFishLabel(attacker)+"의 공격력이 3턴 동안 25% 감소합니다.")+"\n\n");continue;
       }
       const target=chooseTarget(enemySide); if(!target)break;
       const pair=attacker.id+":"+target.id;
-      if(hasFish(enemySide,"얼어붙은 마음")&&state[enemySide].lastPair===pair){state[enemySide].lastPair="";sideLog.push(traitUseByFish(livingSide(enemySide).find(f=>f.name==="얼어붙은 마음"), "같은 공격 흐름이 얼어붙어 "+pvpFishLabel(attacker)+"의 공격이 취소되었습니다.")+"\n\n");continue;}
+      if(hasFish(enemySide,"얼어붙은 마음")&&state[enemySide].lastPair===pair){state[enemySide].lastPair="";sideLog.push(traitUseByFish(targetableSide(enemySide).find(f=>f.name==="얼어붙은 마음"), "같은 공격 흐름이 얼어붙어 "+pvpFishLabel(attacker)+"의 공격이 취소되었습니다.")+"\n\n");continue;}
       state[enemySide].lastPair=pair;
       const av=attackValue(side,attacker); sideLog.push(av.preLog); sideLog.push(pvpPreAttackText(attacker));
       let dodge=Number(target.combat.dodge||0);
-      if(livingSide(side).some(f=>f.name==="바다를 삼킨 태양"&&pvpState(f).sunStage===3))dodge=0;
-      if(livingSide(side).some(f=>f.name==="해신룡"&&pvpState(f).tideHigh))dodge=Math.max(0,dodge-10);
+      if(targetableSide(side).some(f=>f.name==="바다를 삼킨 태양"&&pvpState(f).sunStage===3))dodge=0;
+      if(targetableSide(side).some(f=>f.name==="해신룡"&&pvpState(f).tideHigh))dodge=Math.max(0,dodge-10);
       if(target.name==="해신룡"&&!pvpState(target).tideHigh)dodge+=15;
       if(Math.random()*100<dodge){sideLog.push(pvpFishLabel(attacker)+" 공격\n"+pvpFishLabel(target)+" 회피!\n\n");recordOutcome(side,"miss",enemySide,sideLog);recordOutcome(enemySide,"dodge",side,sideLog);continue;}
       let dmg=av.replaced?av.atk:av.atk;
@@ -1638,16 +1645,16 @@ function simulatePvpBattle({leftName,leftTitle,leftProfile,leftTeam,rightName,ri
       sideLog.push(pvpFishLabel(attacker)+" 공격!\n"+(crit?"치명타!\n\n":"\n"));
       if(hasFish(enemySide,"영롱한 다이아몬드")&&!state[enemySide].diamondUsed){
         state[enemySide].diamondUsed=true;
-        const targets=livingSide(enemySide);
+        const targets=targetableSide(enemySide);
         const split=Math.max(1,Math.floor(dmg*0.7/targets.length));
-        sideLog.push(traitUseByFish(livingSide(enemySide).find(f=>f.name==="영롱한 다이아몬드"), "피해를 30% 줄이고 분산합니다.")+"\n\n");
+        sideLog.push(traitUseByFish(targetableSide(enemySide).find(f=>f.name==="영롱한 다이아몬드"), "피해를 30% 줄이고 분산합니다.")+"\n\n");
         targets.forEach(t=>sideLog.push(applyPvpDamage(enemySide,t,split,attacker,side,pvpFishLabel(attacker)+"의 굴절 공격")));
       }else sideLog.push(applyPvpDamage(enemySide,target,dmg,attacker,side,""));
       recordOutcome(side,crit?"crit":"hit",enemySide,sideLog);
       if(attacker.combat&&attacker.combat.hp>0) afterHit(side,attacker,enemySide,target,sideLog);
       if(hasFish(enemySide,"수상한 기운 👁️")&&state[enemySide].observedResolvedTurn!==turn&&(!state[enemySide].observedId||turn>state[enemySide].observedUntil)){
         state[enemySide].observedId=attacker.id;state[enemySide].observedUntil=turn+3;
-        sideLog.push(traitUseByFish(livingSide(enemySide).find(f=>f.name==="수상한 기운 👁️"), pvpFishLabel(attacker)+"의 공격을 3턴 동안 관측합니다.")+"\n\n");
+        sideLog.push(traitUseByFish(targetableSide(enemySide).find(f=>f.name==="수상한 기운 👁️"), pvpFishLabel(attacker)+"의 공격을 3턴 동안 관측합니다.")+"\n\n");
       }
       if(!pvpAlive(teamOf(enemySide)))break;
       }finally{
@@ -1660,8 +1667,8 @@ function simulatePvpBattle({leftName,leftTitle,leftProfile,leftTeam,rightName,ri
   function finishPvpSideActions(side){
     const sideLog=[];
     if(hasFish(side,"황룡")){
-      const al=livingSide(side).filter(f=>!pvpState(f).ashRemnant),total=al.reduce((s,f)=>s+f.combat.hp,0),maxTotal=al.reduce((s,f)=>s+f.combat.maxHp,0);
-      if(al.length&&maxTotal>0){let leftHp=total;al.forEach((f,i)=>{const v=i===al.length-1?leftHp:Math.floor(total*f.combat.maxHp/maxTotal);f.combat.hp=Math.max(1,Math.min(f.combat.maxHp,v));leftHp-=f.combat.hp;});sideLog.push(traitUseByFish(livingSide(side).find(f=>f.name==="황룡"), "아군 체력을 재분배했습니다.")+"\n\n");}
+      const al=targetableSide(side),total=al.reduce((s,f)=>s+f.combat.hp,0),maxTotal=al.reduce((s,f)=>s+f.combat.maxHp,0);
+      if(al.length&&maxTotal>0){let leftHp=total;al.forEach((f,i)=>{const v=i===al.length-1?leftHp:Math.floor(total*f.combat.maxHp/maxTotal);f.combat.hp=Math.max(1,Math.min(f.combat.maxHp,v));leftHp-=f.combat.hp;});sideLog.push(traitUseByFish(targetableSide(side).find(f=>f.name==="황룡"), "아군 체력을 재분배했습니다.")+"\n\n");}
     }
     return sideLog.join("");
   }
@@ -1671,14 +1678,14 @@ function simulatePvpBattle({leftName,leftTitle,leftProfile,leftTeam,rightName,ri
       const lowLogs=[];
       livingSide(side).forEach(f=>{
         const st=pvpState(f);
-        if(st.ashRemnant){st.ashTurns--;if(st.ashTurns<=0){f.combat.hp=0;st.gone=true;}}
-        if(f.combat.hp>0&&f.combat.hp/f.combat.maxHp<=0.15)recordOutcome(side,"low",otherSide(side),lowLogs);
+        if(st.ashRemnant){st.ashTurns--;if(st.ashTurns<=0){f.combat.hp=0;st.gone=true;lowLogs.push(pvpFishLabel(f)+"의 재의 잔영이 사라졌습니다.\n\n");}}
+        if(f.combat.hp>0&&!st.ashRemnant&&f.combat.hp/f.combat.maxHp<=0.15)recordOutcome(side,"low",otherSide(side),lowLogs);
       });
       if(lowLogs.length)logText+=lowLogs.join("");
       const enemy=otherSide(side);
       if(!state[side].period&&hasFish(side,"잃어버린 세 번째 편지 조각 ✉️")&&teamHpRate(enemy)<=0.18&&pvpAlive(teamOf(enemy))){
         state[side].period=true;state[side].periodSentences=0;
-        logText+=traitUseByFish(livingSide(side).find(f=>f.name==="잃어버린 세 번째 편지 조각 ✉️"), sideTitle(enemy)+"의 마지막 문장이 시작되었습니다.\n문장 0 / 5\n상대의 공격력이 25% 증가합니다.")+"\n\n";
+        logText+=traitUseByFish(targetableSide(side).find(f=>f.name==="잃어버린 세 번째 편지 조각 ✉️"), sideTitle(enemy)+"의 마지막 문장이 시작되었습니다.\n문장 0 / 5\n상대의 공격력이 25% 증가합니다.")+"\n\n";
       }
     });
     ["left","right"].forEach(side=>{
