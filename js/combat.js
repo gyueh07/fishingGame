@@ -86,64 +86,68 @@ function randomDodgeBySize(f){
 }
 
 function rollDodgeByStar(tier, ratio=0.5){
-  let min = 1;
-  let max = 10;
-
-  if(tier === 1){
-    min = 10;
-    max = 15;
-  } else if(tier === 2){
-    min = 15;
-    max = 25;
-  } else if(tier === 3){
-    min = 25;
-    max = 45;
-  }
-
+  const balance=getLiveStarBalance(tier),min=balance.dodgeMin,max=balance.dodgeMax;
   const value = min + (max - min) * clamp((Math.random() + Math.random() + ratio) / 3, 0, 1);
   return Math.round(value * 10) / 10;
 }
 
 function rollStarTier(){
-  const r = Math.random() * 100;
-  if(r < 2) return 3;
-  if(r < 10) return 2;
-  if(r < 30) return 1;
+  const rows=[0,1,2,3,4].map(getLiveStarBalance),total=rows.reduce((sum,row)=>sum+Math.max(0,Number(row.chance)||0),0);
+  if(total<=0)return 0;
+  let roll=Math.random()*total;
+  for(let tier=4;tier>=0;tier--){
+    const chance=Math.max(0,Number(rows[tier].chance)||0);
+    if(roll<chance)return tier;
+    roll-=chance;
+  }
   return 0;
 }
 
 function starText(tier){
-  if(tier === 3) return " ★★★";
-  if(tier === 2) return " ★★";
-  if(tier === 1) return " ★";
-  return "";
+  tier=clamp(Math.floor(Number(tier)||0),0,4);
+  return tier?" "+"★".repeat(tier):"";
 }
 
-function rollByStarRange(min,max,tier,ratio=0.5){
-  if(tier === 0){
-    return weightedRandomBySize(min, max, ratio);
-  }
-
-  // 별 단계의 범위가 절대 겹치지 않도록 이전 단계 최대값 다음부터 시작한다.
-  const previousMultiplier = tier === 3 ? 7 : tier === 2 ? 3 : 1;
-  const currentMultiplier = tier === 3 ? 20 : tier === 2 ? 7 : 3;
-  const scaledMin = Math.floor(max * previousMultiplier) + 1;
-  const scaledMax = Math.floor(max * currentMultiplier);
-
-  return randomInt(scaledMin, scaledMax);
+function rollByStarRange(min,max,tier,ratio=0.5,stat="attack"){
+  const balance=getLiveStarBalance(tier),minMultiplier=Number(balance[stat+"Min"]||1),maxMultiplier=Number(balance[stat+"Max"]||1);
+  const scaledMin=Math.max(1,Math.floor((tier===0?min:max)*minMultiplier)+(tier===0?0:1));
+  const scaledMax=Math.max(scaledMin,Math.floor(max*maxMultiplier));
+  return tier===0?weightedRandomBySize(scaledMin,scaledMax,ratio):randomInt(scaledMin,scaledMax);
 }
 function rollCritRateByStar(tier){
-  if(tier === 3) return Math.round((40 + Math.random() * 10) * 10) / 10;
-  if(tier === 2) return Math.round((30 + Math.random() * 10) * 10) / 10;
-  if(tier === 1) return Math.round((20 + Math.random() * 10) * 10) / 10;
-  return Math.round((10 + Math.random() * 10) * 10) / 10;
+  const balance=getLiveStarBalance(tier);
+  return Math.round((balance.critRateMin+Math.random()*(balance.critRateMax-balance.critRateMin))*10)/10;
 }
 
 function rollCritDamageByStar(tier){
-  if(tier === 3) return randomInt(450, 500);
-  if(tier === 2) return randomInt(350, 450);
-  if(tier === 1) return randomInt(250, 350);
-  return randomInt(150, 250);
+  const balance=getLiveStarBalance(tier);
+  return randomInt(Math.floor(balance.critDamageMin),Math.floor(balance.critDamageMax));
+}
+
+function applyLiveGradeBalanceToCombat(f,c){
+  if(!f||!c||f.grade==="쓰레기")return c;
+  const balance=getLiveGradeBalance(f.grade),defaultAttack=combatAttackRanges[f.grade]||[1,1],defaultHp=combatHpRanges[f.grade]||[1,1],attackMultiplier=(Number(balance.attackMin)+Number(balance.attackMax))/Math.max(1,defaultAttack[0]+defaultAttack[1]),hpMultiplier=(Number(balance.hpMin)+Number(balance.hpMax))/Math.max(1,defaultHp[0]+defaultHp[1]);
+  const fusionAttack=Math.max(0,Number(f.fusion?.permanentAttack)||0),fusionHp=Math.max(0,Number(f.fusion?.permanentMaxHp)||0);
+  if(fusionAttack>0){
+    if(Number(c._liveOpsFusionAttackSource)!==fusionAttack)c._liveOpsRawBaseAttack=fusionAttack;
+    c._liveOpsFusionAttackSource=fusionAttack;
+  }else if(!Number.isFinite(Number(c._liveOpsRawBaseAttack))){
+    const previous=Math.max(.0001,Number(c._liveOpsAttackMultiplier)||1);
+    c._liveOpsRawBaseAttack=Math.max(1,Math.round(Number(c._baseAttack??c.attack??1)/previous));
+  }
+  if(fusionHp>0){
+    if(Number(c._liveOpsFusionHpSource)!==fusionHp)c._liveOpsRawBaseMaxHp=fusionHp;
+    c._liveOpsFusionHpSource=fusionHp;
+  }else if(!Number.isFinite(Number(c._liveOpsRawBaseMaxHp))){
+    const previous=Math.max(.0001,Number(c._liveOpsHpMultiplier)||1);
+    c._liveOpsRawBaseMaxHp=Math.max(1,Math.round(Number(c._baseMaxHp??c.maxHp??c.hp??1)/previous));
+  }
+  c._baseAttack=Math.max(1,Math.floor(Number(c._liveOpsRawBaseAttack||1)*attackMultiplier));
+  c._baseMaxHp=Math.max(1,Math.floor(Number(c._liveOpsRawBaseMaxHp||1)*hpMultiplier));
+  c._liveOpsAttackMultiplier=attackMultiplier;
+  c._liveOpsHpMultiplier=hpMultiplier;
+  c._fishGrade=f.grade;
+  return c;
 }
 
 function rerollCritStats(f){
@@ -168,16 +172,17 @@ function makeCombatStats(f, fixedStars=null){
     return {attack:0, hp:0, maxHp:0, dodge:0, critRate:0, critDamage:0, status:"전투 불가", combatVersion:COMBAT_VERSION, hpBalanceVersion:FISH_HP_BALANCE_VERSION, voidStatBalanceVersion:VOID_STAT_BALANCE_VERSION, stars:{attack:0,hp:0,dodge:0,critRate:0,critDamage:0}};
   }
 
-  const atkRange = combatAttackRanges[f.grade] || [10,50];
-  const hpRange = combatHpRanges[f.grade] || [50,200];
+  const gradeBalance=getLiveGradeBalance(f.grade);
+  const atkRange = [Number(gradeBalance.attackMin)||0,Number(gradeBalance.attackMax)||0];
+  const hpRange = [Number(gradeBalance.hpMin)||0,Number(gradeBalance.hpMax)||0];
   const ratio = getSizeRatio(f);
 
   const stars = fixedStars ? {
-    attack:clamp(Math.floor(Number(fixedStars.attack || 0)), 0, 3),
-    hp:clamp(Math.floor(Number(fixedStars.hp || 0)), 0, 3),
-    dodge:clamp(Math.floor(Number(fixedStars.dodge || 0)), 0, 3),
-    critRate:clamp(Math.floor(Number(fixedStars.critRate || 0)), 0, 3),
-    critDamage:clamp(Math.floor(Number(fixedStars.critDamage || 0)), 0, 3)
+    attack:clamp(Math.floor(Number(fixedStars.attack || 0)), 0, 4),
+    hp:clamp(Math.floor(Number(fixedStars.hp || 0)), 0, 4),
+    dodge:clamp(Math.floor(Number(fixedStars.dodge || 0)), 0, 4),
+    critRate:clamp(Math.floor(Number(fixedStars.critRate || 0)), 0, 4),
+    critDamage:clamp(Math.floor(Number(fixedStars.critDamage || 0)), 0, 4)
   } : {
     attack:rollStarTier(),
     hp:rollStarTier(),
@@ -186,15 +191,16 @@ function makeCombatStats(f, fixedStars=null){
     critDamage:rollStarTier()
   };
 
-  const attack = rollByStarRange(atkRange[0], atkRange[1], stars.attack, ratio);
-  const hp = rollByStarRange(hpRange[0], hpRange[1], stars.hp, 0.5);
+  const attack = rollByStarRange(atkRange[0], atkRange[1], stars.attack, ratio,"attack");
+  const hp = rollByStarRange(hpRange[0], hpRange[1], stars.hp, 0.5,"hp");
 
   const dodge = rollDodgeByStar(stars.dodge, ratio);
 
   const critRate = rollCritRateByStar(stars.critRate);
   const critDamage = rollCritDamageByStar(stars.critDamage);
 
-  return {
+  const defaultAttack=combatAttackRanges[f.grade]||[1,1],defaultHp=combatHpRanges[f.grade]||[1,1],attackScale=(atkRange[0]+atkRange[1])/Math.max(1,defaultAttack[0]+defaultAttack[1]),hpScale=(hpRange[0]+hpRange[1])/Math.max(1,defaultHp[0]+defaultHp[1]);
+  const combat={
     attack:attack,
     hp:hp,
     maxHp:hp,
@@ -208,8 +214,15 @@ function makeCombatStats(f, fixedStars=null){
     combatVersion:COMBAT_VERSION,
     hpBalanceVersion:FISH_HP_BALANCE_VERSION,
     voidStatBalanceVersion:VOID_STAT_BALANCE_VERSION,
-    stars:stars
+    stars:stars,
+    _liveOpsRawBaseAttack:attack/Math.max(.0001,attackScale),
+    _liveOpsRawBaseMaxHp:hp/Math.max(.0001,hpScale),
+    _liveOpsAttackMultiplier:attackScale,
+    _liveOpsHpMultiplier:hpScale
   };
+  applyLiveGradeBalanceToCombat(f,combat);
+  applyTrainingBonusesToCombat(combat);
+  return combat;
 }
 
 const KNOCKOUT_MINUTES = 5;
@@ -401,11 +414,7 @@ function ensureCombatStats(f){
   }
   if(!f.combat.status) f.combat.status = "정상";
 
-  if(f.fusion&&Number(f.fusion.permanentAttack)>0&&Number(f.fusion.permanentMaxHp)>0){
-    f.combat._baseAttack=Math.max(1,Math.floor(Number(f.fusion.permanentAttack)));
-    f.combat._baseMaxHp=Math.max(1,Math.floor(Number(f.fusion.permanentMaxHp)));
-  }
-
+  applyLiveGradeBalanceToCombat(f,f.combat);
   applyTrainingBonusesToCombat(f.combat);
 
   return f.combat;

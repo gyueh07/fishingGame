@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#071b2d">
   <meta name="description" content="낚시하고 성장하며 보스와 대전하는 온라인 낚시 RPG">
   <title>FishingLife</title>
-  <link rel="stylesheet" href="./css/legacy.css?v=25.4.0">
-  <link rel="stylesheet" href="./css/game-ui.css?v=25.4.0">
+  <link rel="stylesheet" href="./css/legacy.css?v=25.5.0">
+  <link rel="stylesheet" href="./css/game-ui.css?v=25.5.0">
 </head>
 <body>
   <div class="ambient-bg" aria-hidden="true">
@@ -54,6 +54,7 @@
         <div class="resource-bar" aria-label="보유 자원">
           <div class="resource-chip"><span>💰</span><div><small>보유 골드</small><b id="topMoney">0원</b></div></div>
           <div class="resource-chip compact"><span>🎣</span><div><small>낚싯대</small><b id="topRod">Lv.1</b></div></div>
+          <button id="operationsNoticeButton" class="operations-notice-button" data-ui-action="announcements" title="공지함"><span>▣</span><div><small>공지함</small><b>운영 소식</b></div><em id="operationsNoticeBadge" hidden>0</em></button>
           <div id="cloudSyncChip" class="cloud-sync-chip offline" role="status" aria-live="polite" title="게임 저장 상태"><span id="cloudSyncIcon">☁️</span><div><small>클라우드</small><b id="cloudSyncText">로그인 필요</b></div></div>
         </div>
       </header>
@@ -137,9 +138,9 @@
                 </div>
               </section>
 
-              <section class="notice-strip">
-                <span>💎</span><div><b>보스 코어 보상 개편</b><small>보스를 처치하면 전용 코어를 1~10개 획득합니다.</small></div>
-              </section>
+              <button id="latestOperationsNotice" class="notice-strip" data-ui-action="announcements">
+                <span>▣</span><div><b id="latestOperationsNoticeTitle">운영 공지</b><small id="latestOperationsNoticeBody">새로운 운영 소식과 지급 내역을 확인하세요.</small></div>
+              </button>
             </aside>
           </div>
         </section>
@@ -218,6 +219,7 @@
             <button class="community-card" data-ui-action="settings"><span>⚙️</span><div><small>게임 환경</small><h3>설정</h3><p>효과음과 모바일 진동을 설정합니다.</p></div></button>
             <button class="community-card transfer-card" data-ui-action="transfer"><span>🎁</span><div><small>안전한 선물</small><h3>송금·물고기 전송</h3><p>닉네임을 입력해 골드나 물고기를 보냅니다.</p></div></button>
             <button class="community-card inbox-card" data-ui-action="inbox"><span>📬</span><div><small>나중에 확인</small><h3>받은 소식 <em id="inboxUnreadBadge" hidden>0</em></h3><p>읽지 않은 메시지·송금·물고기 선물을 확인합니다.</p></div></button>
+            <button class="community-card notice-card" data-ui-action="announcements"><span>▣</span><div><small>운영 소식</small><h3>공지함 <em id="operationsNoticeCommunityBadge" hidden>0</em></h3><p>업데이트와 관리자 지급 내역을 다시 확인합니다.</p></div></button>
             <button class="community-card message-card" data-ui-action="message"><span>💌</span><div><small>친구에게 전송</small><h3>메시지 보내기</h3><p>닉네임을 입력해 메시지를 보냅니다.</p></div></button>
           </div>
           <section class="account-strip glass-panel">
@@ -260,12 +262,12 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="./js/data/fish-data.js?v=25.4.0"></script>
-  <script src="./js/core.js?v=25.4.0"></script>
-  <script src="./js/data/combat-data.js?v=25.4.0"></script>
-  <script src="./js/combat.js?v=25.4.0"></script>
-  <script src="./js/gameplay.js?v=25.4.0"></script>
-  <script src="./js/commands.js?v=25.4.0"></script>
-  <script src="./js/ui.js?v=25.4.0"></script>
+  <script src="./js/data/fish-data.js?v=25.5.0"></script>
+  <script src="./js/core.js?v=25.5.0"></script>
+  <script src="./js/data/combat-data.js?v=25.5.0"></script>
+  <script src="./js/combat.js?v=25.5.0"></script>
+  <script src="./js/gameplay.js?v=25.5.0"></script>
+  <script src="./js/commands.js?v=25.5.0"></script>
+  <script src="./js/ui.js?v=25.5.0"></script>
 </body>
 </html>

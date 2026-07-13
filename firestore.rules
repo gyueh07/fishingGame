@@ -316,6 +316,16 @@ service cloud.firestore {
         allow delete: if isAdmin() || parentRevisionAdvanced(userId)
           || parentActiveSessionMatches(userId);
       }
+
+      match /liveAlerts/{alertId} {
+        allow read, create: if true;
+        allow update, delete: if false;
+      }
+
+      match /adminNotices/{noticeId} {
+        allow read: if true;
+        allow create, update, delete: if isAdmin();
+      }
     }
 
     match /config/{documentId} {
@@ -329,6 +339,11 @@ service cloud.firestore {
     }
 
     match /serverAlerts/{documentId} {
+      allow read, create: if true;
+      allow update, delete: if false;
+    }
+
+    match /worldAlerts/{documentId} {
       allow read, create: if true;
       allow update, delete: if false;
     }

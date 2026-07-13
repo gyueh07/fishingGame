@@ -35,13 +35,37 @@ let accountSessionUnsubscribe=null;
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
-const GAME_VERSION = "2026-07-13-fishinglife-admin-balance-v25-4-0";
+const GAME_VERSION = "2026-07-13-fishinglife-live-operations-v25-5-0";
 const USER_WRITE_SCHEMA_VERSION = 250;
 const USER_WRITE_PROTOCOL_VERSION = 4;
 const FISHING_ADMIN_NICKNAME = "admin";
 const FISHING_ADMIN_AUTH_EMAIL = "admin@fishinglife.app";
 const DEFAULT_LIVE_BALANCE = Object.freeze({bossHpMultiplier:1,bossAttackMultiplier:1,bossRewardMultiplier:1,balanceRevision:0,balancePatchTitle:"",balancePatchNote:""});
 let liveBalanceConfig={...DEFAULT_LIVE_BALANCE};
+const LIVE_GRADE_NAMES=grades.map(grade=>grade.name);
+const BUILT_IN_FISH_NAMES=new Set(Object.values(fishByGrade).flat().map(String));
+const DEFAULT_GRADE_BALANCE=Object.freeze({
+  "쓰레기":{chance:8,basePrice:1,attackMin:0,attackMax:0,hpMin:0,hpMax:0},
+  "일반":{chance:55,basePrice:100,attackMin:30,attackMax:150,hpMin:450,hpMax:2700},
+  "희귀":{chance:25,basePrice:1500,attackMin:100,attackMax:500,hpMin:1500,hpMax:9000},
+  "영웅":{chance:8,basePrice:100000,attackMin:500,attackMax:2000,hpMin:7500,hpMax:36000},
+  "전설":{chance:2.2,basePrice:9000000,attackMin:2000,attackMax:8000,hpMin:30000,hpMax:240000},
+  "신화":{chance:.7,basePrice:75000000,attackMin:8000,attackMax:20000,hpMin:120000,hpMax:540000},
+  "초월":{chance:.12,basePrice:1000000000,attackMin:20000,attackMax:50000,hpMin:360000,hpMax:1500000},
+  "영원":{chance:0,basePrice:100000000000,attackMin:150000,attackMax:300000,hpMin:1800000,hpMax:4500000},
+  "공허":{chance:0,basePrice:10000000000000,attackMin:900000,attackMax:2100000,hpMin:13500000,hpMax:31500000}
+});
+const DEFAULT_STAR_BALANCE=Object.freeze([
+  {tier:0,chance:70,attackMin:1,attackMax:1,hpMin:1,hpMax:1,dodgeMin:1,dodgeMax:10,critRateMin:10,critRateMax:20,critDamageMin:150,critDamageMax:250},
+  {tier:1,chance:20,attackMin:1,attackMax:3,hpMin:1,hpMax:3,dodgeMin:10,dodgeMax:15,critRateMin:20,critRateMax:30,critDamageMin:250,critDamageMax:350},
+  {tier:2,chance:8,attackMin:3,attackMax:7,hpMin:3,hpMax:7,dodgeMin:15,dodgeMax:25,critRateMin:30,critRateMax:40,critDamageMin:350,critDamageMax:450},
+  {tier:3,chance:2,attackMin:7,attackMax:20,hpMin:7,hpMax:20,dodgeMin:25,dodgeMax:45,critRateMin:40,critRateMax:50,critDamageMin:450,critDamageMax:500},
+  {tier:4,chance:0,attackMin:20,attackMax:50,hpMin:20,hpMax:50,dodgeMin:45,dodgeMax:60,critRateMin:50,critRateMax:60,critDamageMin:500,critDamageMax:650}
+]);
+const DEFAULT_TRAINING_BALANCE=Object.freeze({costMultiplier:1,attackEffectMultiplier:1,hpEffectMultiplier:1,critDamageEffectMultiplier:1});
+let liveOperationsConfig={gradeBalance:DEFAULT_GRADE_BALANCE,starBalance:DEFAULT_STAR_BALANCE,trainingBalance:DEFAULT_TRAINING_BALANCE,customFish:[],customAchievements:[],announcements:[],operationsRevision:0};
+let liveCustomFishNames=new Set();
+let liveCustomAchievementNames=new Set();
 const ACCOUNT_RESET_VERSION = 1;
 const ACCOUNT_SESSION_TTL_MS = 5*60*1000;
 const ACCOUNT_SESSION_HEARTBEAT_MS = 2*60*1000;
@@ -58,6 +82,17 @@ const MAX_CLOUD_BATTLE_FRAME_CHUNK_BYTES = 450000;
 const MAX_CLOUD_BATTLE_FRAME_CHUNK_COUNT = 80;
 const UPDATE_NOTICE_TITLE = "📢 업데이트 안내";
 const UPDATE_NOTICES = [
+  {
+    id:"2026-07-13-fishinglife-live-operations-25-5-0",
+    title:"공지함·관리자 지급·4성 설정",
+    lines:[
+      "광장과 상단 메뉴에서 밸런스 패치, 운영 공지와 내 계정 지급 내역을 다시 확인할 수 있습니다.",
+      "관리자가 지급한 골드·성장 수치·물고기는 접속 중이면 바로 반영되고, 오프라인이면 다음 접속 때 표시됩니다.",
+      "4성 물고기 설정이 추가되었으며 기본 등장 확률은 0%입니다.",
+      "실시간 알림을 전체 공용 읽기에서 개인별 읽기로 분리해 Firebase 사용량을 줄였습니다.",
+      "관리자 계정은 랭킹, 검색, 전송, 대전, 프로필과 수족관 등 공개 화면에 표시되지 않습니다."
+    ]
+  },
   {
     id:"2026-07-13-fishinglife-admin-balance-25-4-0",
     title:"보스 선택과 전투 화면 개선",
@@ -666,8 +701,13 @@ let cloudVersionGatePromise = null;
 let cloudVersionGateCheckedAt = 0;
 let cloudVersionGateMessage = "";
 let serverAlertUnsubscribe = null;
+let liveConfigUnsubscribe = null;
+let adminNoticeUnsubscribe = null;
 let serverAlertStartTime = Date.now();
 let isOnlineActionRunning = false;
+let personalAdminNotices=[];
+let personalAdminNoticeListenerReady=false;
+let shownOperationsNoticeIds=new Set();
 
 function normalizeLiveBalanceConfig(value){
   const source=value&&typeof value==="object"?value:{};
@@ -685,6 +725,144 @@ function normalizeLiveBalanceConfig(value){
   };
 }
 
+function liveOpsNumber(value,min,max,fallback){
+  const number=Number(value);
+  return Number.isFinite(number)?Math.min(max,Math.max(min,number)):fallback;
+}
+
+function normalizeGradeBalanceConfig(value){
+  const source=value&&typeof value==="object"?value:{};
+  return Object.fromEntries(LIVE_GRADE_NAMES.map(name=>{
+    const row=source[name]&&typeof source[name]==="object"?source[name]:{},defaults=DEFAULT_GRADE_BALANCE[name];
+    const range=(minKey,maxKey,fallbackMin,fallbackMax)=>{const min=liveOpsNumber(row[minKey],0,Number.MAX_SAFE_INTEGER,fallbackMin),max=liveOpsNumber(row[maxKey],0,Number.MAX_SAFE_INTEGER,fallbackMax);return [Math.min(min,max),Math.max(min,max)];};
+    const legacyAttack=liveOpsNumber(row.attackMultiplier,.05,20,1),legacyHp=liveOpsNumber(row.hpMultiplier,.05,20,1),attack=range("attackMin","attackMax",defaults.attackMin*legacyAttack,defaults.attackMax*legacyAttack),hp=range("hpMin","hpMax",defaults.hpMin*legacyHp,defaults.hpMax*legacyHp);
+    return [name,{
+      chance:liveOpsNumber(row.chance,0,100,defaults.chance*liveOpsNumber(row.chanceMultiplier,0,20,1)),
+      basePrice:Math.round(liveOpsNumber(row.basePrice,0,Number.MAX_SAFE_INTEGER,defaults.basePrice*liveOpsNumber(row.priceMultiplier,.05,20,1))),
+      attackMin:Math.round(attack[0]),attackMax:Math.round(attack[1]),hpMin:Math.round(hp[0]),hpMax:Math.round(hp[1])
+    }];
+  }));
+}
+
+function normalizeStarBalanceConfig(value){
+  const source=Array.isArray(value)?value:[];
+  return DEFAULT_STAR_BALANCE.map((defaults,tier)=>{
+    const row=source.find(item=>Number(item?.tier)===tier)||source[tier]||{};
+    const range=(minKey,maxKey,low,high)=>{
+      const min=liveOpsNumber(row[minKey],low,high,defaults[minKey]);
+      const max=liveOpsNumber(row[maxKey],low,high,defaults[maxKey]);
+      return [Math.min(min,max),Math.max(min,max)];
+    };
+    const attack=range("attackMin","attackMax",.05,100),hp=range("hpMin","hpMax",.05,100),dodge=range("dodgeMin","dodgeMax",0,100),critRate=range("critRateMin","critRateMax",0,100),critDamage=range("critDamageMin","critDamageMax",100,2000);
+    return {tier,chance:liveOpsNumber(row.chance,0,100,defaults.chance),attackMin:attack[0],attackMax:attack[1],hpMin:hp[0],hpMax:hp[1],dodgeMin:dodge[0],dodgeMax:dodge[1],critRateMin:critRate[0],critRateMax:critRate[1],critDamageMin:critDamage[0],critDamageMax:critDamage[1]};
+  });
+}
+
+function normalizeTrainingBalanceConfig(value){
+  const source=value&&typeof value==="object"?value:{};
+  return {
+    costMultiplier:liveOpsNumber(source.costMultiplier,.05,20,1),
+    attackEffectMultiplier:liveOpsNumber(source.attackEffectMultiplier,0,20,1),
+    hpEffectMultiplier:liveOpsNumber(source.hpEffectMultiplier,0,20,1),
+    critDamageEffectMultiplier:liveOpsNumber(source.critDamageEffectMultiplier,0,20,1)
+  };
+}
+
+function normalizeCustomFishConfig(value){
+  const used=new Set();
+  return (Array.isArray(value)?value:[]).slice(0,50).map((item,index)=>{
+    const name=String(item?.name||"").trim().replace(/\s+/g," ").slice(0,30),grade=String(item?.grade||"");
+    if(!name||BUILT_IN_FISH_NAMES.has(name)||used.has(name)||!LIVE_GRADE_NAMES.includes(grade))return null;
+    used.add(name);
+    const sizeless=item?.sizeless===true;
+    const minSize=liveOpsNumber(item?.minSize,.1,100000,10),maxSize=liveOpsNumber(item?.maxSize,.1,100000,100);
+    return {id:String(item?.id||`fish_${index}_${name}`).replace(/[^A-Za-z0-9_-]/g,"_").slice(0,60),name,grade,sizeless,minSize:Math.min(minSize,maxSize),maxSize:Math.max(minSize,maxSize)};
+  }).filter(Boolean);
+}
+
+function normalizeCustomAchievementConfig(value){
+  const types=new Set(["totalFishing","rodLevel","gradeCount","collectionCount","money"]),used=new Set();
+  return (Array.isArray(value)?value:[]).slice(0,50).map((item,index)=>{
+    const name=String(item?.name||"").trim().replace(/\s+/g," ").slice(0,30),conditionType=String(item?.conditionType||"");
+    if(!name||used.has(name)||!types.has(conditionType))return null;
+    used.add(name);
+    return {id:String(item?.id||`achievement_${index}_${name}`).replace(/[^A-Za-z0-9_-]/g,"_").slice(0,60),name,desc:String(item?.desc||"").trim().slice(0,100),reward:Math.max(0,Math.floor(liveOpsNumber(item?.reward,0,Number.MAX_SAFE_INTEGER,0))),conditionType,target:Math.max(1,Math.floor(liveOpsNumber(item?.target,1,Number.MAX_SAFE_INTEGER,1))),grade:LIVE_GRADE_NAMES.includes(item?.grade)?item.grade:"일반"};
+  }).filter(Boolean);
+}
+
+function normalizeOperationsAnnouncements(value){
+  const used=new Set();
+  return (Array.isArray(value)?value:[]).map((item,index)=>{
+    const id=String(item?.id||`notice_${index}_${Number(item?.createdAtMillis)||0}`).slice(0,80);
+    if(!id||used.has(id))return null;
+    used.add(id);
+    return {id,type:"global",category:String(item?.category||"update").slice(0,20),title:String(item?.title||"운영 공지").slice(0,50),body:String(item?.body||"").slice(0,500),createdAtMillis:Math.max(0,Number(item?.createdAtMillis)||0)};
+  }).filter(Boolean).sort((a,b)=>b.createdAtMillis-a.createdAtMillis).slice(0,30);
+}
+
+function normalizeLiveOperationsConfig(value){
+  const source=value&&typeof value==="object"?value:{};
+  return {
+    gradeBalance:normalizeGradeBalanceConfig(source.gradeBalance),
+    starBalance:normalizeStarBalanceConfig(source.starBalance),
+    trainingBalance:normalizeTrainingBalanceConfig(source.trainingBalance),
+    customFish:normalizeCustomFishConfig(source.customFish),
+    customAchievements:normalizeCustomAchievementConfig(source.customAchievements),
+    announcements:normalizeOperationsAnnouncements(source.announcements),
+    operationsRevision:Math.max(0,Math.floor(Number(source.operationsRevision)||0)
+    )
+  };
+}
+
+function applyLiveCustomFish(items){
+  liveCustomFishNames.forEach(name=>{
+    LIVE_GRADE_NAMES.forEach(grade=>{fishByGrade[grade]=fishByGrade[grade].filter(item=>item!==name);});
+    delete sizeData[name];
+  });
+  liveCustomFishNames=new Set();
+  items.forEach(item=>{
+    if(!fishByGrade[item.grade].includes(item.name))fishByGrade[item.grade].push(item.name);
+    sizeData[item.name]=item.sizeless?null:[item.minSize,item.maxSize];
+    liveCustomFishNames.add(item.name);
+  });
+}
+
+function customAchievementReached(item){
+  if(item.conditionType==="totalFishing")return totalFishingCount>=item.target;
+  if(item.conditionType==="rodLevel")return rodLevel>=item.target;
+  if(item.conditionType==="gradeCount")return Number(gradeCounts[item.grade]||0)>=item.target;
+  if(item.conditionType==="collectionCount")return Object.keys(collection||{}).length>=item.target;
+  if(item.conditionType==="money")return money>=item.target;
+  return false;
+}
+
+function applyLiveCustomAchievements(items){
+  if(typeof achievementList==="undefined")return;
+  for(let index=achievementList.length-1;index>=0;index--){if(liveCustomAchievementNames.has(achievementList[index]?.name))achievementList.splice(index,1);}
+  liveCustomAchievementNames=new Set();
+  const existing=new Set(achievementList.map(item=>item.name));
+  items.forEach(item=>{
+    if(existing.has(item.name))return;
+    achievementList.push({name:item.name,desc:item.desc||"관리자 추가 업적",reward:item.reward,check:()=>customAchievementReached(item),custom:true,id:item.id});
+    existing.add(item.name);liveCustomAchievementNames.add(item.name);
+  });
+}
+
+function applyLiveOperationsConfig(value,{render=true}={}){
+  liveBalanceConfig=normalizeLiveBalanceConfig(value);
+  liveOperationsConfig=normalizeLiveOperationsConfig(value);
+  applyLiveCustomFish(liveOperationsConfig.customFish);
+  applyLiveCustomAchievements(liveOperationsConfig.customAchievements);
+  if(render&&typeof globalThis.requestFishingLifeRender==="function")globalThis.requestFishingLifeRender(true);
+  if(typeof globalThis.updateFishingLifeOperationsNoticeUi==="function")globalThis.updateFishingLifeOperationsNoticeUi();
+  return liveOperationsConfig;
+}
+
+function getLiveGradeBalance(grade){return liveOperationsConfig.gradeBalance[grade]||DEFAULT_GRADE_BALANCE[grade]||{chance:0,basePrice:1,attackMin:1,attackMax:1,hpMin:1,hpMax:1};}
+function getLiveStarBalance(tier){return liveOperationsConfig.starBalance[Math.max(0,Math.min(4,Math.floor(Number(tier)||0)))]||DEFAULT_STAR_BALANCE[0];}
+function getLiveTrainingBalance(){return liveOperationsConfig.trainingBalance||DEFAULT_TRAINING_BALANCE;}
+function getLiveOperationsConfig(){return liveOperationsConfig;}
+
 function getLiveBalanceConfig(){
   return liveBalanceConfig;
 }
@@ -699,7 +877,7 @@ function isCurrentFishingAdmin(){
 
 function isRankingExcludedUser(user,id=""){
   const source=user&&typeof user==="object"?user:{};
-  return source.rankingExcluded===true||source.isAdmin===true||isFishingAdminNickname(source.nickname||id);
+  return source.publicHidden===true||source.rankingExcluded===true||source.isAdmin===true||isFishingAdminNickname(source.nickname||id);
 }
 
 function cleanNickname(name){
@@ -1225,7 +1403,7 @@ async function checkGameVersion(force=false){
     try{
       const snap=await db.collection("config").doc("game").get({source:"server"});
       const config=snap.exists?(snap.data()||{}):{};
-      liveBalanceConfig=normalizeLiveBalanceConfig(config);
+      applyLiveOperationsConfig(config,{render:false});
       const minimumSchema=Math.max(0,Number(config.minSaveSchemaVersion??config.minimumBuild??0)||0);
       const minimumProtocol=Math.max(0,Number(config.minimumWriteProtocol??0)||0);
       if(config.maintenance===true){
@@ -3068,8 +3246,8 @@ async function showRanking(){
   try{
     if(currentUser) await saveCloudData();
 
-    const moneySnap = await db.collection("users").orderBy("money","desc").get();
-    const levelSnap = await db.collection("users").orderBy("rodLevel","desc").get();
+    const moneySnap = await db.collection("users").orderBy("money","desc").limit(25).get();
+    const levelSnap = await db.collection("users").orderBy("rodLevel","desc").limit(25).get();
 
     const moneyList = moneySnap.docs.map(d => ({...d.data(),id:d.id})).filter(u=>!isRankingExcludedUser(u,u.id));
     const levelList = levelSnap.docs.map(d => ({...d.data(),id:d.id})).filter(u=>!isRankingExcludedUser(u,u.id));
@@ -3105,7 +3283,7 @@ async function announceEternalCatch(fish){
   if(!currentUser || !["영원","공허"].includes(fish.grade)) return;
 
   try{
-    await db.collection("serverAlerts").add({
+    await db.collection("worldAlerts").add({
       type: "eternalCatch",
       nickname: currentUser,
       title: getCurrentTitle(),
@@ -3117,6 +3295,14 @@ async function announceEternalCatch(fish){
   }catch(e){
     console.error(e);
   }
+}
+
+async function sendUserLiveAlert(targetNickname,payload={}){
+  const target=cleanNickname(targetNickname);
+  if(!target)return false;
+  const createdAtMillis=Math.max(1,Number(payload.createdAtMillis)||Date.now());
+  await db.collection("users").doc(target).collection("liveAlerts").add({...payload,to:target,createdAt:firebase.firestore.FieldValue.serverTimestamp(),createdAtMillis});
+  return true;
 }
 
 async function refreshIncomingTransfer(notificationText="",receivedFishIds=[]){
@@ -3132,6 +3318,86 @@ async function refreshIncomingTransfer(notificationText="",receivedFishIds=[]){
   return true;
 }
 
+function operationsNoticeSeenKey(username=currentUser){return "fishingLife.operationsNoticeSeen:"+String(username||"");}
+
+function getOperationsNoticeSeenIds(){
+  if(!currentUser)return new Set();
+  try{return new Set((JSON.parse(localStorage.getItem(operationsNoticeSeenKey())||"[]")||[]).map(String));}
+  catch(error){return new Set();}
+}
+
+function saveOperationsNoticeSeenIds(ids){
+  if(!currentUser)return;
+  localStorage.setItem(operationsNoticeSeenKey(),JSON.stringify([...ids].slice(-150)));
+}
+
+function normalizePersonalAdminNotice(id,value){
+  const item=value&&typeof value==="object"?value:{};
+  return {id:String(id||item.id||""),type:"personal",category:String(item.category||item.type||"support").slice(0,20),title:String(item.title||"관리자 지원").slice(0,50),body:String(item.body||item.reason||"").slice(0,500),amount:Math.max(0,Number(item.amount)||0),fishIds:[...new Set((Array.isArray(item.fishIds)?item.fishIds:[]).map(String).filter(Boolean))].slice(0,20),fishName:String(item.fishName||"").slice(0,80),fishGrade:String(item.fishGrade||"").slice(0,20),createdAtMillis:Math.max(0,Number(item.createdAtMillis)||0)};
+}
+
+function getFishingLifeOperationsNotices(){
+  const globalNotices=(liveOperationsConfig.announcements||[]).map(item=>({...item,type:"global"}));
+  return [...personalAdminNotices,...globalNotices].sort((a,b)=>b.createdAtMillis-a.createdAtMillis).slice(0,60);
+}
+
+function getFishingLifeOperationsUnreadCount(){
+  const seen=getOperationsNoticeSeenIds();
+  return getFishingLifeOperationsNotices().filter(item=>item.id&&!seen.has(item.id)).length;
+}
+
+function markFishingLifeOperationsNoticesSeen(id=""){
+  const seen=getOperationsNoticeSeenIds(),targets=getFishingLifeOperationsNotices().filter(item=>!id||item.id===id);
+  targets.forEach(item=>{if(item.id)seen.add(item.id);});
+  saveOperationsNoticeSeenIds(seen);
+  if(typeof globalThis.updateFishingLifeOperationsNoticeUi==="function")globalThis.updateFishingLifeOperationsNoticeUi();
+}
+
+function showUnseenOperationsNotice(items=getFishingLifeOperationsNotices()){
+  if(!currentUser)return;
+  const seen=getOperationsNoticeSeenIds(),unseen=items.filter(item=>item.id&&!seen.has(item.id)&&!shownOperationsNoticeIds.has(item.id));
+  if(!unseen.length){if(typeof globalThis.updateFishingLifeOperationsNoticeUi==="function")globalThis.updateFishingLifeOperationsNoticeUi();return;}
+  unseen.forEach(item=>shownOperationsNoticeIds.add(item.id));
+  const latest=unseen.sort((a,b)=>b.createdAtMillis-a.createdAtMillis)[0],extra=unseen.length-1;
+  const detail=[latest.body,extra>0?`확인하지 않은 공지가 ${extra.toLocaleString()}개 더 있습니다.`:""].filter(Boolean).join(" · ");
+  if(typeof globalThis.showFishingLifeNotice==="function")globalThis.showFishingLifeNotice({icon:latest.type==="personal"?"🎁":"📢",eyebrow:latest.type==="personal"?"관리자 지급":"운영 공지",title:latest.title,detail,kind:"info",duration:6500});
+  if(latest.category==="fish"&&latest.fishIds?.length&&typeof globalThis.showFishingLifeReceivedFishNotice==="function")setTimeout(()=>globalThis.showFishingLifeReceivedFishNotice(latest.fishIds),180);
+  if(typeof globalThis.updateFishingLifeOperationsNoticeUi==="function")globalThis.updateFishingLifeOperationsNoticeUi();
+}
+
+function startOperationsNoticeListeners(){
+  if(!currentUser)return;
+  if(liveConfigUnsubscribe)liveConfigUnsubscribe();
+  if(adminNoticeUnsubscribe)adminNoticeUnsubscribe();
+  personalAdminNotices=[];
+  personalAdminNoticeListenerReady=false;
+  shownOperationsNoticeIds=new Set();
+
+  liveConfigUnsubscribe=db.collection("config").doc("game").onSnapshot(snapshot=>{
+    applyLiveOperationsConfig(snapshot.exists?snapshot.data()||{}:{});
+    showUnseenOperationsNotice((liveOperationsConfig.announcements||[]).map(item=>({...item,type:"global"})));
+  },error=>console.error(error));
+
+  adminNoticeUnsubscribe=db.collection("users").doc(currentUser).collection("adminNotices").orderBy("createdAtMillis","desc").limit(30).onSnapshot(snapshot=>{
+    const liveAdded=personalAdminNoticeListenerReady?snapshot.docChanges().filter(change=>change.type==="added").map(change=>normalizePersonalAdminNotice(change.doc.id,change.doc.data())):[];
+    personalAdminNotices=snapshot.docs.map(doc=>normalizePersonalAdminNotice(doc.id,doc.data())).filter(item=>item.id);
+    if(liveAdded.length)setTimeout(()=>refreshMyCloudData(true).then(()=>{updateWallet();if(typeof globalThis.requestFishingLifeRender==="function")globalThis.requestFishingLifeRender(true);const fishIds=liveAdded.flatMap(item=>item.fishIds||[]);if(fishIds.length&&typeof globalThis.showFishingLifeReceivedFishNotice==="function")globalThis.showFishingLifeReceivedFishNotice(fishIds);}).catch(console.error),120);
+    showUnseenOperationsNotice(personalAdminNotices);
+    personalAdminNoticeListenerReady=true;
+  },error=>console.error(error));
+}
+
+function stopOperationsNoticeListeners(){
+  if(liveConfigUnsubscribe){liveConfigUnsubscribe();liveConfigUnsubscribe=null;}
+  if(adminNoticeUnsubscribe){adminNoticeUnsubscribe();adminNoticeUnsubscribe=null;}
+  personalAdminNotices=[];personalAdminNoticeListenerReady=false;shownOperationsNoticeIds=new Set();
+  if(typeof globalThis.updateFishingLifeOperationsNoticeUi==="function")globalThis.updateFishingLifeOperationsNoticeUi();
+}
+
+globalThis.getFishingLifeOperationsNotices=getFishingLifeOperationsNotices;
+globalThis.getFishingLifeOperationsUnreadCount=getFishingLifeOperationsUnreadCount;
+globalThis.markFishingLifeOperationsNoticesSeen=markFishingLifeOperationsNoticesSeen;
+
 function startServerAlertListener(){
   if(!currentUser) return;
   if(emergencyRestoreRunning||hasPendingEmergencyRecoveryDecision())return;
@@ -3139,11 +3405,7 @@ function startServerAlertListener(){
 
   serverAlertStartTime = Date.now();
 
-  serverAlertUnsubscribe = db.collection("serverAlerts")
-    .where("createdAtMillis", ">", serverAlertStartTime)
-    .orderBy("createdAtMillis", "asc")
-    .limit(50)
-    .onSnapshot(snapshot => {
+  const consumeSnapshot = snapshot => {
       snapshot.docChanges().forEach(change => {
         if(change.type !== "added") return;
 
@@ -3258,9 +3520,23 @@ function startServerAlertListener(){
           return;
         }
       });
-    }, e => {
-      console.error(e);
-    });
+    };
+  const handleAlertError=e=>console.error(e);
+  const worldUnsubscribe=db.collection("worldAlerts")
+    .where("createdAtMillis", ">", serverAlertStartTime)
+    .orderBy("createdAtMillis", "asc")
+    .limit(20)
+    .onSnapshot(consumeSnapshot,handleAlertError);
+  const personalUnsubscribe=db.collection("users").doc(currentUser).collection("liveAlerts")
+    .where("createdAtMillis", ">", serverAlertStartTime)
+    .orderBy("createdAtMillis", "asc")
+    .limit(30)
+    .onSnapshot(consumeSnapshot,handleAlertError);
+  serverAlertUnsubscribe=()=>{
+    worldUnsubscribe();
+    personalUnsubscribe();
+  };
+  startOperationsNoticeListeners();
 }
 
 function stopServerAlertListener(){
@@ -3268,6 +3544,7 @@ function stopServerAlertListener(){
     serverAlertUnsubscribe();
     serverAlertUnsubscribe = null;
   }
+  stopOperationsNoticeListeners();
 }
 
 
@@ -4048,7 +4325,7 @@ function getTrainingLevel(key){
 
 function getTrainingCost(level){
   if(level >= MAX_TRAINING) return null;
-  return trainingCostTable[level];
+  return Math.max(1,Math.floor(trainingCostTable[level]*getLiveTrainingBalance().costMultiplier));
 }
 
 function getProgressiveTrainingBonus(level){
@@ -4059,16 +4336,21 @@ function getProgressiveTrainingBonus(level){
   return first + middle + final;
 }
 
+function getTrainingBonusForLevel(key,level){
+  const balance=getLiveTrainingBalance(),multiplier=key==="attack"?balance.attackEffectMultiplier:key==="hp"?balance.hpEffectMultiplier:balance.critDamageEffectMultiplier;
+  return Math.max(0,Math.round(getProgressiveTrainingBonus(level)*multiplier*100)/100);
+}
+
 function getTrainingAttackBonus(){
-  return getProgressiveTrainingBonus(getTrainingLevel("attack"));
+  return getTrainingBonusForLevel("attack",getTrainingLevel("attack"));
 }
 
 function getTrainingHpBonus(){
-  return getProgressiveTrainingBonus(getTrainingLevel("hp"));
+  return getTrainingBonusForLevel("hp",getTrainingLevel("hp"));
 }
 
 function getTrainingCritDamageBonus(){
-  return getProgressiveTrainingBonus(getTrainingLevel("critDamage"));
+  return getTrainingBonusForLevel("critDamage",getTrainingLevel("critDamage"));
 }
 
 function buildTrainingLine(num, name, level, effectText){
@@ -4163,10 +4445,10 @@ function applyTrainingBonusesToCombat(c){
   const hpLevel = getTrainingLevel("hp");
   const critDamageLevel = getTrainingLevel("critDamage");
 
-  c.attack = Math.floor(c._baseAttack * (1 + getProgressiveTrainingBonus(attackLevel) / 100));
+  c.attack = Math.floor(c._baseAttack * (1 + getTrainingBonusForLevel("attack",attackLevel) / 100));
 
   const oldMaxHp = Math.max(1, Number(c.maxHp || c._baseMaxHp || 1));
-  const newMaxHp = Math.max(1, Math.floor(c._baseMaxHp * (1 + getProgressiveTrainingBonus(hpLevel) / 100)));
+  const newMaxHp = Math.max(1, Math.floor(c._baseMaxHp * (1 + getTrainingBonusForLevel("hp",hpLevel) / 100)));
 
   if(c._trainingHpLevel !== hpLevel || c.maxHp !== newMaxHp){
     const hpRatio = oldMaxHp > 0 ? clamp(Number(c.hp || oldMaxHp) / oldMaxHp, 0, 1) : 1;
@@ -4179,7 +4461,7 @@ function applyTrainingBonusesToCombat(c){
     c.maxHp = newMaxHp;
   }
 
-  c.critDamage = Math.floor(c._baseCritDamage + getProgressiveTrainingBonus(critDamageLevel));
+  c.critDamage = Math.floor(c._baseCritDamage + getTrainingBonusForLevel("critDamage",critDamageLevel));
 
   return c;
 }

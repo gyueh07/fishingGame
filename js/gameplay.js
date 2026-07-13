@@ -163,7 +163,10 @@ function takeFishingTimingResult(){
 function getTimingGradeChances(timingResult="GREAT"){
   let chances = getRawGradeChances();
   const timingWeights = fishingTimingWeights[timingResult] || fishingTimingWeights.GREAT;
-  chances = chances.map(x => ({...x, chance: Math.max(0, x.chance) * (timingWeights[x.name] || 1)}));
+  chances = chances.map(x => {
+    const balance=getLiveGradeBalance(x.name),defaults=grades.find(grade=>grade.name===x.name),adjusted=Math.max(0,x.chance+(Number(balance.chance)||0)-Number(defaults?.chance||0));
+    return {...x,chance:adjusted*(timingWeights[x.name]||1)};
+  });
 
   // BAD 판정에서는 만렙에서도 쓰레기가 최종 확률 10% 이상 나오게 한다.
   if(timingResult === "BAD"){
@@ -218,9 +221,10 @@ function getCurrentGradeChances(){
 }
 
 function makePrice(g,size){
-  if(g.name==="쓰레기") return Math.floor(Math.random()*30)+1;
+  const basePrice=Math.max(0,Number(getLiveGradeBalance(g.name).basePrice)||0);
+  if(g.name==="쓰레기") return Math.max(1,Math.floor((Math.floor(Math.random()*30)+1)*Math.max(1,basePrice)));
   const s = size === null ? 7777 : size;
-  return Math.floor(g.basePrice + s*gradePower[g.name]*1000 + Math.random()*g.basePrice*0.4);
+  return Math.max(1,Math.floor(basePrice+s*gradePower[g.name]*1000+Math.random()*basePrice*.4));
 }
 
 function addCollection(f){
@@ -392,6 +396,7 @@ async function showOtherBucket(nickname){
     if(!snap.exists) return print("존재하지 않는 닉네임입니다.");
 
     const data = snap.data();
+    if(isRankingExcludedUser(data,nickname))return print("존재하지 않는 닉네임입니다.");
     const fullState=await loadSplitGameState(nickname,data);
     const otherBucket = Array.isArray(fullState.bucket)?fullState.bucket:[];
     const totalValue = otherBucket.reduce((s,f)=>s+(f.price||0),0);
@@ -997,6 +1002,7 @@ async function showOtherWallet(nickname){
     if(!snap.exists) return print("존재하지 않는 닉네임입니다.");
 
     const data = snap.data();
+    if(isRankingExcludedUser(data,nickname))return print("존재하지 않는 닉네임입니다.");
     const title = formatUserName(nickname, data.title) + " 님의 지갑";
     const content = title + "\n\n현재 돈 : " + formatMoney(data.money || 0);
 
@@ -1218,8 +1224,8 @@ function getPvpPreparedFishes(){
 
 function repairPvpCombatStats(f){
   if(!f||f.grade==="쓰레기")return f;
-  const c=f.combat||(f.combat={}),stars=c.stars||{},tier=key=>Math.max(0,Math.min(3,Math.floor(Number(stars[key]||0))));
-  const dodgeMid=[5.5,12.5,20,35],critMid=[15,25,35,45],critDamageMid=[200,300,400,475];
+  const c=f.combat||(f.combat={}),stars=c.stars||{},tier=key=>Math.max(0,Math.min(4,Math.floor(Number(stars[key]||0))));
+  const dodgeMid=[5.5,12.5,20,35,52.5],critMid=[15,25,35,45,55],critDamageMid=[200,300,400,475,575];
   if(!Number.isFinite(Number(c.dodge))||Number(c.dodge)<=0)c.dodge=dodgeMid[tier("dodge")];
   if(!Number.isFinite(Number(c.critRate))||Number(c.critRate)<=0)c.critRate=critMid[tier("critRate")];
   if(!Number.isFinite(Number(c.critDamage))||Number(c.critDamage)<=0)c.critDamage=critDamageMid[tier("critDamage")];
@@ -1238,10 +1244,10 @@ function cloneForPvp(f, levels){
   const baseMaxHp = Number(raw._baseMaxHp ?? raw.maxHp ?? raw.hp ?? 1);
   const baseCritDamage = Number(raw._baseCritDamage ?? raw.critDamage ?? 0);
 
-  raw.attack = Math.max(0, Math.floor(baseAttack * (1 + getProgressiveTrainingBonus(Number(lv.attack || 0)) / 100)));
-  raw.maxHp = Math.max(1, Math.floor(baseMaxHp * (1 + getProgressiveTrainingBonus(Number(lv.hp || 0)) / 100)));
+  raw.attack = Math.max(0, Math.floor(baseAttack * (1 + getTrainingBonusForLevel("attack",Number(lv.attack || 0)) / 100)));
+  raw.maxHp = Math.max(1, Math.floor(baseMaxHp * (1 + getTrainingBonusForLevel("hp",Number(lv.hp || 0)) / 100)));
   raw.hp = raw.maxHp;
-  raw.critDamage = Math.floor(baseCritDamage + getProgressiveTrainingBonus(Number(lv.critDamage || 0)));
+  raw.critDamage = Math.floor(baseCritDamage + getTrainingBonusForLevel("critDamage",Number(lv.critDamage || 0)));
   raw.status = "정상";
   delete raw.knockedOut;
   delete raw.battleDown;
@@ -1781,6 +1787,7 @@ async function requestPvp(nickname){
   try{
     const userSnap = await db.collection("users").doc(nickname).get();
     if(!userSnap.exists) return print("존재하지 않는 닉네임입니다.");
+    if(isRankingExcludedUser(userSnap.data(),nickname))return print("존재하지 않는 닉네임입니다.");
 
     const online = await isUserOnline(nickname);
     if(!online) return print("현재 접속 중인 유저가 아닙니다.");
@@ -1826,14 +1833,12 @@ async function requestPvp(nickname){
       updatedAtMillis:Date.now()
     });
 
-    await db.collection("serverAlerts").add({
+    await sendUserLiveAlert(nickname,{
       type:"pvpRequest",
       roomId,
       from:currentUser,
       fromTitle:getCurrentTitle(),
-      to:nickname,
-      createdAtMillis:Date.now(),
-      createdAt:firebase.firestore.FieldValue.serverTimestamp()
+      createdAtMillis:Date.now()
     });
 
     pvpPrepIndexes = [];
@@ -1880,14 +1885,12 @@ async function acceptLatestPvpRequest(){
       updatedAtMillis:Date.now()
     });
 
-    await db.collection("serverAlerts").add({
+    await sendUserLiveAlert(room.from,{
       type:"pvpAccepted",
       roomId:active.roomId,
       from:currentUser,
       fromTitle:getCurrentTitle(),
-      to:room.from,
-      createdAtMillis:Date.now(),
-      createdAt:firebase.firestore.FieldValue.serverTimestamp()
+      createdAtMillis:Date.now()
     });
 
     pvpPrepIndexes = [];
@@ -1914,13 +1917,11 @@ async function rejectLatestPvpRequest(){
       const room = roomSnap.data() || {};
       await roomRef.set({status:"rejected", rejectedAtMillis:Date.now(), updatedAtMillis:Date.now()}, {merge:true});
       await clearBothActivePvp(room.from, room.to);
-      await db.collection("serverAlerts").add({
+      await sendUserLiveAlert(room.from,{
         type:"pvpRejected",
         from:currentUser,
         fromTitle:getCurrentTitle(),
-        to:room.from,
-        createdAtMillis:Date.now(),
-        createdAt:firebase.firestore.FieldValue.serverTimestamp()
+        createdAtMillis:Date.now()
       });
     }else{
       await getMyActivePvpRef().delete();
@@ -1953,13 +1954,11 @@ async function cancelPvpRequest(){
     await roomRef.set({status:"cancelled", cancelledBy:currentUser, cancelledAtMillis:Date.now(), updatedAtMillis:Date.now()}, {merge:true});
     await clearBothActivePvp(room.from, room.to);
 
-    await db.collection("serverAlerts").add({
+    await sendUserLiveAlert(opponent,{
       type:"pvpCancelled",
       from:currentUser,
       fromTitle:getCurrentTitle(),
-      to:opponent,
-      createdAtMillis:Date.now(),
-      createdAt:firebase.firestore.FieldValue.serverTimestamp()
+      createdAtMillis:Date.now()
     });
 
     pvpPrepIndexes = [];
@@ -2116,13 +2115,11 @@ async function finishPvpReady(){
     const after = afterSnap.data() || {};
     const bothReady = !!after[myKey] && !!after[oppKey];
 
-    await db.collection("serverAlerts").add({
+    await sendUserLiveAlert(opp,{
       type:"pvpReady",
       from:currentUser,
       fromTitle:getCurrentTitle(),
-      to:opp,
-      createdAtMillis:Date.now(),
-      createdAt:firebase.firestore.FieldValue.serverTimestamp()
+      createdAtMillis:Date.now()
     });
 
     if(!bothReady){
@@ -2187,14 +2184,12 @@ async function finishPvpReady(){
     pvpPrepIndexes = [];
     saveGame();
 
-    await db.collection("serverAlerts").add({
+    await sendUserLiveAlert(opp,{
       type:"pvpResult",
-      to:opp,
       summary:result.summary,
       fullLog:opponentLog,
       replay:compactReplay,
-      createdAtMillis:Date.now(),
-      createdAt:firebase.firestore.FieldValue.serverTimestamp()
+      createdAtMillis:Date.now()
     });
 
     if(typeof globalThis.openPvpBattleReplay==="function")globalThis.openPvpBattleReplay(compactReplay);
@@ -2429,6 +2424,7 @@ async function sendMoney(targetNickname, amount){
       if(!mySnap.exists)throw new Error("MY_ACCOUNT_NOT_FOUND");
       if(!targetSnap.exists)throw new Error("TARGET_NOT_FOUND");
       const myData=mySnap.data()||{},targetData=targetSnap.data()||{};
+      if(isRankingExcludedUser(targetData,targetNickname))throw new Error("TARGET_NOT_FOUND");
       if(!isSessionHashValid(myData,sessionHash))throw new Error("SESSION_INVALID");
       const myState=cloneCloudState(transferContext.baseState)||{},targetState={...(targetData.gameState||{})};
       const currentMoney=normalizeMoney(myData.money??myState.money??0);
@@ -2446,7 +2442,7 @@ async function sendMoney(targetNickname, amount){
     }));
     if(!committed)throw new Error("TRANSFER_NOT_COMMITTED");
     const appliedLocally=finishOnlineTransferState(committed.state,committed.revision,transferContext);
-    db.collection("serverAlerts").add({type:"moneyTransfer",from:senderName,fromTitle:senderTitle,to:targetNickname,amount,createdAt:firebase.firestore.FieldValue.serverTimestamp(),createdAtMillis:Date.now()}).catch(console.error);
+    sendUserLiveAlert(targetNickname,{type:"moneyTransfer",from:senderName,fromTitle:senderTitle,amount,createdAtMillis:Date.now()}).catch(console.error);
     const message=`${targetNickname} 님에게 ${amount.toLocaleString()}원을 송금하였습니다.`;
     if(appliedLocally)print(message);
     return {ok:true,targetNickname,amount,message};
@@ -2485,6 +2481,7 @@ async function sendFish(targetNickname,displayNumber){
     if(!myCloudSnap.exists)throw new Error("MY_ACCOUNT_NOT_FOUND");
     if(!targetCloudSnap.exists)throw new Error("TARGET_NOT_FOUND");
     const myDataAtRead=myCloudSnap.data()||{},targetDataAtRead=targetCloudSnap.data()||{};
+    if(isRankingExcludedUser(targetDataAtRead,targetNickname))throw new Error("TARGET_NOT_FOUND");
     const myRevisionAtRead=Number(myDataAtRead.cloudRevision||0),targetRevisionAtRead=Number(targetDataAtRead.cloudRevision||0);
     const [myFullState,targetFullState]=await Promise.all([loadSplitGameState(senderName,myDataAtRead),loadSplitGameState(targetNickname,targetDataAtRead)]);
     await queueProtectedCloudAction(()=>db.runTransaction(async tx=>{
@@ -2524,7 +2521,7 @@ async function sendFish(targetNickname,displayNumber){
     }));
     if(!committed||!transferredFish)throw new Error("TRANSFER_NOT_COMMITTED");
     const appliedLocally=finishOnlineTransferState(committed.state,committed.revision,transferContext);
-    db.collection("serverAlerts").add({type:"fishTransfer",from:senderName,fromTitle:senderTitle,to:targetNickname,fishIds:[String(transferredFish.id)],fishName:transferredFish.name,fishGrade:transferredFish.grade,fishSize:transferredFish.size,createdAt:firebase.firestore.FieldValue.serverTimestamp(),createdAtMillis:Date.now()}).catch(console.error);
+    sendUserLiveAlert(targetNickname,{type:"fishTransfer",from:senderName,fromTitle:senderTitle,fishIds:[String(transferredFish.id)],fishName:transferredFish.name,fishGrade:transferredFish.grade,fishSize:transferredFish.size,createdAtMillis:Date.now()}).catch(console.error);
     const message=`${targetNickname} 님에게 ${lineFish(transferredFish)}${objParticle(transferredFish.name)} 전송하였습니다.`;
     if(appliedLocally)print(message);
     return {ok:true,targetNickname,fish:transferredFish,message};
@@ -2560,6 +2557,7 @@ async function sendFishBatch(targetNickname,fishIds){
     const transferContext={account:senderName,saveSeq:localSaveSeq,baseState:cloneCloudState(getGameState())};
     const [myCloudSnap,targetCloudSnap]=await Promise.all([myRef.get(),targetRef.get()]);if(!myCloudSnap.exists)throw new Error("MY_ACCOUNT_NOT_FOUND");if(!targetCloudSnap.exists)throw new Error("TARGET_NOT_FOUND");
     const myDataAtRead=myCloudSnap.data()||{},targetDataAtRead=targetCloudSnap.data()||{},myRevisionAtRead=Number(myDataAtRead.cloudRevision||0),targetRevisionAtRead=Number(targetDataAtRead.cloudRevision||0);
+    if(isRankingExcludedUser(targetDataAtRead,targetNickname))throw new Error("TARGET_NOT_FOUND");
     const [myFullState,targetFullState]=await Promise.all([loadSplitGameState(senderName,myDataAtRead),loadSplitGameState(targetNickname,targetDataAtRead)]);
     await queueProtectedCloudAction(()=>db.runTransaction(async tx=>{
       const mySnap=await tx.get(myRef),targetSnap=await tx.get(targetRef);if(!mySnap.exists)throw new Error("MY_ACCOUNT_NOT_FOUND");if(!targetSnap.exists)throw new Error("TARGET_NOT_FOUND");
@@ -2581,7 +2579,7 @@ async function sendFishBatch(targetNickname,fishIds){
       txSetProtectedUser(tx,targetRef,targetData,{cloudRevision:targetRevision,gameState:{...targetState,bucket:targetBucket,notifications:targetNotifications,messages:targetMessages}},"fish_batch_transfer_receive",{forceBackup:true,fullStateIncludesSplitData:true,previousState:targetFullState});committed={state:myWrite.fullGameState||nextMyState,revision:myWrite.cloudRevision};
     }));
     if(!committed||!moved.length)throw new Error("TRANSFER_NOT_COMMITTED");finishOnlineTransferState(committed.state,committed.revision,transferContext);
-    db.collection("serverAlerts").add({type:"fishTransfer",from:senderName,fromTitle:senderTitle,to:targetNickname,fishIds:moved.map(f=>String(f.id)),fishName:moved[0].name,fishGrade:moved[0].grade,fishSize:moved[0].size,fishCount:moved.length,createdAt:firebase.firestore.FieldValue.serverTimestamp(),createdAtMillis:Date.now()}).catch(console.error);
+    sendUserLiveAlert(targetNickname,{type:"fishTransfer",from:senderName,fromTitle:senderTitle,fishIds:moved.map(f=>String(f.id)),fishName:moved[0].name,fishGrade:moved[0].grade,fishSize:moved[0].size,fishCount:moved.length,createdAtMillis:Date.now()}).catch(console.error);
     return {ok:true,targetNickname,fishes:moved,count:moved.length,message:`${targetNickname} 님에게 물고기 ${moved.length}마리를 전송했습니다.`};
   }catch(e){console.error(e);if(e.message==="TARGET_NOT_FOUND")return transferFailure("존재하지 않는 닉네임입니다.");if(e.message==="FISH_NOT_FOUND")return transferFailure("선택한 물고기를 찾을 수 없습니다.");if(e.message==="FISH_LOCKED")return transferFailure("잠금된 물고기는 전송할 수 없습니다.");if(e.message==="FISH_IN_AQUARIUM")return transferFailure("수족관에 전시 중인 물고기는 전시 해제 후 전송할 수 있습니다.");if(e.message==="FISH_IS_MAIN")return transferFailure("합성 본체는 해제한 뒤 전송할 수 있습니다.");if(e.message==="TRANSFER_RETRY")return transferFailure("계정 기록이 방금 변경되었습니다. 다시 시도해주세요.");if(e.message==="SYNC_REQUIRED")return transferFailure("최신 기록을 저장하지 못했습니다. 인터넷 연결을 확인해주세요.");if(e.message==="PROGRESS_REGRESSION_BLOCKED")return transferFailure("이 기기의 기록이 클라우드 기록보다 오래되어 전송을 중단했습니다.");if(e.message==="USER_STATE_TOO_LARGE")return transferFailure("저장할 게임 기록이 너무 많아 물고기를 보내지 못했습니다.");if(await handleOnlineActionWriteError(e,currentUser,getGameState(),lastCloudSyncedState))return transferFailure(e.message==="UPDATE_REQUIRED"?"게임이 업데이트되었습니다. 페이지를 새로고침해주세요.":"상대가 이전 버전을 사용 중이어서 물고기를 보내지 못했습니다.");return transferFailure("물고기 전송 중 오류가 발생했습니다.");}
   finally{isOnlineActionRunning=false;}
@@ -2619,6 +2617,10 @@ async function sendMessage(targetNickname){
       isOnlineActionRunning = false;
       return print("존재하지 않는 닉네임입니다.");
     }
+    if(isRankingExcludedUser(targetSnap.data(),targetNickname)){
+      isOnlineActionRunning=false;
+      return print("존재하지 않는 닉네임입니다.");
+    }
 
     const messageId = "msg_" + Date.now() + "_" + Math.random().toString(36).slice(2);
     const payload = {
@@ -2650,14 +2652,12 @@ async function sendMessage(targetNickname){
       },"message_receive");
     });
 
-    await db.collection("serverAlerts").add({
+    await sendUserLiveAlert(targetNickname,{
       type: "userMessage",
       from: senderName,
       fromTitle: senderTitle,
-      to: targetNickname,
       text: text,
       messageId: messageId,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       createdAtMillis: payload.createdAtMillis
     });
 

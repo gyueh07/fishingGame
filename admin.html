@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#08131a">
   <title>FishingLife 관리자</title>
-  <link rel="stylesheet" href="./css/admin.css?v=25.4.0">
+  <link rel="stylesheet" href="./css/admin.css?v=25.5.0">
 </head>
 <body>
   <main id="adminLogin" class="admin-login">
@@ -34,6 +34,7 @@
         <button class="active" data-admin-tab="overview"><span aria-hidden="true">⌂</span> 현황</button>
         <button data-admin-tab="users"><span aria-hidden="true">₩</span> 유저 관리</button>
         <button data-admin-tab="balance"><span aria-hidden="true">⚖</span> 밸런스</button>
+        <button data-admin-tab="notices"><span aria-hidden="true">▣</span> 공지</button>
         <button data-admin-tab="system"><span aria-hidden="true">⚙</span> 관리자 계정</button>
       </nav>
       <div class="admin-session">
@@ -108,6 +109,28 @@
             </form>
           </section>
         </div>
+
+        <section class="admin-panel fish-grant-panel">
+          <header><div><small>FISH GRANT</small><h2>물고기 지급</h2></div><span class="panel-symbol">◆</span></header>
+          <form id="fishGrantForm" class="stack-form">
+            <div class="field-grid fish-grant-basic">
+              <label>물고기 이름<input id="grantFishName" maxlength="40" autocomplete="off" placeholder="한정판 물고기 이름" required></label>
+              <label>등급<select id="grantFishGrade" required><option>일반</option><option>희귀</option><option>영웅</option><option>전설</option><option>신화</option><option>초월</option><option>영원</option><option>공허</option></select></label>
+              <label>크기(cm)<input id="grantFishSize" type="number" min="0" step="0.1" value="100"></label>
+              <label>수량<input id="grantFishQuantity" type="number" min="1" max="20" step="1" value="1" required></label>
+            </div>
+            <div class="fish-stat-editor">
+              <label><span>공격력</span><input id="grantFishAttack" type="number" min="1" step="1" value="1000" required><select id="grantFishAttackStar" aria-label="공격 별"><option value="0">무별</option><option value="1">1성</option><option value="2">2성</option><option value="3">3성</option><option value="4">4성</option></select></label>
+              <label><span>최대 체력</span><input id="grantFishHp" type="number" min="1" step="1" value="5000" required><select id="grantFishHpStar" aria-label="체력 별"><option value="0">무별</option><option value="1">1성</option><option value="2">2성</option><option value="3">3성</option><option value="4">4성</option></select></label>
+              <label><span>회피율(%)</span><input id="grantFishDodge" type="number" min="0" max="100" step="0.1" value="10" required><select id="grantFishDodgeStar" aria-label="회피 별"><option value="0">무별</option><option value="1">1성</option><option value="2">2성</option><option value="3">3성</option><option value="4">4성</option></select></label>
+              <label><span>치명타 확률(%)</span><input id="grantFishCritRate" type="number" min="0" max="100" step="0.1" value="20" required><select id="grantFishCritRateStar" aria-label="치명타 확률 별"><option value="0">무별</option><option value="1">1성</option><option value="2">2성</option><option value="3">3성</option><option value="4">4성</option></select></label>
+              <label><span>치명타 피해(%)</span><input id="grantFishCritDamage" type="number" min="100" max="2000" step="1" value="200" required><select id="grantFishCritDamageStar" aria-label="치명타 피해 별"><option value="0">무별</option><option value="1">1성</option><option value="2">2성</option><option value="3">3성</option><option value="4">4성</option></select></label>
+            </div>
+            <label for="grantFishReason">지급 사유</label>
+            <input id="grantFishReason" maxlength="80" autocomplete="off" placeholder="이벤트 한정 보상" required>
+            <button class="primary-command" type="submit" disabled>물고기 지급</button>
+          </form>
+        </section>
         <p id="userActionStatus" class="action-status" role="status" aria-live="polite"></p>
       </section>
 
@@ -122,6 +145,9 @@
             <label for="bossAttackMultiplier"><span>보스 공격력</span><output id="bossAttackOutput">×1.00</output><input id="bossAttackMultiplier" type="range" min="0.25" max="5" step="0.05" value="1"></label>
             <label for="bossRewardMultiplier"><span>최초 상금</span><output id="bossRewardOutput">×1.00</output><input id="bossRewardMultiplier" type="range" min="0.25" max="5" step="0.05" value="1"></label>
           </div>
+          <section class="balance-editor-section"><header><div><small>GRADE BALANCE</small><h3>등급별 조정</h3></div><p>현재 기준값과 공격력·체력 최소/최대 수치</p></header><div id="gradeBalanceEditor" class="balance-table"></div></section>
+          <section class="balance-editor-section"><header><div><small>STAR BALANCE</small><h3>별 능력치 조정</h3></div><p>4성 기본 확률은 0%입니다.</p></header><div id="starBalanceEditor" class="balance-table star-balance-table"></div></section>
+          <section class="balance-editor-section"><header><div><small>TRAINING BALANCE</small><h3>훈련소 조정</h3></div></header><div id="trainingBalanceEditor" class="field-grid"></div></section>
           <div class="patch-fields">
             <label for="balanceTitle">패치 제목</label>
             <input id="balanceTitle" maxlength="40" autocomplete="off" placeholder="보스전 밸런스 조정" required>
@@ -131,6 +157,25 @@
           <div class="form-actions"><button id="resetBalance" type="button">기본값</button><button class="primary-command" type="submit">밸런스 게시</button></div>
           <p id="balanceStatus" class="action-status" role="status" aria-live="polite"></p>
         </form>
+      </section>
+
+      <section class="admin-view" data-admin-view="notices" hidden>
+        <div class="admin-split notice-admin-grid">
+          <section class="admin-panel">
+            <header><div><small>ANNOUNCEMENT</small><h2>전체 공지 게시</h2></div><span class="panel-symbol">▣</span></header>
+            <form id="noticeForm" class="stack-form">
+              <label>분류<select id="noticeCategory"><option value="update">업데이트</option><option value="balance">밸런스 패치</option><option value="event">이벤트</option><option value="maintenance">점검</option></select></label>
+              <label>제목<input id="noticeTitle" maxlength="50" autocomplete="off" placeholder="공지 제목" required></label>
+              <label>내용<textarea id="noticeBody" maxlength="500" rows="7" placeholder="게임에서 바로 보여줄 내용을 입력하세요." required></textarea></label>
+              <button class="primary-command" type="submit">공지 게시</button>
+              <p id="noticeStatus" class="action-status" role="status" aria-live="polite"></p>
+            </form>
+          </section>
+          <section class="admin-panel">
+            <header><div><small>RECENT ANNOUNCEMENTS</small><h2>최근 공지</h2></div></header>
+            <div id="adminNoticeList" class="notice-admin-list"><p class="empty-row">공지 기록을 불러오는 중입니다.</p></div>
+          </section>
+        </div>
       </section>
 
       <section class="admin-view" data-admin-view="system" hidden>
@@ -149,6 +194,6 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="./js/admin.js?v=25.4.0"></script>
+  <script src="./js/admin.js?v=25.5.0"></script>
 </body>
 </html>
