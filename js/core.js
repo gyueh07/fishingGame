@@ -35,7 +35,7 @@ let accountSessionUnsubscribe=null;
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
-const GAME_VERSION = "2026-07-13-fishinglife-login-migration-fix-v25-3-3";
+const GAME_VERSION = "2026-07-13-fishinglife-session-only-login-v25-3-4";
 const USER_WRITE_SCHEMA_VERSION = 250;
 const USER_WRITE_PROTOCOL_VERSION = 4;
 const ACCOUNT_RESET_VERSION = 1;
@@ -55,7 +55,7 @@ const MAX_CLOUD_BATTLE_FRAME_CHUNK_COUNT = 80;
 const UPDATE_NOTICE_TITLE = "📢 업데이트 안내";
 const UPDATE_NOTICES = [
   {
-    id:"2026-07-13-fishinglife-login-migration-fix-25-3-3",
+    id:"2026-07-13-fishinglife-session-only-login-25-3-4",
     title:"전투 기록·보스 연출 개선",
     lines:[
       "긴 전투 기록도 중간 장면을 줄이지 않고 여러 저장 공간에 나누어 전부 보관합니다.",
@@ -1531,6 +1531,38 @@ function assertCloudStateSize(state){
   return bytes;
 }
 
+function txSetLoginSessionOnly(tx,ref,existingData,sessionTokenHash,serverTime){
+  assertCloudWritesAllowed();
+  const existing=existingData&&typeof existingData==="object"?existingData:null;
+  const state=cloneCloudState(existing?.gameState);
+  if(!existing||!state||typeof state!=="object")throw new Error("LOGIN_STATE_MISSING");
+  const expectedRevision=Number(existing.cloudRevision||0)+1;
+  const payload={
+    sessionTokenHash,
+    sessionTokens:{},
+    activeSessionDeviceId:getCloudDeviceId(),
+    activeSessionTokenHash:sessionTokenHash,
+    activeSessionSeenAt:serverTime,
+    nickname:ref.id,
+    money:normalizeMoney(state.money??existing.money??0),
+    rodLevel:Math.max(1,Math.floor(Number(state.rodLevel??existing.rodLevel??1))),
+    totalEarned:normalizeMoney(state.totalEarned??existing.totalEarned??0),
+    totalFishingCount:Math.max(0,Math.floor(Number(state.totalFishingCount??existing.totalFishingCount??0))),
+    accountResetVersion:ACCOUNT_RESET_VERSION,
+    cloudRevision:expectedRevision,
+    gameState:state,
+    writeSchemaVersion:USER_WRITE_SCHEMA_VERSION,
+    writeProtocol:USER_WRITE_PROTOCOL_VERSION,
+    writeProtocolSeq:Number(existing.writeProtocolSeq||0)+1,
+    writeClientVersion:GAME_VERSION,
+    writeReason:"login_session_only",
+    writeGuardAt:serverTime,
+    updatedAt:serverTime
+  };
+  tx.set(ref,payload,{merge:true});
+  return payload;
+}
+
 function txSetProtectedUser(tx,ref,existingData,patch,reason="user_write",options={}){
   assertCloudWritesAllowed();
   const create=options.create===true;
@@ -2595,28 +2627,31 @@ async function loginUser(providedNickname,providedPassword){
         ?mergeCloudGameStates(pendingRecovery.localState,serverState,pendingRecovery.baseState)
         :serverState;
       const serverTime=firebase.firestore.FieldValue.serverTimestamp();
-      const write=txSetProtectedUser(tx,ref,latest,{
-        sessionTokenHash,
-        sessionTokens:{},
-        activeSessionDeviceId:getCloudDeviceId(),
-        activeSessionTokenHash:sessionTokenHash,
-        activeSessionSeenAt:serverTime,
-        accountResetVersion:ACCOUNT_RESET_VERSION,
-        cloudRevision:Number(latest.cloudRevision||0)+1,
-        money:Number(nextState.money||0),
-        rodLevel:Number(nextState.rodLevel||1),
-        title:String(nextState.equippedTitle||""),
-        gameState:nextState
-      },accountWasReset?"full_account_reset":"login",{allowAccountReset:accountWasReset,backup:!accountWasReset,fullStateIncludesSplitData:true,previousState:initialState});
+      const write=!accountWasReset&&!pendingRecoveryApplied
+        ?txSetLoginSessionOnly(tx,ref,latest,sessionTokenHash,serverTime)
+        :txSetProtectedUser(tx,ref,latest,{
+          sessionTokenHash,
+          sessionTokens:{},
+          activeSessionDeviceId:getCloudDeviceId(),
+          activeSessionTokenHash:sessionTokenHash,
+          activeSessionSeenAt:serverTime,
+          accountResetVersion:ACCOUNT_RESET_VERSION,
+          cloudRevision:Number(latest.cloudRevision||0)+1,
+          money:Number(nextState.money||0),
+          rodLevel:Number(nextState.rodLevel||1),
+          title:String(nextState.equippedTitle||""),
+          gameState:nextState
+        },accountWasReset?"full_account_reset":"login_recovery",{allowAccountReset:accountWasReset,backup:!accountWasReset,fullStateIncludesSplitData:true,previousState:initialState});
       tx.set(sessionRef,{nickname,deviceId:getCloudDeviceId(),tokenHash:sessionTokenHash,updatedAtMillis:Date.now(),updatedAt:serverTime});
       nextRevision=write.cloudRevision;
-      loginData={...latest,money:write.money,rodLevel:write.rodLevel,title:write.title,gameState:cloneCloudState(write.fullGameState||nextState)};
+      loginData={...latest,money:write.money,rodLevel:write.rodLevel,title:write.title??latest.title,gameState:cloneCloudState(write.fullGameState||nextState)};
     });
   }catch(e){
     console.error(e);
     clearUserSession();
     const protectedWriteBlocked=handleProtectedWriteError(e,nickname,pendingRecovery?.localState||null,pendingRecovery?.baseState||null);
-    const message=e.message==="ACCOUNT_NOT_FOUND"?"존재하지 않는 닉네임입니다.":e.message==="WRONG_PASSWORD"?"비밀번호가 틀렸습니다.":e.message==="LOGIN_RETRY"?"계정 기록이 방금 변경되었습니다. 다시 로그인해주세요.":protectedWriteBlocked?"Firebase 규칙 업데이트가 필요합니다. 규칙을 게시한 뒤 새로고침해주세요.":e.message==="USER_STATE_TOO_LARGE"?"계정 기록이 커서 로그인 저장을 완료하지 못했습니다.":isCloudConnectionError(e)?"인터넷 연결이 불안정합니다. 잠시 후 다시 시도해주세요.":"로그인 처리 중 오류가 발생했습니다. 페이지를 새로고침한 뒤 다시 시도해주세요.";
+    const errorCode=String(e?.code||e?.message||"LOGIN_FAILED").replace(/^firestore\//,"").slice(0,60);
+    const message=e.message==="ACCOUNT_NOT_FOUND"?"존재하지 않는 닉네임입니다.":e.message==="WRONG_PASSWORD"?"비밀번호가 틀렸습니다.":e.message==="LOGIN_RETRY"?"계정 기록이 방금 변경되었습니다. 다시 로그인해주세요.":protectedWriteBlocked?"Firebase 규칙 업데이트가 필요합니다. 규칙을 게시한 뒤 새로고침해주세요.":e.message==="USER_STATE_TOO_LARGE"?"계정 기록이 커서 로그인 저장을 완료하지 못했습니다.":isCloudConnectionError(e)?"인터넷 연결이 불안정합니다. 잠시 후 다시 시도해주세요.":`로그인 처리 중 오류가 발생했습니다. 오류 코드: ${errorCode}`;
     setLoginProgress(message,"error");
     if(!formLogin)print(message);
     return {ok:false,error:e.message};
