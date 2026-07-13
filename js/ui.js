@@ -196,7 +196,7 @@
   function showGameNotice(message){
     const toast=$("#gameToast");if(!toast||!message)return;
     const config=message&&typeof message==="object"?message:{},raw=typeof message==="object"?config.message||config.title||"":message,holder=document.createElement("div");holder.innerHTML=sanitizeGameHtml(String(raw));const lines=(holder.textContent||"").split(/\n+/).map(line=>stripPvpUiTokens(line)).filter(Boolean),headline=stripPvpUiTokens(config.title||lines.shift()||"알림"),detail=stripPvpUiTokens(config.detail||lines.join(" · "));
-    const danger=config.kind==="danger"||(!config.kind&&/부족|불가|실패|없습니다|오류|남아|잠금|기절/.test(headline+detail)),success=config.kind==="success"||(!config.kind&&/완료|성공|획득|판매|장착|저장|해제|보냈습니다/.test(headline+detail)),kind=danger?"danger":success?"success":"info",icon=config.icon||(danger?"⚠️":success?"✅":"🎮"),eyebrow=config.eyebrow||(kind==="danger"?"진행할 수 없음":kind==="success"?"완료":"게임 알림");
+    const danger=config.kind==="danger"||(!config.kind&&/부족|불가|실패|없습니다|오류|남아|기절/.test(headline+detail)),success=config.kind==="success"||(!config.kind&&/완료|성공|획득|판매|장착|저장|해제|보냈습니다|잠금되었습니다/.test(headline+detail)),kind=danger?"danger":success?"success":"info",icon=config.icon||(danger?"⚠️":success?"✅":"🎮"),eyebrow=config.eyebrow||(kind==="danger"?"진행할 수 없음":kind==="success"?"완료":"게임 알림");
     toast.className=`game-toast game-notice ${kind}`;toast.innerHTML=`<span>${safe(icon)}</span><div><small>${safe(eyebrow)}</small><b>${safe(headline)}</b>${detail?`<p>${safe(detail)}</p>`:""}</div>`;requestAnimationFrame(()=>toast.classList.add("show"));clearTimeout(state.toastTimer);state.toastTimer=setTimeout(()=>toast.classList.remove("show"),Math.max(2200,Number(config.duration||3800)));
   }
   globalThis.showFishingLifeNotice=showGameNotice;
@@ -462,7 +462,9 @@
   }
   const allyReplayVariants=[
     {key:"solar",className:"battle-event--ally-solar"},{key:"ascension",className:"battle-event--ally-ascension"},{key:"constellation",className:"battle-event--ally-constellation"},
-    {key:"white-flame",className:"battle-event--ally-white-flame"},{key:"tide",className:"battle-event--ally-tide"},{key:"heartbeat",className:"battle-event--ally-heartbeat"}
+    {key:"white-flame",className:"battle-event--ally-white-flame"},{key:"tide",className:"battle-event--ally-tide"},{key:"heartbeat",className:"battle-event--ally-heartbeat"},
+    {key:"storm",className:"battle-event--ally-storm"},{key:"prism",className:"battle-event--ally-prism"},{key:"frost",className:"battle-event--ally-frost"},
+    {key:"radiance",className:"battle-event--ally-radiance"},{key:"chronal",className:"battle-event--ally-chronal"}
   ];
   function getAllyReplayVariant(entry){const text=String(entry||"");return allyReplayVariants.find(item=>text.includes(item.className))||null;}
   function clearAllyReplayClasses(element){if(!element)return;allyReplayVariants.forEach(item=>element.classList.remove("event-ally-"+item.key));}
@@ -735,7 +737,8 @@
     setReplayBossHp(success?0:Number(finalFrame?.bossHp||0),Number(finalFrame?.bossMaxHp||replay.boss?.maxHp||1));
     if(success)renderAll(true);
     const clearedBossIndex=bossList.findIndex(boss=>boss.id===replay.boss?.id),nextBoss=success&&clearedBossIndex>=0?bossList[clearedBossIndex+1]:null,nextBossUnlocked=!!(nextBoss&&isBossUnlocked(nextBoss));
-    const progressLine=success?`<p class="battle-progress-update">보유 골드 ${safe(formatMoney(money))}${nextBossUnlocked?` · ${safe(nextBoss.name)} 해금`:""}</p>`:"";
+    const newlyUnlockedNextBoss=!!(nextBossUnlocked&&replay.unlockedNextBoss?.id===nextBoss.id);
+    const progressLine=success?`<p class="battle-progress-update">보유 골드 ${safe(formatMoney(money))}${newlyUnlockedNextBoss?` · ${safe(nextBoss.name)} 해금`:""}</p>`:"";
     const nextBossButton=nextBossUnlocked?`<button class="primary" data-battle-next-boss="${clearedBossIndex+2}">다음 보스 · ${safe(nextBoss.name)}</button>`:"";
     const healthRows=(replay.healthReport||[]).map(item=>{const recoveryLeft=Number(item.recoveryUntil||0)>0?Math.max(0,Number(item.recoveryUntil)-Date.now()):Number(item.recoveryMs||0),knockedOut=item.status==="기절"||Number(item.endHp||0)<=0;return `<div class="battle-health-row ${gradeClass(item.grade)} ${knockedOut?"knocked-out":""}"><span>${fishIcon(item)}</span><div><b>${safe(item.name)}</b><small>${combatHpNumber(item.startHp)} → ${combatHpNumber(item.endHp)} / ${combatHpNumber(item.maxHp)}</small><i><em style="width:${Math.max(0,Math.min(100,Number(item.remainingRate||0)))}%"></em></i></div><strong>-${Number(item.lostRate||0).toFixed(1)}%</strong><small>${recoveryLeft>0?`${knockedOut?"기절":"회복"} ${safe(formatRemain(recoveryLeft))}`:"정상"}</small></div>`;}).join("");
     const healthSummary=healthRows?`<section class="battle-health-summary"><small>파티 피해 현황</small>${healthRows}</section>`:"";
@@ -908,7 +911,7 @@
     return {classes:`profile-preview pvp-player-avatar ${borderBoss?"has-profile-border":""} ${auraBoss?"has-profile-aura":""} ${getProfileAuraClass(auraBoss?.id)}`,style:`--profile-border-color:${borderBoss?.color||"#4ee4ce"};--profile-aura-color:${auraBoss?.color||"#4ee4ce"}`,aura:auraBoss?bossSymbols[auraBoss.id]||"✦":"",avatar:borderBoss?bossSymbols[borderBoss.id]||"✦":"⚓",attackEffect:cosmetics.attackEffect};
   }
   function pvpReplayTeamHtml(team,side){
-    return (team||[]).map((fish,index)=>`<article class="pvp-replay-fish ${gradeClass(fish.grade)} ${fishEvolutionClass(fish)}" data-pvp-replay-fish="${side}-${index}"><span>${fishIcon(fish)}</span><div><b>${safe(fish.name)} ${fishEvolutionBadge(fish)}</b><small>⚔ ${combatHpNumber(fish.attack)} · 💥 ${Number(fish.critRate||0).toFixed(1)}%</small><div class="replay-hp"><i data-pvp-replay-bar="${side}-${index}" style="width:${hpPercent(fish.hp,fish.maxHp)}%"></i></div><small data-pvp-replay-hp="${side}-${index}">${combatHpNumber(fish.hp)} / ${combatHpNumber(fish.maxHp)}</small></div></article>`).join("");
+    return (team||[]).map((fish,index)=>`<article class="pvp-replay-fish ${gradeClass(fish.grade)} ${fishEvolutionClass(fish)}" data-pvp-replay-fish="${side}-${index}"><span>${fishIcon(fish)}</span><div><b>${safe(fish.name)} ${fishEvolutionBadge(fish)}</b><small>⚔ ${combatHpNumber(fish.attack)} · 💥 ${Number(fish.critRate||0).toFixed(1)}%</small><div class="replay-hp"><i data-pvp-replay-bar="${side}-${index}" style="width:${hpPercent(fish.hp,fish.maxHp)}%"></i></div><small data-pvp-replay-hp="${side}-${index}">${combatHpNumber(fish.hp)} / ${combatHpNumber(fish.maxHp)}</small></div><div class="replay-fish-effects" data-pvp-replay-effects="${side}-${index}" ${fish.effects?.length?"":"hidden"}>${replayFishEffectsHtml(fish.effects)}</div></article>`).join("");
   }
   function pvpIntroTeamHtml(team,name,label){
     const list=team||[],totalAttack=list.reduce((sum,fish)=>sum+Number(fish.attack||0),0),totalHp=list.reduce((sum,fish)=>sum+Number(fish.maxHp||0),0),averageCrit=list.length?list.reduce((sum,fish)=>sum+Number(fish.critRate||0),0)/list.length:0,averageDodge=list.length?list.reduce((sum,fish)=>sum+Number(fish.dodge||0),0)/list.length:0;
@@ -979,8 +982,8 @@
     if(isVoid){dom.arena.classList.add("event-void");if(voidVariant)dom.arena.classList.add("event-void-"+voidVariant.key);playGameSound("crazy");}
     if(!isSkillResult&&text.includes("치명타")){dom.arena.classList.add("event-crit");playGameSound("crit");gameVibrate("crit");}
     if(!isSkillResult&&/회피(?:!|했습니다|$)/.test(text))dom.arena.classList.add("event-dodge");
-    const updateTeam=(team,side,cards,bars,hps)=>team.forEach((fish,index)=>{const card=cards[index],bar=bars[index],hp=hps[index],attacking=frame.actorSide===side&&String(frame.actorId||"")===String(fish.id||"");if(card){card.classList.toggle("down",Number(fish.hp)<=0);card.classList.toggle("attacking",attacking);}if(bar)bar.style.width=hpPercent(fish.hp,fish.maxHp)+"%";if(hp)hp.textContent=combatHpNumber(fish.hp)+" / "+combatHpNumber(fish.maxHp);});
-    updateTeam(mine,dom.mineSide,dom.mineCards,dom.mineBars,dom.mineHp);updateTeam(enemy,dom.enemySide,dom.enemyCards,dom.enemyBars,dom.enemyHp);
+    const updateTeam=(team,side,cards,bars,hps,effects)=>team.forEach((fish,index)=>{const card=cards[index],bar=bars[index],hp=hps[index],attacking=frame.actorSide===side&&String(frame.actorId||"")===String(fish.id||"");if(card){card.classList.toggle("down",Number(fish.hp)<=0);card.classList.toggle("attacking",attacking);}if(bar)bar.style.width=hpPercent(fish.hp,fish.maxHp)+"%";if(hp)hp.textContent=combatHpNumber(fish.hp)+" / "+combatHpNumber(fish.maxHp);updateReplayFishEffects(effects[index],fish.effects);});
+    updateTeam(mine,dom.mineSide,dom.mineCards,dom.mineBars,dom.mineHp,dom.mineEffects);updateTeam(enemy,dom.enemySide,dom.enemyCards,dom.enemyBars,dom.enemyHp,dom.enemyEffects);
     if(frame.turn)dom.turnLabel.textContent="TURN "+frame.turn;
     const actorTeam=frame.actorSide===dom.mineSide?mine:frame.actorSide===dom.enemySide?enemy:[],actor=actorTeam.find(f=>String(f.id||"")===String(frame.actorId||""));
     const pvpAttackGrade=actorIsMine?(isProfileCosmeticUnlocked("attackEffect",profileCosmetics.attackEffect)?profileCosmetics.attackEffect:""):dom.enemyAttackEffect;
@@ -1104,8 +1107,8 @@
     const mineSide=currentUser===replay.right?.name?"right":currentUser===replay.left?.name?"left":"left",enemySide=mineSide==="left"?"right":"left",mine=replay[mineSide]||{},enemy=replay[enemySide]||{},first=replay.frames[0],mineTeam=first[mineSide]||[],enemyTeam=first[enemySide]||[],mineProfile=pvpProfileVisual(mine.profile),enemyProfile=pvpProfileVisual(enemy.profile);
     openUiModal("1대1 라이브 전투",`<div class="pvp-battle-replay"><header class="battle-replay-head"><div><small>1대1 전투 재생</small><b id="pvpBattleTurnLabel">전투 준비 · 7</b></div><div class="battle-speed"><button class="active" data-pvp-battle-speed="1">×1</button><button data-pvp-battle-speed="2">×2</button><button data-pvp-battle-speed="4">×4</button><button data-pvp-battle-skip>건너뛰기</button></div></header><section id="pvpBattleArena" class="pvp-battle-arena is-intro"><div class="grade-attack-layer" aria-hidden="true"><i></i><i></i><i></i></div><div class="boss-finisher-layer" aria-hidden="true"><i></i><i></i><strong>FINAL</strong></div><div id="pvpBattleIntro" class="pvp-battle-intro"><header><small>1대1 대전</small><h2>출전 파티 비교</h2><p><strong id="pvpIntroCountdown">7</strong>초 후 교대 전투가 시작됩니다.</p></header><div class="pvp-intro-matchup">${pvpIntroTeamHtml(mineTeam,mine.name,"내 파티")}<strong>VS</strong>${pvpIntroTeamHtml(enemyTeam,enemy.name,"상대 파티")}</div><i class="pvp-intro-timer"></i></div><section class="pvp-battle-side ally" data-pvp-side="${mineSide}"><div class="battle-player-card"><div class="${mineProfile.classes}" style="${mineProfile.style}" data-aura-symbol="${safe(mineProfile.aura)}"><span>${mineProfile.avatar}</span></div><div><small>나의 선장</small><b>${safe(mine.name||"나")}</b><em>${safe(mine.title?`[${mine.title}]`:"칭호 없음")}</em></div></div><div class="pvp-live-team">${pvpReplayTeamHtml(mineTeam,mineSide)}</div></section><div class="battle-versus">VS</div><section class="pvp-battle-side enemy" data-pvp-side="${enemySide}"><div class="battle-player-card rival"><div class="${enemyProfile.classes}" style="${enemyProfile.style}" data-aura-symbol="${safe(enemyProfile.aura)}"><span>${enemyProfile.avatar}</span></div><div><small>상대 선장</small><b>${safe(enemy.name||"상대")}</b><em>${safe(enemy.title?`[${enemy.title}]`:"칭호 없음")}</em></div></div><div class="pvp-live-team">${pvpReplayTeamHtml(enemyTeam,enemySide)}</div></section><div id="pvpBattleAction" class="battle-action-card">한 마리씩 번갈아 공격합니다.</div></section></div>`);
     $("#modalOverlay")?.classList.add("battle-replay-mode");
-    const sideElements=side=>({cards:$$(`[data-pvp-replay-fish^="${side}-"]`),bars:$$(`[data-pvp-replay-bar^="${side}-"]`),hp:$$(`[data-pvp-replay-hp^="${side}-"]`)}),mineElements=sideElements(mineSide),enemyElements=sideElements(enemySide);
-    state.pvpReplayDom={arena:$("#pvpBattleArena"),action:$("#pvpBattleAction"),turnLabel:$("#pvpBattleTurnLabel"),mineSide,enemySide,legacySwap:!!(replay.perspectiveName&&replay.perspectiveName!==currentUser),mineAttackEffect:cosmeticGrades[mineProfile.attackEffect]?mineProfile.attackEffect:"",enemyAttackEffect:cosmeticGrades[enemyProfile.attackEffect]?enemyProfile.attackEffect:"",mineCards:mineElements.cards,mineBars:mineElements.bars,mineHp:mineElements.hp,enemyCards:enemyElements.cards,enemyBars:enemyElements.bars,enemyHp:enemyElements.hp};
+    const sideElements=side=>({cards:$$(`[data-pvp-replay-fish^="${side}-"]`),bars:$$(`[data-pvp-replay-bar^="${side}-"]`),hp:$$(`[data-pvp-replay-hp^="${side}-"]`),effects:$$(`[data-pvp-replay-effects^="${side}-"]`)}),mineElements=sideElements(mineSide),enemyElements=sideElements(enemySide);
+    state.pvpReplayDom={arena:$("#pvpBattleArena"),action:$("#pvpBattleAction"),turnLabel:$("#pvpBattleTurnLabel"),mineSide,enemySide,legacySwap:!!(replay.perspectiveName&&replay.perspectiveName!==currentUser),mineAttackEffect:cosmeticGrades[mineProfile.attackEffect]?mineProfile.attackEffect:"",enemyAttackEffect:cosmeticGrades[enemyProfile.attackEffect]?enemyProfile.attackEffect:"",mineCards:mineElements.cards,mineBars:mineElements.bars,mineHp:mineElements.hp,mineEffects:mineElements.effects,enemyCards:enemyElements.cards,enemyBars:enemyElements.bars,enemyHp:enemyElements.hp,enemyEffects:enemyElements.effects};
     playPvpBattleReplay(replay);
   }
   globalThis.openPvpBattleReplay=openPvpBattleReplay;
@@ -1124,7 +1127,7 @@
     const fish=[
       {key:"1",name:"바다를 삼킨 태양",grade:"공허",hp:4200000000,maxHp:4200000000,status:"정상",effects:[{key:"burn",icon:"🔥",label:"화상",stacks:2},{key:"poison",icon:"☠️",label:"독",stacks:3}]},
       {key:"2",name:"해신룡",grade:"영원",hp:3600000000,maxHp:3600000000,status:"정상",effects:[{key:"root",icon:"🌿",label:"뿌리 연결",detail:"2턴"}]},
-      {key:"3",name:"휘몰아치는 마음",grade:"초월",hp:2900000000,maxHp:2900000000,status:"정상",effects:[{key:"weakness",icon:"⚔️",label:"쇠약"},{key:"fear",icon:"💨",label:"공포"}]},
+      {key:"3",name:"휘몰아치는 마음",grade:"영원",hp:2900000000,maxHp:2900000000,status:"정상",effects:[{key:"storm-eye",icon:"🌪️",label:"폭풍의 눈",detail:"단일 피해 -50%"},{key:"storm",icon:"🌪️",label:"바람",detail:"7 / 8"}]},
       {key:"4",name:"빛나는 마음",grade:"영원",hp:3300000000,maxHp:3300000000,status:"정상",effects:[{key:"redirect",icon:"🐿️",label:"이간질"}]},
       {key:"5",name:"얼어붙은 마음",grade:"영원",hp:3100000000,maxHp:3100000000,status:"정상",effects:[]}
     ];
@@ -1136,6 +1139,7 @@
       : [1,2,3].map(order=>({key:"demo-dragon-"+order,name:"새끼 용",order,hp:900000000,maxHp:900000000,attack:120000000}));
     const demoFishHp=fish.map(item=>item.hp),frame=(entry,turn,bossHp,damageIndex=-1,summons=[])=>{if(damageIndex>=0)demoFishHp[damageIndex]=Math.floor(fish[damageIndex].hp*.55);return {entry,turn,bossHp,bossMaxHp:boss.maxHp,summons,fish:fish.map((item,index)=>({...item,battleLabel:`[${item.grade}] ${item.name}`,hp:demoFishHp[index]}))};};
     const solarEvent=frame('<span class="battle-event battle-event--ally battle-event--ally-attack battle-event--ally-solar"><span class="battle-event__eyebrow">SOLAR BURST</span><b>바다를 삼킨 태양 · 태양 폭발</b><span class="battle-event__body">태양 주기가 완성되어 전장을 밝힙니다.</span></span>',3,34000000000,-1,showSummons?demoSummons:[]),solarResult=frame("상태 : 정오\n[공허] 바다를 삼킨 태양 공격\n치명타!\n16,000,000,000 피해\n아자토스\nHP 18,000,000,000 / 70,000,000,000",3,18000000000,-1,showSummons?demoSummons:[]);
+    const stormEvent=frame('<span class="battle-event battle-event--ally battle-event--ally-storm"><span class="battle-event__eyebrow">STORM RESONANCE</span><b>휘몰아치는 마음 · 추격 폭풍</b><span class="battle-event__body">바람 8 / 8 · 파티의 공격이 거대한 폭풍으로 이어집니다.</span></span>',4,26000000000,-1,showSummons?demoSummons:[]),stormResult=frame("[영원] 휘몰아치는 마음\n추격 폭풍\n7,250,000,000 피해\n아자토스\nHP 18,750,000,000 / 70,000,000,000",4,18750000000,-1,showSummons?demoSummons:[]);
     const phoenixApexEvent=frame('<span class="battle-event battle-event--phase battle-event--revival battle-event--revival-phoenix battle-event--crazy-passive battle-event--crazy-passive-phoenix-apex"><span class="battle-event__eyebrow">크레이지 부활</span><b><span style="color:#ff6f47">피닉스</span> · 불멸의 재점화</b><span class="battle-event__body">2번째 부활 · 체력 50%로 되살아났습니다.</span></span>',7,Math.floor(boss.maxHp*.5));
     const transformationSpecs={hydra:["아홉 머리 재생","잘린 목에서 새로운 머리가 솟아납니다."],leviathan:["심해 최하층","전장이 바다 밑바닥의 수압에 잠깁니다."],behemoth:["움직이는 대륙","거대한 육체가 지면을 밀어 올립니다."],erebos:["원초의 장막","모든 빛이 사라지고 장막이 완성됩니다."],azathoth:["최종 각성","감긴 눈이 열리며 전투 규칙이 뒤틀립니다."]};
     const transformationSpec=transformationSpecs[boss.id]||["보스 각성","전장의 기운이 완전히 달라집니다."],transformationClass=boss.id==="azathoth"?"battle-event--phase":"battle-event--phase battle-event--crazy-passive";
@@ -1143,7 +1147,7 @@
     const compactAttackFrames=[frame("턴 1",1,boss.maxHp),frame("상태 : 정오\n[공허] 바다를 삼킨 태양 공격\n치명타!\n16,000,000,000 피해\n아자토스\nHP 54,000,000,000 / 70,000,000,000",1,54000000000),...Array.from({length:12},(_,index)=>frame("전투 흐름 확인 "+(index+1),2+index,54000000000))];
     const seaDragonAttack=frame("[영원] 해신룡 공격\n6,000,000,000 피해\n아자토스\nHP 59,000,000,000 / 70,000,000,000",1,59000000000);
     const whiteFlameFrames=[frame("턴 1",1,boss.maxHp),frame("[신화] 푸른 눈의 백염룡 공격\n5,000,000,000 피해\n아자토스\nHP 65,000,000,000 / 70,000,000,000",1,65000000000),frame('<span class="battle-event battle-event--ally"><span class="battle-event__eyebrow">ALLY SKILL</span><b>[신화] 푸른 눈의 백염룡 · 백염</b><span class="battle-event__body">백염 1 / 3</span></span>',1,65000000000),seaDragonAttack,...Array.from({length:3},()=>({...seaDragonAttack})),...Array.from({length:8},(_,index)=>frame("다음 공격 확인 "+(index+1),2+index,59000000000))];
-    const frames=whiteFlameReplayDemo?whiteFlameFrames:compactAttackDemo?compactAttackFrames:finisherDemo?[frame("턴 9",9,12000000000),frame("[공허] 바다를 삼킨 태양 공격\n치명타!\n12,000,000,000 피해\n아자토스를 쓰러뜨렸습니다.",9,0)]:phoenixReviveDemo?[frame("피닉스가 쓰러졌습니다.",7,0),phoenixApexEvent]:transformationDemo?[frame("턴 4",4,35000000000),transformationEvent,...Array.from({length:8},()=>({...transformationEvent,entry:"변화 완료"}))]:demoParams.has("solarDemo")?[solarEvent,solarResult]:[
+    const frames=whiteFlameReplayDemo?whiteFlameFrames:compactAttackDemo?compactAttackFrames:finisherDemo?[frame("턴 9",9,12000000000),frame("[공허] 바다를 삼킨 태양 공격\n치명타!\n12,000,000,000 피해\n아자토스를 쓰러뜨렸습니다.",9,0)]:phoenixReviveDemo?[frame("피닉스가 쓰러졌습니다.",7,0),phoenixApexEvent]:transformationDemo?[frame("턴 4",4,35000000000),transformationEvent,...Array.from({length:8},()=>({...transformationEvent,entry:"변화 완료"}))]:demoParams.has("stormDemo")?[stormEvent,stormResult]:demoParams.has("solarDemo")?[solarEvent,solarResult]:[
       frame("전투 시작",0,boss.maxHp),frame("턴 1",1,boss.maxHp),frame('<span class="battle-event battle-event--skill"><span class="battle-event__eyebrow">보스 스킬</span><b><span style="color:#d053ff">아자토스</span> · 맹목의 핵동</b><span class="battle-event__body">회피 불가 전체 공격이 발동했습니다.</span></span>',1,62000000000,-1,showSummons?demoSummons:[]),
       frame("아자토스의 맹목의 핵동\n치명타!\n파티 전체가 피해를 받았습니다.",1,62000000000,1,showSummons?demoSummons:[]),frame('<span class="battle-event battle-event--phase"><span class="battle-event__eyebrow">보스 변화</span><b><span style="color:#d053ff">아자토스</span> · 최종 각성</b><span class="battle-event__body">전투 규칙이 바뀌고 두 번째 행동이 시작됩니다.</span></span>',2,34000000000,-1,showSummons?demoSummons:[]),frame("아자토스의 추가 공격\n대상 2 / 3\n2,000,000 피해",2,34000000000,0,showSummons?demoSummons:[]),solarEvent,solarResult,
       frame('<span class="battle-event battle-event--crazy"><span class="battle-event__eyebrow">크레이지 궁극기</span><b><span style="color:#d053ff">아자토스</span> · 잠든 신의 개안</b><span class="battle-event__body">전투당 한 번만 사용하는 궁극기가 발동했습니다.</span></span>',3,18000000000),frame("아자토스를 쓰러뜨렸습니다.",4,0)
@@ -1155,7 +1159,7 @@
       {name:"빛나는 마음",grade:"영원",startHp:3300000000,endHp:3300000000,maxHp:3300000000,lostRate:0,remainingRate:100,recoveryUntil:0,recoveryMs:0},
       {name:"얼어붙은 마음",grade:"영원",startHp:3100000000,endHp:3100000000,maxHp:3100000000,lostRate:0,remainingRate:100,recoveryUntil:0,recoveryMs:0}
     ];
-    setTimeout(()=>openBossBattleReplay({boss,frames,result:compactAttackDemo||whiteFlameReplayDemo||transformationDemo||phoenixReviveDemo?"화면 검사":"처치 성공",totalDamage:70000000000,rewardMoney:3000000000000000,rewardDrop:"혼돈의 핵",rewardDropCount:8,healthReport}),80);
+    setTimeout(()=>openBossBattleReplay({boss,frames,result:compactAttackDemo||whiteFlameReplayDemo||transformationDemo||phoenixReviveDemo?"화면 검사":"처치 성공",totalDamage:70000000000,rewardMoney:3000000000000000,rewardDrop:"혼돈의 핵",rewardDropCount:8,healthReport,unlockedNextBoss:rewardUnlockDemo&&bossList[1]?{id:bossList[1].id,name:bossList[1].name}:null}),80);
   }
 
   function maybeOpenLocalPvpReplayDemo(){
@@ -1729,9 +1733,16 @@
     }
   }
 
-  function aquariumFishButton(fish,index,owner=""){
+  function publicAquariumCombat(fish,ownerTrainingLevels){
+    const stored=fish?.combat&&typeof fish.combat==="object"?fish.combat:null;
+    if(!stored)return {attack:0,hp:0,maxHp:0,dodge:0,critRate:0,critDamage:0,stars:{}};
+    const combat={...stored,stars:stored.stars&&typeof stored.stars==="object"?{...stored.stars}:{}};
+    return applyTrainingBonusesToCombat(combat,ownerTrainingLevels);
+  }
+
+  function aquariumFishButton(fish,index,owner="",ownerTrainingLevels=null){
     if(!fish)return owner?`<div class="aquarium-fish empty slot-${index+1}"><span>·</span><small>빈 전시칸</small></div>`:`<button class="aquarium-fish empty slot-${index+1}" data-aquarium-edit aria-label="빈 전시칸"><span>＋</span><small>전시칸 ${index+1}</small></button>`;
-    const combat=ensureCombatStats(fish),stage=getFishEvolutionStage(fish);
+    const combat=owner?publicAquariumCombat(fish,ownerTrainingLevels):ensureCombatStats(fish),stage=getFishEvolutionStage(fish);
     const data=owner?`data-public-aquarium-owner="${safe(owner)}" data-public-aquarium-fish-id="${safe(fish.id)}"`:`data-aquarium-detail-id="${safe(fish.id)}"`;
     const aquariumGrade=gradeClasses[fish.grade]||"normal";
     return `<button class="aquarium-fish slot-${index+1} aquarium-grade-${aquariumGrade} ${fishEvolutionClass(fish)}" ${data} aria-label="${safe(fish.name)} 상세정보 보기"><i class="aquarium-aura"></i><span>${fishIcon(fish)}</span><div><small>${safe(fish.grade)}${stage?` · ${safe(getFishEvolutionLabel(fish))}`:""}</small><b>${safe(fish.name)}</b><em>⚔ ${compactNumber(combat.attack)} · ❤️ ${compactNumber(combat.maxHp)}</em></div></button>`;
@@ -1752,7 +1763,7 @@
 
   function publicAquariumEntry(data,id=""){
     const user=data&&typeof data==="object"?data:{},game=user.gameState&&typeof user.gameState==="object"?user.gameState:{},summaryFish=Array.isArray(game.bucketSummary?.aquarium)?game.bucketSummary.aquarium.filter(Boolean):[],owned=Array.isArray(game.bucket)?game.bucket.filter(Boolean):[],ids=normalizeAquariumFishIds(game.aquariumFishIds),fishes=(summaryFish.length?summaryFish:ids.map(fishId=>owned.find(f=>String(f.id||"")===fishId)).filter(Boolean)).slice(0,5);
-    return {owner:cleanNickname(user.nickname||id),title:String(user.title||game.equippedTitle||""),cosmetics:normalizeProfileCosmetics(game.profileCosmetics),fishes};
+    return {owner:cleanNickname(user.nickname||id),title:String(user.title||game.equippedTitle||""),cosmetics:normalizeProfileCosmetics(game.profileCosmetics),trainingLevels:normalizeTrainingLevels(game.trainingLevels),fishes};
   }
 
   function aquariumGalleryCard(entry){
@@ -1784,13 +1795,13 @@
     }
     if(!entry.fishes.length)return renderAquariumGallery(state.aquariumGalleryCache||[],`${owner} 님은 아직 물고기를 전시하지 않았습니다.`);
     state.publicAquariumCurrent=entry;
-    const slots=Array.from({length:5},(_,index)=>aquariumFishButton(entry.fishes[index],index,entry.owner)).join(""),visual=pvpProfileVisual(entry.cosmetics);
+    const slots=Array.from({length:5},(_,index)=>aquariumFishButton(entry.fishes[index],index,entry.owner,entry.trainingLevels)).join(""),visual=pvpProfileVisual(entry.cosmetics);
     openUiModal(`${entry.owner}의 수족관`,`<div class="game-dialog aquarium-dialog public-aquarium"><section class="aquarium-hero"><div class="aquarium-owner-head"><div class="${visual.classes}" style="${visual.style}" data-aura-symbol="${safe(visual.aura)}"><span>${visual.avatar}</span></div><div><small>선장 수족관 · ${entry.fishes.length}/5</small><h2>${safe(entry.owner)}${entry.owner===currentUser?" · 나":""}</h2><p>${safe(entry.title?`[${entry.title}]`:"장착 칭호 없음")} · 물고기를 눌러 상세정보 보기</p></div></div><button data-aquarium-gallery>광장으로</button></section><div class="aquarium-tank"><div class="aquarium-light"></div><div class="aquarium-bubbles"><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="aquarium-floor"><i></i><i></i><i></i></div>${slots}</div></div>`);
   }
 
   function openPublicAquariumFishDetail(owner,fishId){
     const entry=state.publicAquariumCurrent?.owner===owner?state.publicAquariumCurrent:(state.aquariumGalleryCache||[]).find(item=>item.owner===owner),fish=entry?.fishes.find(f=>String(f.id||"")===String(fishId));if(!fish)return showToast("전시 물고기를 찾을 수 없습니다.");
-    const combat=ensureCombatStats(fish),trait=getFishTrait(fish),stage=getFishEvolutionStage(fish),fusionCount=getFishFusionCount(fish);
+    const combat=publicAquariumCombat(fish,entry.trainingLevels),trait=getFishTrait(fish),stage=getFishEvolutionStage(fish),fusionCount=getFishFusionCount(fish);
     openUiModal(`${owner}의 ${fish.name}`,`<div class="game-dialog public-fish-detail"><div class="dialog-summary fish-detail-summary ${gradeClass(fish.grade)} ${fishEvolutionClass(fish)}"><div><small>${safe(owner)}의 수족관 · ${safe(fish.grade)}${stage?` · ${safe(getFishEvolutionLabel(fish))}`:""}</small><b>${safe(fish.name)} ${fishEvolutionBadge(fish)}</b><p>${fish.size===null?"특별 개체":`${formatSize(fish.size)}cm`} · 합성 ${fusionCount}회</p></div><span>${fishIcon(fish)}</span></div><div class="dialog-card-grid"><article class="dialog-card"><small>공격력 ${combatStars(combat,"attack")}</small><strong>${Number(combat.attack).toLocaleString()}</strong></article><article class="dialog-card"><small>체력 ${combatStars(combat,"hp")}</small><strong>${Number(combat.hp).toLocaleString()} / ${Number(combat.maxHp).toLocaleString()}</strong></article><article class="dialog-card"><small>회피율</small><strong>${Number(combat.dodge).toFixed(1)}%</strong></article><article class="dialog-card"><small>치명타 확률</small><strong>${Number(combat.critRate).toFixed(1)}%</strong></article><article class="dialog-card"><small>치명타 피해</small><strong>${Number(combat.critDamage).toFixed(0)}%</strong></article></div>${trait?`<article class="dialog-card ${gradeClass(fish.grade)}"><small>고유 특성</small><h3>${safe(trait.name)}</h3><p>${safe(trait.desc)}</p></article>`:""}<div class="dialog-actions"><button class="primary" data-public-aquarium-owner="${safe(owner)}">수족관으로 돌아가기</button><button data-aquarium-gallery>수족관 광장</button></div></div>`);
   }
 

@@ -35,7 +35,7 @@ let accountSessionUnsubscribe=null;
 
 const log = document.getElementById("log");
 const input = document.getElementById("command");
-const GAME_VERSION = "2026-07-13-fishinglife-live-operations-v25-5-4";
+const GAME_VERSION = "2026-07-13-fishinglife-live-operations-v25-5-5";
 const USER_WRITE_SCHEMA_VERSION = 250;
 const USER_WRITE_PROTOCOL_VERSION = 4;
 const FISHING_ADMIN_NICKNAME = "admin";
@@ -82,6 +82,17 @@ const MAX_CLOUD_BATTLE_FRAME_CHUNK_BYTES = 450000;
 const MAX_CLOUD_BATTLE_FRAME_CHUNK_COUNT = 80;
 const UPDATE_NOTICE_TITLE = "📢 업데이트 안내";
 const UPDATE_NOTICES = [
+  {
+    id:"2026-07-13-fishinglife-battle-aquarium-storm-25-5-5",
+    title:"전투 표시와 수족관 능력치 수정",
+    lines:[
+      "보스 해금 안내는 다음 보스가 실제로 처음 열린 전투에서만 표시됩니다.",
+      "다른 선장의 수족관은 관람자의 훈련소가 아니라 수족관 주인의 훈련소 수치를 적용합니다.",
+      "휘몰아치는 마음은 체력 비율이 가장 낮은 아군의 단일 대상 피해를 50% 줄이고, 바람 8개에 공격력 250%의 추격 폭풍을 일으킵니다.",
+      "영원 등급 6종은 폭풍, 빛 굴절, 결빙, 생명광, 화염, 시간 왜곡을 구분한 전용 스킬 연출로 표시됩니다.",
+      "짧은 화면에서도 전투 스킬 설명이 아래에서 잘리지 않도록 배치를 조정했습니다."
+    ]
+  },
   {
     id:"2026-07-13-fishinglife-live-operations-25-5-0",
     title:"공지함·관리자 지급·4성 설정",
@@ -3686,7 +3697,8 @@ function sanitizeGameHtml(value){
   const battleClasses = new Set([
     "battle-event", "battle-event--skill", "battle-event--crazy", "battle-event--passive", "battle-event--phase", "battle-event--ally", "battle-event--ally-attack",
     "battle-event--ally-solar", "battle-event--ally-ascension", "battle-event--ally-constellation", "battle-event--ally-white-flame",
-    "battle-event--ally-tide", "battle-event--ally-heartbeat", "battle-event--crazy-passive",
+    "battle-event--ally-tide", "battle-event--ally-heartbeat", "battle-event--ally-storm", "battle-event--ally-prism",
+    "battle-event--ally-frost", "battle-event--ally-radiance", "battle-event--ally-chronal", "battle-event--crazy-passive",
     "battle-event--crazy-passive-phoenix", "battle-event--crazy-passive-phoenix-apex",
     "battle-event--revival", "battle-event--revival-phoenix",
     "battle-event--void", "battle-event--void-letter-one", "battle-event--void-letter-two", "battle-event--void-letter-three",
@@ -4445,7 +4457,7 @@ function upgradeTraining(which){
   print(name + " 강화 완료\n\nLv." + level + " → Lv." + trainingLevels[key] + "\n효과 : " + effect + "\n사용 금액 : " + formatMoney(cost));
 }
 
-function applyTrainingBonusesToCombat(c){
+function applyTrainingBonusesToCombat(c,levelSource=trainingLevels){
   if(!c) return c;
   if(c.status === "전투 불가") return c;
 
@@ -4457,9 +4469,10 @@ function applyTrainingBonusesToCombat(c){
   if(c._baseMaxHp === undefined) c._baseMaxHp = Number(c.maxHp || c.hp || 1);
   if(c._baseCritDamage === undefined) c._baseCritDamage = Number(c.critDamage || 0);
 
-  const attackLevel = getTrainingLevel("attack");
-  const hpLevel = getTrainingLevel("hp");
-  const critDamageLevel = getTrainingLevel("critDamage");
+  const levels=normalizeTrainingLevels(levelSource);
+  const attackLevel = Math.min(MAX_TRAINING,Math.max(0,Number(levels.attack||0)));
+  const hpLevel = Math.min(MAX_TRAINING,Math.max(0,Number(levels.hp||0)));
+  const critDamageLevel = Math.min(MAX_TRAINING,Math.max(0,Number(levels.critDamage||0)));
 
   c.attack = Math.floor(c._baseAttack * (1 + getTrainingBonusForLevel("attack",attackLevel) / 100));
 

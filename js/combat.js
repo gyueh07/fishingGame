@@ -1261,7 +1261,15 @@ function traitUseByFish(f, body="", titleOverride=""){
       "수상한 기운 👁️":{className:"observer",eyebrow:"VOID OBSERVATION"},
       "기묘한 기운 🌀":{className:"anomaly",eyebrow:"SYSTEM ERROR"}
     }[f.name];
-    const allyPresentation=title==="태양 폭발"?{className:"solar",eyebrow:"SOLAR BURST"}:title==="승천"?{className:"ascension",eyebrow:"DRAGON ASCENSION"}:title==="별자리 완성"?{className:"constellation",eyebrow:"CONSTELLATION"}:title==="백염 폭발"?{className:"white-flame",eyebrow:"WHITE FLAME"}:title==="밀물의 파도"?{className:"tide",eyebrow:"RISING TIDE"}:title==="화염의 심박"?{className:"heartbeat",eyebrow:"BURNING HEART"}:null;
+    const eternalPresentation={
+      "휘몰아치는 마음":{className:"storm",eyebrow:"STORM RESONANCE"},
+      "영롱한 다이아몬드":{className:"prism",eyebrow:"PRISM REFRACTION"},
+      "얼어붙은 마음":{className:"frost",eyebrow:"ABSOLUTE ZERO"},
+      "빛나는 마음":{className:"radiance",eyebrow:"LIFE RADIANCE"},
+      "불타는 마음":{className:"heartbeat",eyebrow:"BURNING HEART"},
+      "무한한 시간":{className:"chronal",eyebrow:"TIME REVERSAL"}
+    }[f.name];
+    const allyPresentation=title==="태양 폭발"?{className:"solar",eyebrow:"SOLAR BURST"}:title==="승천"?{className:"ascension",eyebrow:"DRAGON ASCENSION"}:title==="별자리 완성"?{className:"constellation",eyebrow:"CONSTELLATION"}:title==="백염 폭발"?{className:"white-flame",eyebrow:"WHITE FLAME"}:title==="밀물의 파도"?{className:"tide",eyebrow:"RISING TIDE"}:title==="화염의 심박"?{className:"heartbeat",eyebrow:"BURNING HEART"}:title==="추격 폭풍"?{className:"storm",eyebrow:"STORM RESONANCE"}:eternalPresentation||null;
     const voidClass=voidSkill?` battle-event--void${voidPresentation?` battle-event--void-${voidPresentation.className}`:""}`:"";
     const allyClass=allyPresentation?` battle-event--ally-${allyPresentation.className}`:"";
     return `<span class="battle-event battle-event--ally${allyClass}${voidClass}"><span class="battle-event__eyebrow">${voidPresentation?.eyebrow||allyPresentation?.eyebrow||(voidSkill?"VOID SIGNATURE":"ALLY SKILL")}</span><b>${fishLabel} · ${escapeHtml(title)}</b>${body?`<span class="battle-event__body">${body}</span>`:""}</span>`;
@@ -1398,13 +1406,11 @@ function traitPreAttackText(f){
 
 function getStormEye(){
   const ctx=activeTraitBattle;if(!ctx||!traitFish(ctx.participants,"휘몰아치는 마음"))return null;
-  return getAliveTargets(ctx.participants).sort((a,b)=>ensureCombatStats(a).attack-ensureCombatStats(b).attack)[0]||null;
+  return getAliveTargets(ctx.participants).sort((a,b)=>ensureCombatStats(a).hp/Math.max(1,ensureCombatStats(a).maxHp)-ensureCombatStats(b).hp/Math.max(1,ensureCombatStats(b).maxHp))[0]||null;
 }
 
 function getSingleTargetCandidates(targets){
-  const alive=getAliveTargets(targets),eye=getStormEye();
-  if(!eye||alive.length<=1)return alive;
-  return alive.filter(f=>f!==eye);
+  return getAliveTargets(targets);
 }
 
 function beginBossSpecial(boss,skillName,battleLog,eventKind="skill"){
@@ -1461,8 +1467,13 @@ function traitModifyIncoming(f,damage,battleLog,meta={}){
   const deferredLogs=[];
   if(!ctx) return {damage:final,afterHeal,deferredLogs};
   const ownTraitActive=!isFishTraitSealed(f);
+  const stormFish=traitFish(ctx.participants,"휘몰아치는 마음");
   const lifeEndActive=Number(ctx.lifeEndUntil||0)>=Number(ctx.turn||0);
   if(lifeEndActive) meta.blockDeathPrevention=true;
+  if(stormFish&&!isFishTraitSealed(stormFish)&&meta.singleTarget&&!meta.ignoreReduction&&getStormEye()===f){
+    final=Math.floor(final*0.5);
+    deferredLogs.push(traitUseByFish(stormFish,color(lineFish(f),f.grade)+"가 폭풍의 눈에 들어 단일 대상 피해가 50% 감소했습니다."));
+  }
   if(ownTraitActive&&!meta.ignoreReduction&&f.name==="금빛 보름달 드래곤"&&st.moonPhase===0) final=Math.floor(final*0.8);
   if(ownTraitActive&&f.name==="불타는 마음"&&getBurningHeartStageByCombat(c)>=3) final=Math.floor(final*1.2);
   if(ownTraitActive&&!meta.forced&&f.name==="기묘한 기운 🌀"&&final>Number(c.attack||0)&&Math.random()<0.25){
@@ -1528,7 +1539,6 @@ function traitAttackStats(f,boss,battleLog){
     else if(stage>=3){multiplier*=1.35;critDamage+=100;}
   }
   if(f.name==="바다를 삼킨 태양")multiplier*=[1.1,1.2,1.35,1.5,1.8][Math.max(0,Number(st.sunStage||1)-1)];
-  const eye=getStormEye();if(eye&&eye!==f){extra+=Math.floor(ensureCombatStats(eye).attack*0.2);battleLog.push(traitUseByFish(traitFish(ctx.participants,"휘몰아치는 마음"), color(lineFish(eye),eye.grade)+"가 폭풍의 중심이 되어 이번 공격에 힘을 보탰습니다."));}
   if(st.numericStored){attack=st.numericStored;multiplier=1;extra=0;replaced=true;delete st.numericStored;}
   return {attack,critDamage,multiplier,extra,replaced};
 }
@@ -1583,6 +1593,18 @@ function afterFishAttackTrait(f,boss,outcome,baseAttack,battleLog){
     if(gs.constellation.hit&&gs.constellation.crit&&gs.constellation.miss){
       const raw=getAliveTargets(ctx.participants).reduce((sum,x)=>sum+Math.floor(getEffectiveFishAttack(x,boss)*0.3),0);gs.constellation={hit:false,crit:false,miss:false};
       dealTraitDamage(boss,raw,traitUseByFish(galaxy, "일반 적중, 치명타, 빗나감을 모두 기록해 별자리가 완성되었습니다.\n살아 있는 아군의 힘이 별빛으로 이어집니다.","별자리 완성"),battleLog);
+    }
+  }
+  const stormFish=traitFish(ctx.participants,"휘몰아치는 마음");
+  if(stormFish&&outcome!=="miss"&&!isFishTraitSealed(stormFish)&&Number(boss._currentHp)>0){
+    const stormState=traitState(stormFish);
+    stormState.stormStacks=Math.min(8,Number(stormState.stormStacks||0)+1);
+    const stormIndex=ctx.participants.indexOf(stormFish);
+    const latestFrame=battleLog.replayFrames?.[battleLog.replayFrames.length-1];
+    if(latestFrame?.fish?.[stormIndex])latestFrame.fish[stormIndex].effects=getFishReplayEffects(stormFish,boss);
+    if(stormState.stormStacks>=8){
+      stormState.stormStacks=0;
+      dealTraitDamage(boss,getEffectiveFishAttack(stormFish,boss)*2.5,traitUseByFish(stormFish,"바람 8 / 8\n파티의 공격이 거대한 추격 폭풍으로 이어졌습니다.","추격 폭풍"),battleLog);
     }
   }
   if(outcome==="miss")return;
@@ -1867,7 +1889,7 @@ function bossSingleTargetAttack(boss, targets, battleLog, bossAttackMultiplier=1
     const splitTargets=getAliveTargets(targets),split=Math.max(1,Math.floor(bossHit.damage*0.7/splitTargets.length));
     battleLog.push(traitUseByFish(diamondFish, "단일 공격의 총피해를 30% 줄여 아군에게 분산합니다."));
     splitTargets.forEach(x=>applyDamageToFish(x,split,battleLog,bossColor(boss.name,boss)+"의 "+skillName+" · 굴절\n",{fromBoss:true,isSpecial,skillName,ignoreReduction:!!options.ignoreReduction}));
-  }else applyDamageToFish(f, bossHit.damage, battleLog, prefix,{fromBoss:true,isSpecial,skillName,ignoreReduction:!!options.ignoreReduction});
+  }else applyDamageToFish(f, bossHit.damage, battleLog, prefix,{fromBoss:true,isSpecial,skillName,ignoreReduction:!!options.ignoreReduction,singleTarget:true});
 
   if(ensureCombatStats(f).hp > 0 && appliesBurn){
     c.burnStacks = Math.min(3, Number(c.burnStacks || 0) + 1);
@@ -1914,7 +1936,7 @@ function bossAttackSpecificTarget(boss, f, battleLog, bossAttackMultiplier=1, sk
     const splitTargets=getAliveTargets(ctx.participants),split=Math.max(1,Math.floor(hit.damage*0.7/splitTargets.length));
     battleLog.push(traitUseByFish(diamondFish, "단일 공격의 총피해를 30% 줄여 아군에게 분산합니다."));
     splitTargets.forEach(x=>applyDamageToFish(x,split,battleLog,bossColor(boss.name,boss)+"의 "+skillName+" · 굴절\n",{fromBoss:true,isSpecial,skillName,ignoreReduction:!!options.ignoreReduction}));
-  }else applyDamageToFish(f, hit.damage, battleLog, prefix,{fromBoss:true,isSpecial,skillName,ignoreReduction:!!options.ignoreReduction});
+  }else applyDamageToFish(f, hit.damage, battleLog, prefix,{fromBoss:true,isSpecial,skillName,ignoreReduction:!!options.ignoreReduction,singleTarget:true});
   if(ensureCombatStats(f).hp>0&&appliesBurn){
     c.burnStacks=Math.min(3,Number(c.burnStacks||0)+1);
     battleLog.push(color(lineFish(f),f.grade)+"\n화상 "+c.burnStacks+"중첩");
@@ -2463,7 +2485,7 @@ function triggerThreeCalamities(boss,f,battleLog){
   const oldCurses=Object.keys(c.azhiCurses||{}).filter(key=>c.azhiCurses[key]);
   const scar=crazy&&oldCurses.length?oldCurses[Math.floor(Math.random()*oldCurses.length)]:"";
   c.azhiCurses=scar?{[scar]:true}:{};
-  applyDamageToFish(f,Math.floor(c.maxHp*rate),battleLog,"세 가지 재앙 폭발\n최대 체력의 "+Math.round(rate*100)+"% 피해\n"+(scar?"재앙의 흉터 하나가 남았습니다.\n":""),{fromBoss:true,isSpecial:true,skillName:"세 가지 재앙 폭발"});
+  applyDamageToFish(f,Math.floor(c.maxHp*rate),battleLog,"세 가지 재앙 폭발\n최대 체력의 "+Math.round(rate*100)+"% 피해\n"+(scar?"재앙의 흉터 하나가 남았습니다.\n":""),{fromBoss:true,isSpecial:true,skillName:"세 가지 재앙 폭발",singleTarget:true});
 }
 
 function applyAzhiCurse(boss, f, curse, label, participants, battleLog){
@@ -2999,6 +3021,8 @@ function getFishReplayEffects(f,boss){
   const add=(key,icon,label,detail="")=>effects.push({key,icon,label,detail:String(detail||"")});
   addStack("burn","🔥","화상",c.burnStacks);
   addStack("poison","☠️","독",c.poisonStacks);
+  const stormFish=activeTraitBattle?traitFish(activeTraitBattle.participants,"휘몰아치는 마음"):null;
+  if(stormFish&&!isFishTraitSealed(stormFish)&&getStormEye()===f)add("storm-eye","🌪️","폭풍의 눈","단일 피해 -50%");
   if(Array.isArray(c.rootLinkedPeers)&&c.rootLinkedPeers.length)add("root","🌿","뿌리 연결",Number(boss?._rootLinkTurns||0)>0?`${Number(boss._rootLinkTurns)}턴`:"");
   if(c.ratatoskrRedirect)add("redirect","🐿️","이간질");
   if(c.azhiCurses?.weakness)add("weakness","⚔️","쇠약");
@@ -3010,6 +3034,7 @@ function getFishReplayEffects(f,boss){
   if(Number(c.traitSealedUntil||0)>=turn&&turn>0)add("trait-sealed","🚫","특성 봉인");
   if(Number(c.healingBlockedUntil||0)>=turn&&turn>0)add("healing-blocked","❤️","회복 봉인");
   if(Number(c.critSuppressedUntil||0)>=turn&&turn>0)add("crit-blocked","💥","치명타 봉인");
+  if(f.name==="휘몰아치는 마음"&&Number(c._traitBattle?.stormStacks||0)>0)add("storm","🌪️","바람",`${Number(c._traitBattle.stormStacks)} / 8`);
   return effects.slice(0,6);
 }
 
@@ -3190,6 +3215,8 @@ function runBossBattle(){
   let rewardMoney = 0;
   let rewardDrop = "";
   let rewardDropCount = 0;
+  let firstClear = false;
+  let unlockedNextBoss = null;
 
   if(participants.length === 0) return print("전투 가능한 물고기가 없습니다.");
 
@@ -3491,7 +3518,10 @@ function runBossBattle(){
 
   if(bossHp <= 0){
     result = "처치 성공";
-    const firstClear = isBossFirstClear(selectedBaseBoss,selectedDifficulty);
+    firstClear = isBossFirstClear(selectedBaseBoss,selectedDifficulty);
+    const clearedBossIndex=bossList.findIndex(item=>item.id===selectedBaseBoss.id);
+    const nextBossCandidate=clearedBossIndex>=0?bossList[clearedBossIndex+1]:null;
+    const nextBossWasUnlocked=!!(nextBossCandidate&&isBossUnlocked(nextBossCandidate));
     rewardMoney = firstClear ? getBossDifficultyReward(selectedBaseBoss,selectedDifficulty) : 0;
     rewardDrop = boss.drop;
     const coreRange=getBossCoreRange(selectedDifficulty);
@@ -3504,6 +3534,9 @@ function runBossBattle(){
 
     addMaterial(rewardDrop, rewardDropCount);
     markBossDifficultyCleared(selectedBaseBoss,selectedDifficulty);
+    if(nextBossCandidate&&!nextBossWasUnlocked&&isBossUnlocked(nextBossCandidate)){
+      unlockedNextBoss={id:nextBossCandidate.id,name:nextBossCandidate.name};
+    }
     bossProgress.hp[boss.id+":"+selectedDifficulty] = boss.hp;
 
     if(firstClear&&selectedDifficulty==="hard"){
@@ -3560,7 +3593,7 @@ function runBossBattle(){
     id:`boss_${Date.now()}_${boss.id}_${selectedDifficulty}`,
     createdAtMillis:Date.now(),
     boss:{id:boss.id,name:boss.name,grade:boss.grade,color:boss.color,difficulty:boss.difficultyName||"일반",maxHp:boss.hp},
-    frames:battleLog.replayFrames.slice(),result,totalDamage,rewardMoney,rewardDrop,rewardDropCount,summary,healthReport
+    frames:battleLog.replayFrames.slice(),result,totalDamage,rewardMoney,rewardDrop,rewardDropCount,firstClear,difficultyId:selectedDifficulty,unlockedNextBoss,summary,healthReport
   };
   addBattleHistory("boss",globalThis.pendingBossBattleReplay);
   clearBattleDisplayNumbers(participants);

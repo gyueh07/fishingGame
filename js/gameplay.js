@@ -1335,7 +1335,7 @@ function simulatePvpBattle({leftName,leftTitle,leftProfile,leftTeam,rightName,ri
   });
 
   const replayFrames=[];
-  const snapshotPvpFish=f=>({id:String(f.id||""),name:f.name,grade:f.grade,size:f.size??null,evolutionStage:Number(f.fusion?.evolutionStage||0),hp:Math.max(0,Number(f.combat?.hp||0)),maxHp:Math.max(1,Number(f.combat?.maxHp||1)),attack:Math.max(0,Number(f.combat?.attack||0)),dodge:Math.max(0,Number(f.combat?.dodge||0)),critRate:Math.max(0,Number(f.combat?.critRate||0)),critDamage:Math.max(0,Number(f.combat?.critDamage||0)),status:f.combat?._pvp?.gone?"전투 불가":Number(f.combat?.hp||0)<=0?"쓰러짐":"정상"});
+  const snapshotPvpFish=f=>({id:String(f.id||""),name:f.name,grade:f.grade,size:f.size??null,evolutionStage:Number(f.fusion?.evolutionStage||0),hp:Math.max(0,Number(f.combat?.hp||0)),maxHp:Math.max(1,Number(f.combat?.maxHp||1)),attack:Math.max(0,Number(f.combat?.attack||0)),dodge:Math.max(0,Number(f.combat?.dodge||0)),critRate:Math.max(0,Number(f.combat?.critRate||0)),critDamage:Math.max(0,Number(f.combat?.critDamage||0)),status:f.combat?._pvp?.gone?"전투 불가":Number(f.combat?.hp||0)<=0?"쓰러짐":"정상",effects:getPvpReplayEffects(f)});
   function capturePvpFrame(entry,frameTurn=turn,actorSide="",actorId=""){
     const text=String(entry||"").trim();
     if(!text)return;
@@ -1361,6 +1361,13 @@ function simulatePvpBattle({leftName,leftTitle,leftProfile,leftTeam,rightName,ri
   function alive(team){ return team.filter(f=>f&&f.combat&&f.combat.hp>0&&!f.combat._pvp?.gone); }
   function livingSide(side){ return alive(teamOf(side)); }
   function pvpState(f){ if(!f.combat._pvp) f.combat._pvp={originalMaxHp:f.combat.maxHp,originalCritDamage:f.combat.critDamage}; return f.combat._pvp; }
+  function getPvpReplayEffects(f){
+    const effects=[],st=pvpState(f);
+    const side=teamOf("left").includes(f)?"left":teamOf("right").includes(f)?"right":"";
+    if(side&&getStormEye(side)===f)effects.push({key:"storm-eye",icon:"🌪️",label:"폭풍의 눈",detail:"단일 피해 -50%"});
+    if(f.name==="휘몰아치는 마음"&&Number(st.stormStacks||0)>0)effects.push({key:"storm",icon:"🌪️",label:"바람",detail:`${Number(st.stormStacks)} / 8`});
+    return effects;
+  }
   function targetableSide(side){ return livingSide(side).filter(f=>!pvpState(f).ashRemnant); }
   function hasFish(side,name){ return targetableSide(side).some(f=>f.name===name); }
   function pvpPreAttackText(f){
@@ -1404,12 +1411,10 @@ function simulatePvpBattle({leftName,leftTitle,leftProfile,leftTeam,rightName,ri
   }
   function getStormEye(side){
     if(!hasFish(side,"휘몰아치는 마음")) return null;
-    return targetableSide(side).sort((a,b)=>Number(a.combat.attack||0)-Number(b.combat.attack||0))[0]||null;
+    return targetableSide(side).sort((a,b)=>Number(a.combat.hp||0)/Math.max(1,Number(a.combat.maxHp||1))-Number(b.combat.hp||0)/Math.max(1,Number(b.combat.maxHp||1)))[0]||null;
   }
   function chooseTarget(defSide){
-    let candidates=targetableSide(defSide);
-    const eye=getStormEye(defSide);
-    if(eye&&candidates.length>1)candidates=candidates.filter(f=>f!==eye);
+    const candidates=targetableSide(defSide);
     if(candidates.length===0)return null;
     return candidates[Math.floor(Math.random()*candidates.length)];
   }
@@ -1427,9 +1432,14 @@ function simulatePvpBattle({leftName,leftTitle,leftProfile,leftTeam,rightName,ri
     });
     return traitUseByFish(dragon, logs.join("\n"))+"\n\n";
   }
-  function pvpIncoming(defSide,target,raw,attacker,atkSide){
+  function pvpIncoming(defSide,target,raw,attacker,atkSide,meta={}){
     const c=target.combat, st=pvpState(target);
     let dmg=Math.max(0,Math.floor(raw)), extraLog="";
+    const stormFish=targetableSide(defSide).find(f=>f.name==="휘몰아치는 마음");
+    if(stormFish&&meta.singleTarget!==false&&getStormEye(defSide)===target){
+      dmg=Math.floor(dmg*0.5);
+      extraLog+=traitUseByFish(stormFish,pvpFishLabel(target)+"가 폭풍의 눈에 들어 단일 대상 피해가 50% 감소했습니다.")+"\n\n";
+    }
     if(target.name==="금빛 보름달 드래곤"&&st.moonPhase===0)dmg=Math.floor(dmg*0.8);
     if(target.name==="불타는 마음"&&getBurningHeartStageByCombat(c)>=3)dmg=Math.floor(dmg*1.2);
     if(target.name==="기묘한 기운 🌀"&&dmg>Number(c.attack||0)&&Math.random()<0.25){
@@ -1452,10 +1462,10 @@ function simulatePvpBattle({leftName,leftTitle,leftProfile,leftTeam,rightName,ri
     }
     return {dmg,extraLog};
   }
-  function applyPvpDamage(defSide,target,raw,attacker,atkSide,reason){
+  function applyPvpDamage(defSide,target,raw,attacker,atkSide,reason,meta={}){
     if(!target||!target.combat||target.combat.hp<=0)return "";
     const before=target.combat.hp;
-    const inc=pvpIncoming(defSide,target,raw,attacker,atkSide);
+    const inc=pvpIncoming(defSide,target,raw,attacker,atkSide,meta);
     target.combat.hp=Math.max(0,target.combat.hp-inc.dmg);
     const afterHeal=Math.max(0,Number(pvpState(target).afterHeal||0));
     delete pvpState(target).afterHeal;
@@ -1507,11 +1517,10 @@ function simulatePvpBattle({leftName,leftTitle,leftProfile,leftTeam,rightName,ri
     }
     if(f.name==="바다를 삼킨 태양")mult*=[1.1,1.2,1.35,1.5,1.8][Math.max(0,Number(st.sunStage||1)-1)];
     if(Number(st.observedWeakUntil||0)>=turn)mult*=0.75;
-    const eye=getStormEye(side); if(eye&&eye!==f){extra+=Math.floor(Number(eye.combat.attack||0)*0.2);preLog+=traitUseByFish(targetableSide(side).find(x=>x.name==="휘몰아치는 마음"), pvpFishLabel(eye)+"가 폭풍의 중심이 되어 이번 공격에 힘을 보탰습니다.")+"\n\n";}
     if(st.numericStored){atk=st.numericStored;mult=1;extra=0;replaced=true;delete st.numericStored;}
     return {atk,critDmg,mult,extra,replaced,preLog};
   }
-  function recordOutcome(side,outcome,enemySide,logParts){
+  function recordOutcome(side,outcome,enemySide,logParts,actor=null){
     const galaxy=targetableSide(side).find(f=>f.name==="호수에 비친 은하수");
     if(galaxy){
       const st=pvpState(galaxy); if(!st.constellation)st.constellation={hit:false,crit:false,miss:false}; st.constellation[outcome]=true;
@@ -1533,6 +1542,16 @@ function simulatePvpBattle({leftName,leftTitle,leftProfile,leftTeam,rightName,ri
       if(state[side].periodSentences>=5){
         teamOf(enemySide).forEach(f=>f.combat.hp=0);
         logParts.push("마지막 문장에 마침표가 찍혔습니다.\n"+sideTitle(enemySide)+subjectParticle(sideTitle(enemySide))+" 전투에서 사라졌습니다.\n\n");
+      }
+    }
+    const stormFish=targetableSide(side).find(f=>f.name==="휘몰아치는 마음");
+    if(stormFish&&actor&&(outcome==="hit"||outcome==="crit")&&pvpAlive(teamOf(enemySide))){
+      const stormState=pvpState(stormFish);
+      stormState.stormStacks=Math.min(8,Number(stormState.stormStacks||0)+1);
+      if(stormState.stormStacks>=8){
+        stormState.stormStacks=0;
+        const target=chooseTarget(enemySide);
+        if(target)logParts.push(applyPvpDamage(enemySide,target,Number(stormFish.combat.attack||0)*2.5,null,side,traitUseByFish(stormFish,"바람 8 / 8\n파티의 공격이 거대한 추격 폭풍으로 이어졌습니다.","추격 폭풍"),{singleTarget:true}));
       }
     }
   }
@@ -1642,7 +1661,7 @@ function simulatePvpBattle({leftName,leftTitle,leftProfile,leftTeam,rightName,ri
       if(targetableSide(side).some(f=>f.name==="바다를 삼킨 태양"&&pvpState(f).sunStage===3))dodge=0;
       if(targetableSide(side).some(f=>f.name==="해신룡"&&pvpState(f).tideHigh))dodge=Math.max(0,dodge-10);
       if(target.name==="해신룡"&&!pvpState(target).tideHigh)dodge+=15;
-      if(Math.random()*100<dodge){sideLog.push(pvpFishLabel(attacker)+" 공격\n"+pvpFishLabel(target)+" 회피!\n\n");recordOutcome(side,"miss",enemySide,sideLog);recordOutcome(enemySide,"dodge",side,sideLog);continue;}
+      if(Math.random()*100<dodge){sideLog.push(pvpFishLabel(attacker)+" 공격\n"+pvpFishLabel(target)+" 회피!\n\n");recordOutcome(side,"miss",enemySide,sideLog,attacker);recordOutcome(enemySide,"dodge",side,sideLog);continue;}
       let dmg=av.replaced?av.atk:av.atk;
       const crit=!av.replaced&&Math.random()*100<Number(attacker.combat.critRate||0);
       if(crit)dmg=Math.floor(dmg*av.critDmg/100);
@@ -1654,9 +1673,9 @@ function simulatePvpBattle({leftName,leftTitle,leftProfile,leftTeam,rightName,ri
         const targets=targetableSide(enemySide);
         const split=Math.max(1,Math.floor(dmg*0.7/targets.length));
         sideLog.push(traitUseByFish(targetableSide(enemySide).find(f=>f.name==="영롱한 다이아몬드"), "피해를 30% 줄이고 분산합니다.")+"\n\n");
-        targets.forEach(t=>sideLog.push(applyPvpDamage(enemySide,t,split,attacker,side,pvpFishLabel(attacker)+"의 굴절 공격")));
-      }else sideLog.push(applyPvpDamage(enemySide,target,dmg,attacker,side,""));
-      recordOutcome(side,crit?"crit":"hit",enemySide,sideLog);
+        targets.forEach(t=>sideLog.push(applyPvpDamage(enemySide,t,split,attacker,side,pvpFishLabel(attacker)+"의 굴절 공격",{singleTarget:false})));
+      }else sideLog.push(applyPvpDamage(enemySide,target,dmg,attacker,side,"",{singleTarget:true}));
+      recordOutcome(side,crit?"crit":"hit",enemySide,sideLog,attacker);
       if(attacker.combat&&attacker.combat.hp>0) afterHit(side,attacker,enemySide,target,sideLog);
       if(hasFish(enemySide,"수상한 기운 👁️")&&state[enemySide].observedResolvedTurn!==turn&&(!state[enemySide].observedId||turn>state[enemySide].observedUntil)){
         state[enemySide].observedId=attacker.id;state[enemySide].observedUntil=turn+3;
